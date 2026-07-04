@@ -114,13 +114,7 @@ func Start() error {
 	}
 
 	manager := newSessionManager()
-	if err := manager.EnsureControlMode(exe); err != nil {
-		return err
-	}
-	if _, err := manager.CreateSession(defaultSessionName, cwd); err != nil {
-		return err
-	}
-	if err := ensureDefaultStartupState(); err != nil {
+	if err := prepareStartup(manager, exe, cwd); err != nil {
 		return err
 	}
 
@@ -132,6 +126,19 @@ func Start() error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func prepareStartup(manager sessionManager, binaryPath, cwd string) error {
+	if _, err := manager.CreateSession(defaultSessionName, cwd); err != nil {
+		return err
+	}
+	if err := manager.EnsureControlMode(binaryPath); err != nil {
+		return err
+	}
+	if err := ensureDefaultStartupState(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func newModel() tea.Model {

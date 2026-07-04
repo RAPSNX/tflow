@@ -24,6 +24,35 @@ func TestMenuStartsWithCurrentSessionSelected(t *testing.T) {
 	}
 }
 
+func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
+	tmp := t.TempDir()
+	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+	})
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+
+	var calls []string
+	manager := fakeSessionManager{
+		createSession: func(name, cwd string) (session, error) {
+			calls = append(calls, "create:"+name)
+			return session{Name: name}, nil
+		},
+		ensureControlMode: func(binaryPath string) error {
+			calls = append(calls, "control:"+binaryPath)
+			return nil
+		},
+	}
+
+	if err := prepareStartup(manager, "/tmp/tflow", "/tmp/project"); err != nil {
+		t.Fatalf("prepareStartup returned error: %v", err)
+	}
+
+	if got, want := strings.Join(calls, ","), "create:default,control:/tmp/tflow"; got != want {
+		t.Fatalf("calls = %q, want %q", got, want)
+	}
+}
+
 func TestTreeRowsContainProjectAndSessionChildren(t *testing.T) {
 	m := NewMenu().(model)
 	m.projects = []string{defaultProjectName, "small"}
