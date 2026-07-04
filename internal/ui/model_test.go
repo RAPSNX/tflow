@@ -3,8 +3,6 @@ package ui
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -24,63 +22,41 @@ func TestMenuStartsWithCurrentSessionSelected(t *testing.T) {
 	}
 }
 
-func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
-	tmp := t.TempDir()
-	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
-	t.Cleanup(func() {
-		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
-	})
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-
-	var calls []string
-	manager := fakeSessionManager{
-		createSession: func(name, cwd string) (session, error) {
-			calls = append(calls, "create:"+name)
-			return session{Name: name}, nil
-		},
-		ensureControlMode: func(binaryPath string) error {
-			calls = append(calls, "control:"+binaryPath)
-			return nil
-		},
-	}
-
-	if err := prepareStartup(manager, "/tmp/tflow", "/tmp/project"); err != nil {
-		t.Fatalf("prepareStartup returned error: %v", err)
-	}
-
-	if got, want := strings.Join(calls, ","), "create:default,control:/tmp/tflow"; got != want {
-		t.Fatalf("calls = %q, want %q", got, want)
-	}
-}
-
-func TestTreeRowsContainProjectAndSessionChildren(t *testing.T) {
+func TestMenuEnterSelectsSession(t *testing.T) {
 	m := NewMenu().(model)
-	m.projects = []string{defaultProjectName, "small"}
-	m.sessions = []session{{Name: "dev"}, {Name: "ops"}}
-	m.sessionProjects = map[string]string{"dev": defaultProjectName, "ops": "small"}
-	m.expandedProjects = map[string]bool{defaultProjectName: true, "small": false}
-
-	rows := m.treeRows()
-	if len(rows) != 3 {
-		t.Fatalf("len(rows) = %d, want 3", len(rows))
-	}
-	if rows[0].kind != rowProject || rows[1].kind != rowSession || rows[2].kind != rowProject {
-		t.Fatalf("rows = %#v", rows)
-	}
-}
-
-func TestCollapseSelectionMovesSessionFocusToProject(t *testing.T) {
-	m := NewMenu().(model)
-	m.projects = []string{defaultProjectName, "small"}
+	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}}
-	m.sessionProjects = map[string]string{"dev": "small"}
-	m.expandedProjects = map[string]bool{defaultProjectName: true, "small": true}
-	m.selectedProject = "small"
+	m.sessionProjects = map[string]string{"dev": defaultProjectName}
+	m.expandedProjects = map[string]bool{defaultProjectName: true}
+	m.selectedProject = defaultProjectName
 	m.selectedSession = "dev"
-	m.collapseSelection()
 
-	if m.selectedProject != "small" || m.selectedSession != "" {
-		t.Fatalf("selectedProject=%q selectedSession=%q", m.selectedProject, m.selectedSession)
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(model)
+	if got.exitSession != "dev" {
+		t.Fatalf("exitSession = %q, want dev", got.exitSession)
+	}
+	if cmd == nil {
+		t.Fatal("expected quit command")
+	}
+}
+
+func TestMenuCtrlFTogglesClosed(t *testing.T) {
+	m := NewMenu().(model)
+	m.projects = []string{defaultProjectName}
+	m.sessions = []session{{Name: "dev"}}
+	m.sessionProjects = map[string]string{"dev": defaultProjectName}
+	m.expandedProjects = map[string]bool{defaultProjectName: true}
+	m.selectedProject = defaultProjectName
+	m.selectedSession = "dev"
+
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyCtrlF})
+	got := updated.(model)
+	if got.exitSession != "" {
+		t.Fatalf("exitSession = %q, want empty", got.exitSession)
+	}
+	if cmd == nil {
+		t.Fatal("expected quit command")
 	}
 }
 
@@ -109,111 +85,21 @@ func TestMoveProjectUsesIncrementalPrefix(t *testing.T) {
 	}
 }
 
-func TestCtrlCEscapesMenuByClosingPane(t *testing.T) {
-	m := NewMenu().(model)
-	m.paneID = "%3"
-	closed := ""
-	m.tmux = fakeSessionManager{
-		closePane: func(paneID string) error {
-			closed = paneID
-			return nil
-		},
-	}
+func TestDefaultSessionDirPrefersHome(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("HOME", oldHome)
+	})
+	_ = os.Setenv("HOME", "/tmp/home")
 
-	_, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyCtrlC})
-	if cmd == nil {
-		t.Fatal("expected close command")
-	}
-	msg := cmd().(menuActionMsg)
-	if msg.err != nil {
-		t.Fatalf("close returned error: %v", msg.err)
-	}
-	if closed != "%3" {
-		t.Fatalf("closed = %q, want %%3", closed)
+	if got := defaultSessionDir(); got != "/tmp/home" {
+		t.Fatalf("defaultSessionDir = %q, want /tmp/home", got)
 	}
 }
 
 func TestSanitizeSessionName(t *testing.T) {
 	if got, want := sanitizeSessionName(" Prod/Main 01 "), "prod-main-01"; got != want {
 		t.Fatalf("sanitizeSessionName = %q, want %q", got, want)
-	}
-}
-
-func TestShellQuote(t *testing.T) {
-	if got, want := shellQuote("it's"), `'it'"'"'s'`; got != want {
-		t.Fatalf("shellQuote = %q, want %q", got, want)
-	}
-}
-
-func TestAttachCommandUsesTflowSocket(t *testing.T) {
-	cmd, err := tmuxSessionManager{}.AttachCommand("dev")
-	if err != nil {
-		t.Fatalf("AttachCommand returned error: %v", err)
-	}
-	if got := strings.Join(cmd.Args, " "); !strings.Contains(got, "-L tflow") {
-		t.Fatalf("attach command = %q, want tflow socket", got)
-	}
-}
-
-func TestEnsureControlModeBindsToggleKey(t *testing.T) {
-	oldShell := os.Getenv("SHELL")
-	t.Cleanup(func() {
-		_ = os.Setenv("SHELL", oldShell)
-	})
-	_ = os.Setenv("SHELL", "/bin/zsh")
-
-	var calls [][]string
-	manager := tmuxSessionManager{
-		run: func(args ...string) (string, error) {
-			calls = append(calls, append([]string(nil), args...))
-			return "", nil
-		},
-	}
-
-	if err := manager.EnsureControlMode("/tmp/tflow"); err != nil {
-		t.Fatalf("EnsureControlMode returned error: %v", err)
-	}
-
-	wants := [][]string{
-		{"set-option", "-g", "default-shell", "/bin/zsh"},
-		{"set-option", "-g", "default-command", "exec '/bin/zsh' -l"},
-		{"bind-key", "-n", "C-f", "run-shell", "exec '/tmp/tflow' toggle-menu"},
-	}
-	for _, want := range wants {
-		found := false
-		for _, call := range calls {
-			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("missing call %v in %#v", want, calls)
-		}
-	}
-}
-
-func TestToggleMenuKillsExistingPane(t *testing.T) {
-	manager := tmuxSessionManager{
-		run: func(args ...string) (string, error) {
-			switch args[0] {
-			case "display-message":
-				return "@1", nil
-			case "list-panes":
-				return "%5\t1\n", nil
-			case "kill-pane":
-				if args[2] != "%5" {
-					t.Fatalf("kill-pane target = %q", args[2])
-				}
-				return "", nil
-			default:
-				return "", fmt.Errorf("unexpected command: %v", args)
-			}
-		},
-	}
-
-	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
-		t.Fatalf("ToggleMenu returned error: %v", err)
 	}
 }
 
@@ -226,14 +112,9 @@ func TestProjectNormalizationKeepsDefaultFirst(t *testing.T) {
 }
 
 type fakeSessionManager struct {
-	listSessions      func() ([]session, error)
-	createSession     func(name, cwd string) (session, error)
-	attachCommand     func(name string) (*exec.Cmd, error)
-	killSession       func(name string) error
-	switchClient      func(name string) error
-	ensureControlMode func(binaryPath string) error
-	toggleMenu        func(binaryPath string) error
-	closePane         func(paneID string) error
+	listSessions  func() ([]session, error)
+	createSession func(name, cwd string) (session, error)
+	killSession   func(name string) error
 }
 
 func (f fakeSessionManager) ListSessions() ([]session, error) {
@@ -250,44 +131,9 @@ func (f fakeSessionManager) CreateSession(name, cwd string) (session, error) {
 	return session{Name: name, Windows: 1}, nil
 }
 
-func (f fakeSessionManager) AttachCommand(name string) (*exec.Cmd, error) {
-	if f.attachCommand != nil {
-		return f.attachCommand(name)
-	}
-	return exec.Command("sh", "-lc", ":"), nil
-}
-
 func (f fakeSessionManager) KillSession(name string) error {
 	if f.killSession != nil {
 		return f.killSession(name)
-	}
-	return nil
-}
-
-func (f fakeSessionManager) SwitchClient(name string) error {
-	if f.switchClient != nil {
-		return f.switchClient(name)
-	}
-	return nil
-}
-
-func (f fakeSessionManager) EnsureControlMode(binaryPath string) error {
-	if f.ensureControlMode != nil {
-		return f.ensureControlMode(binaryPath)
-	}
-	return nil
-}
-
-func (f fakeSessionManager) ToggleMenu(binaryPath string) error {
-	if f.toggleMenu != nil {
-		return f.toggleMenu(binaryPath)
-	}
-	return nil
-}
-
-func (f fakeSessionManager) ClosePane(paneID string) error {
-	if f.closePane != nil {
-		return f.closePane(paneID)
 	}
 	return nil
 }

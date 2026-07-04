@@ -4,8 +4,10 @@ go 1.25.0
 
 require (
 	charm.land/lipgloss/v2 v2.0.5
+	github.com/creack/pty v1.1.18
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
+	golang.org/x/term v0.37.0
 )
 
 require (

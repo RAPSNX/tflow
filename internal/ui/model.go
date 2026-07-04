@@ -51,10 +51,6 @@ type sessionMovedMsg struct {
 	err     error
 }
 
-type menuActionMsg struct {
-	err error
-}
-
 type appState struct {
 	Projects         []string          `json:"projects"`
 	SessionProjects  map[string]string `json:"session_projects"`
@@ -76,7 +72,7 @@ type treeRow struct {
 }
 
 type model struct {
-	tmux sessionManager
+	manager sessionManager
 
 	width  int
 	height int
@@ -90,7 +86,7 @@ type model struct {
 	selectedProject  string
 	selectedSession  string
 	currentSession   string
-	paneID           string
+	exitSession      string
 
 	input     textinput.Model
 	moveQuery string
@@ -103,45 +99,28 @@ type model struct {
 }
 
 func NewMenu() tea.Model {
-	return newModel()
+	return newModel(newSessionManager(), "")
 }
 
 func Start() error {
-	cwd, _ := os.Getwd()
-	exe, err := os.Executable()
-	if err != nil {
+	broker := newSessionBroker()
+	if _, err := broker.CreateSession(defaultSessionName, defaultSessionDir()); err != nil {
 		return err
 	}
-
-	manager := newSessionManager()
-	if err := prepareStartup(manager, exe, cwd); err != nil {
-		return err
-	}
-
-	cmd, err := manager.AttachCommand(defaultSessionName)
-	if err != nil {
-		return err
-	}
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return broker.runSession(defaultSessionName, defaultSessionDir())
 }
 
-func prepareStartup(manager sessionManager, binaryPath, cwd string) error {
-	if _, err := manager.CreateSession(defaultSessionName, cwd); err != nil {
-		return err
+func defaultSessionDir() string {
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return home
 	}
-	if err := manager.EnsureControlMode(binaryPath); err != nil {
-		return err
+	if cwd, err := os.Getwd(); err == nil && strings.TrimSpace(cwd) != "" {
+		return cwd
 	}
-	if err := ensureDefaultStartupState(); err != nil {
-		return err
-	}
-	return nil
+	return "."
 }
 
-func newModel() tea.Model {
+func newModel(manager sessionManager, current string) tea.Model {
 	cwd, _ := os.Getwd()
 
 	input := textinput.New()
@@ -161,21 +140,34 @@ func newModel() tea.Model {
 	state = normalizeAppState(state)
 
 	return model{
-		tmux:             newSessionManager(),
+		manager:          manager,
 		mode:             inputNone,
 		projects:         state.Projects,
 		sessionProjects:  state.SessionProjects,
 		expandedProjects: state.ExpandedProjects,
 		selectedProject:  defaultProjectName,
-		selectedSession:  os.Getenv(menuCurrentEnv),
-		currentSession:   os.Getenv(menuCurrentEnv),
-		paneID:           os.Getenv("TMUX_PANE"),
+		currentSession:   current,
 		input:            input,
 		cwd:              cwd,
 		statePath:        statePath,
-		status:           "j/k move  h/l close/open project  enter switch  n new session  p new project  m move  x kill",
+		status:           "j/k move  h/l close/open project  enter open  n new session  p new project  m move  x kill",
 		err:              err,
 	}
+}
+
+func runMenu(manager sessionManager, current string) (string, error) {
+	final, err := tea.NewProgram(newModel(manager, current), tea.WithAltScreen()).Run()
+	if err != nil {
+		return "", err
+	}
+	if m, ok := final.(model); ok {
+		return m.exitSession, nil
+	}
+	return "", nil
+}
+
+func RunMenu(current string) (string, error) {
+	return runMenu(newSessionManager(), current)
 }
 
 func (m model) Init() tea.Cmd {
@@ -278,13 +270,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.status = fmt.Sprintf("Moved session %s to %s.", msg.session, msg.project)
 		return m, m.loadSessionsCmd()
-	case menuActionMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.status = msg.err.Error()
-			return m, nil
-		}
-		return m, tea.Quit
 	case tea.KeyMsg:
 		if m.mode != inputNone {
 			return m.updateModal(msg)
@@ -298,14 +283,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC:
-		return m, m.closeMenuCmd()
+		m.exitSession = ""
+		return m, tea.Quit
+	case tea.KeyCtrlF:
+		m.exitSession = ""
+		return m, tea.Quit
 	case tea.KeyEsc:
-		return m, m.closeMenuCmd()
+		m.exitSession = ""
+		return m, tea.Quit
 	}
 
 	switch msg.String() {
 	case "q":
-		return m, m.closeMenuCmd()
+		m.exitSession = ""
+		return m, tea.Quit
 	case "j", "down":
 		m.shiftRow(1)
 		return m, nil
@@ -327,7 +318,8 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.toggleProject(row.project)
 			return m, nil
 		}
-		return m.switchSelectedSession()
+		m.exitSession = row.session
+		return m, tea.Quit
 	case "n":
 		m.mode = inputCreateSession
 		m.input.Prompt = "session: "
@@ -380,7 +372,7 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.input.Blur()
 			m.input.Prompt = ""
 			return m, func() tea.Msg {
-				s, err := m.tmux.CreateSession(name, m.cwd)
+				s, err := m.manager.CreateSession(name, m.cwd)
 				if err != nil {
 					return sessionCreatedMsg{err: err}
 				}
@@ -535,23 +527,8 @@ func (m model) renderMoveOverlay() string {
 
 func (m model) loadSessionsCmd() tea.Cmd {
 	return func() tea.Msg {
-		sessions, err := m.tmux.ListSessions()
+		sessions, err := m.manager.ListSessions()
 		return sessionsLoadedMsg{sessions: sessions, err: err}
-	}
-}
-
-func (m model) switchSelectedSession() (tea.Model, tea.Cmd) {
-	s, ok := m.selectedSessionInfo()
-	if !ok {
-		m.status = "No session selected."
-		return m, nil
-	}
-	return m, func() tea.Msg {
-		err := m.tmux.SwitchClient(s.Name)
-		if err == nil {
-			err = m.tmux.ClosePane(m.paneID)
-		}
-		return menuActionMsg{err: err}
 	}
 }
 
@@ -562,13 +539,7 @@ func (m model) killSelectedSession() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, func() tea.Msg {
-		return sessionKilledMsg{name: s.Name, err: m.tmux.KillSession(s.Name)}
-	}
-}
-
-func (m model) closeMenuCmd() tea.Cmd {
-	return func() tea.Msg {
-		return menuActionMsg{err: m.tmux.ClosePane(m.paneID)}
+		return sessionKilledMsg{name: s.Name, err: m.manager.KillSession(s.Name)}
 	}
 }
 
