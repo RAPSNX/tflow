@@ -17,6 +17,7 @@ import (
 )
 
 const defaultSessionName = "default"
+const maxSessionHistoryBytes = 512 * 1024
 
 type session struct {
 	Name     string
@@ -41,6 +42,7 @@ type sessionProcess struct {
 	cmd      *exec.Cmd
 	master   *os.File
 	buf      bytes.Buffer
+	history  bytes.Buffer
 	cond     *sync.Cond
 	attached bool
 	closed   bool
@@ -225,6 +227,7 @@ func (s *sessionProcess) readLoop() {
 		if n > 0 {
 			s.cond.L.Lock()
 			_, _ = s.buf.Write(buf[:n])
+			s.appendHistory(buf[:n])
 			s.cond.Broadcast()
 			s.cond.L.Unlock()
 		}
@@ -236,8 +239,8 @@ func (s *sessionProcess) readLoop() {
 }
 
 func (s *sessionProcess) attachLoop(menu func() (string, error)) (string, error) {
+	s.prepareAttach()
 	s.setAttached(true)
-	s.refreshScreen()
 	done := make(chan struct{})
 	go s.flushLoop(done)
 	defer func() {
@@ -280,7 +283,7 @@ func (s *sessionProcess) attachLoop(menu func() (string, error)) (string, error)
 	}
 }
 
-func (s *sessionProcess) refreshScreen() {
+func (s *sessionProcess) prepareAttach() {
 	width, height, err := term.GetSize(int(os.Stdout.Fd()))
 	if err == nil && width > 0 && height > 0 {
 		_ = pty.Setsize(s.master, &pty.Winsize{
@@ -289,8 +292,30 @@ func (s *sessionProcess) refreshScreen() {
 		})
 	}
 
+	s.cond.L.Lock()
+	history := append([]byte(nil), s.history.Bytes()...)
+	s.buf.Reset()
+	s.cond.L.Unlock()
+
 	_, _ = os.Stdout.Write([]byte("\x1b[2J\x1b[H"))
-	_, _ = s.master.Write([]byte{0x0c})
+	if len(history) > 0 {
+		_, _ = os.Stdout.Write(history)
+	}
+}
+
+func (s *sessionProcess) appendHistory(data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	_, _ = s.history.Write(data)
+	if s.history.Len() <= maxSessionHistoryBytes {
+		return
+	}
+
+	trim := s.history.Len() - maxSessionHistoryBytes
+	next := append([]byte(nil), s.history.Bytes()[trim:]...)
+	s.history.Reset()
+	_, _ = s.history.Write(next)
 }
 
 func (s *sessionProcess) flushLoop(done chan struct{}) {
