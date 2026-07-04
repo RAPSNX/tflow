@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/creack/pty"
+	"golang.org/x/term"
 )
 
 const defaultSessionName = "default"
@@ -236,6 +237,7 @@ func (s *sessionProcess) readLoop() {
 
 func (s *sessionProcess) attachLoop(menu func() (string, error)) (string, error) {
 	s.setAttached(true)
+	s.refreshScreen()
 	done := make(chan struct{})
 	go s.flushLoop(done)
 	defer func() {
@@ -276,6 +278,19 @@ func (s *sessionProcess) attachLoop(menu func() (string, error)) (string, error)
 			return "", err
 		}
 	}
+}
+
+func (s *sessionProcess) refreshScreen() {
+	width, height, err := term.GetSize(int(os.Stdout.Fd()))
+	if err == nil && width > 0 && height > 0 {
+		_ = pty.Setsize(s.master, &pty.Winsize{
+			Cols: uint16(width),
+			Rows: uint16(height),
+		})
+	}
+
+	_, _ = os.Stdout.Write([]byte("\x1b[2J\x1b[H"))
+	_, _ = s.master.Write([]byte{0x0c})
 }
 
 func (s *sessionProcess) flushLoop(done chan struct{}) {

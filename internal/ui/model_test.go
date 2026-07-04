@@ -85,6 +85,49 @@ func TestMoveProjectUsesIncrementalPrefix(t *testing.T) {
 	}
 }
 
+func TestDeleteProjectMovesSessionsToDefault(t *testing.T) {
+	tmp := t.TempDir()
+
+	m := NewMenu().(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{defaultProjectName, "small"}
+	m.sessions = []session{{Name: "dev"}}
+	m.sessionProjects = map[string]string{"dev": "small"}
+	m.expandedProjects = map[string]bool{defaultProjectName: true, "small": true}
+	m.selectedProject = "small"
+
+	updated, cmd := m.deleteSelectedProject()
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if containsString(got.projects, "small") {
+		t.Fatalf("projects still contain deleted project: %#v", got.projects)
+	}
+	if got.sessionProjects["dev"] != defaultProjectName {
+		t.Fatalf("sessionProjects[dev] = %q, want %q", got.sessionProjects["dev"], defaultProjectName)
+	}
+	if got.selectedProject != defaultProjectName {
+		t.Fatalf("selectedProject = %q, want %q", got.selectedProject, defaultProjectName)
+	}
+}
+
+func TestDeleteProjectRejectsDefault(t *testing.T) {
+	m := NewMenu().(model)
+	m.projects = []string{defaultProjectName}
+	m.expandedProjects = map[string]bool{defaultProjectName: true}
+	m.selectedProject = defaultProjectName
+
+	updated, cmd := m.deleteSelectedProject()
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if !containsString(got.projects, defaultProjectName) {
+		t.Fatalf("default project removed: %#v", got.projects)
+	}
+}
+
 func TestDefaultSessionDirPrefersHome(t *testing.T) {
 	oldHome := os.Getenv("HOME")
 	t.Cleanup(func() {

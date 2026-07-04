@@ -150,7 +150,7 @@ func newModel(manager sessionManager, current string) tea.Model {
 		input:            input,
 		cwd:              cwd,
 		statePath:        statePath,
-		status:           "j/k move  h/l close/open project  enter open  n new session  p new project  m move  x kill",
+		status:           "j/k move  h/l close/open project  enter open  n new session  p new project  m move  d delete project  x kill",
 		err:              err,
 	}
 }
@@ -343,6 +343,8 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveQuery = ""
 		m.status = "Type a project prefix to move the selected session."
 		return m, nil
+	case "d":
+		return m.deleteSelectedProject()
 	case "x":
 		return m.killSelectedSession()
 	case "r":
@@ -541,6 +543,37 @@ func (m model) killSelectedSession() (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		return sessionKilledMsg{name: s.Name, err: m.manager.KillSession(s.Name)}
 	}
+}
+
+func (m model) deleteSelectedProject() (tea.Model, tea.Cmd) {
+	row, ok := m.selectedRow()
+	if !ok || row.kind != rowProject {
+		m.status = "Select a project to delete."
+		return m, nil
+	}
+	project := normalizeProjectName(row.project)
+	if project == defaultProjectName {
+		m.status = "The default project cannot be deleted."
+		return m, nil
+	}
+
+	for _, s := range m.projectSessions(project) {
+		m.assignSessionProject(s.Name, defaultProjectName)
+	}
+	m.projects = removeProject(m.projects, project)
+	delete(m.expandedProjects, project)
+	if m.selectedProject == project {
+		m.selectedProject = defaultProjectName
+		m.selectedSession = ""
+	}
+	if err := m.saveState(); err != nil {
+		m.err = err
+		m.status = err.Error()
+		return m, nil
+	}
+	m.syncSelection()
+	m.status = fmt.Sprintf("Deleted project %s.", project)
+	return m, nil
 }
 
 func (m model) commitMoveProject() (tea.Model, tea.Cmd) {
@@ -1017,6 +1050,17 @@ func indexOfString(values []string, want string) int {
 		}
 	}
 	return -1
+}
+
+func removeProject(projects []string, target string) []string {
+	result := make([]string, 0, len(projects))
+	for _, project := range projects {
+		if project == target {
+			continue
+		}
+		result = append(result, project)
+	}
+	return normalizeProjectList(result)
 }
 
 func appStatePath() string {

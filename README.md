@@ -20,6 +20,7 @@ It starts directly in a `default` session so the first screen looks like a norma
 - `n`: create a new session in the current project
 - `p`: create a new project
 - `m`: move the selected session to another project by prefix
+- `d`: delete the selected project and move its sessions to `default`
 - `x`: kill the selected session
 - `q`, `Esc`, `Ctrl+C`: close the menu
 
@@ -28,4 +29,3 @@ It starts directly in a `default` session so the first screen looks like a norma
 ```sh
 go run ./cmd/tflow
 ```
-
