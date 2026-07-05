@@ -1,6 +1,7 @@
 ## Rules
 - Keep edits small, reviewable, and testable.
 - Create or use the codex-agent branch for your work.
+- Verify always to work cleanly, finished work should always end with a cleanup and a merge into the `codex-agent` branch.
 - Use a worktree, verify the work is done, and merge it everytime on that branch.
 - The `TODO.md` contains all open & finished tasks for features, bugs, changes or issues.
     - When working on these, always mark them as done acrodingly.
@@ -11,7 +12,8 @@
 2. Create or reuse a dedicated worktree for the change.
 3. Make the code change in that worktree.
 4. Run focused tests first.
-5. Merge it into your codex-agent branch
+5. Merge all of the work into your branch `codex-agent`
+6. Cleanup any other branch or worktree
 
 ## Commands
 
