@@ -1,0 +1,48 @@
+package ui
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestProjectConfigRoundTrip(t *testing.T) {
+	original := projectConfig{
+		Name:    "small",
+		Workdir: "/tmp/project",
+		Protect: true,
+		Cluster: clusterConfig{
+			ConnectionCmd: "aws eks update-kubeconfig --name prod",
+		},
+	}
+
+	parsed, err := parseProjectConfig(marshalProjectConfig(original))
+	if err != nil {
+		t.Fatalf("parseProjectConfig returned error: %v", err)
+	}
+
+	if parsed.Name != original.Name {
+		t.Fatalf("name = %q, want %q", parsed.Name, original.Name)
+	}
+	if parsed.Workdir != original.Workdir {
+		t.Fatalf("workdir = %q, want %q", parsed.Workdir, original.Workdir)
+	}
+	if parsed.Cluster.ConnectionCmd != original.Cluster.ConnectionCmd {
+		t.Fatalf("connection-cmd = %q, want %q", parsed.Cluster.ConnectionCmd, original.Cluster.ConnectionCmd)
+	}
+	if !parsed.Protect {
+		t.Fatal("expected protect to round-trip")
+	}
+}
+
+func TestParseProjectConfigAcceptsClusterPathShorthand(t *testing.T) {
+	cfg, err := parseProjectConfig([]byte(strings.Join([]string{
+		`name: "small"`,
+		`cluster: "/tmp/kubeconfig"`,
+	}, "\n")))
+	if err != nil {
+		t.Fatalf("parseProjectConfig returned error: %v", err)
+	}
+	if cfg.Cluster.Path != "/tmp/kubeconfig" {
+		t.Fatalf("cluster path = %q", cfg.Cluster.Path)
+	}
+}

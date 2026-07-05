@@ -29,7 +29,7 @@ type session struct {
 
 type tmuxController interface {
 	ListSessions() ([]session, error)
-	CreateSession(name, cwd string) (session, error)
+	CreateSession(name, cwd, command string) (session, error)
 	AttachCommand(name string) (*exec.Cmd, error)
 	KillSession(name string) error
 	RenameSession(oldName, newName string) error
@@ -98,12 +98,13 @@ func (m tmuxSessionManager) ListSessions() ([]session, error) {
 	return sessions, nil
 }
 
-func (m tmuxSessionManager) CreateSession(name, cwd string) (session, error) {
+func (m tmuxSessionManager) CreateSession(name, cwd, command string) (session, error) {
 	name = sanitizeSessionName(name)
 	if name == "" {
 		return session{}, fmt.Errorf("session name is empty")
 	}
 	cwd = normalizeCWD(cwd)
+	command = strings.TrimSpace(command)
 
 	if _, err := m.runner()("has-session", "-t", name); err == nil {
 		return session{Name: name}, nil
@@ -111,7 +112,11 @@ func (m tmuxSessionManager) CreateSession(name, cwd string) (session, error) {
 		return session{}, err
 	}
 
-	if _, err := m.runner()("new-session", "-d", "-s", name, "-c", cwd); err != nil {
+	args := []string{"new-session", "-d", "-s", name, "-c", cwd}
+	if command != "" {
+		args = append(args, userShell(), "-lc", command)
+	}
+	if _, err := m.runner()(args...); err != nil {
 		return session{}, err
 	}
 	if _, err := m.runner()("rename-window", "-t", name+":1", name); err != nil && !strings.Contains(err.Error(), "can't find window") {
