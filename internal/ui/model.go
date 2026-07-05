@@ -246,19 +246,17 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 	state, err := loadAppState(statePath)
 	if err != nil {
 		state = appState{
-			Projects:         []string{defaultProjectName},
+			Projects:         []string{},
 			SessionProjects:  map[string]string{},
 			SessionTypes:     map[string]string{},
 			ProjectDirs:      map[string]string{},
-			ExpandedProjects: map[string]bool{defaultProjectName: true},
+			ExpandedProjects: map[string]bool{},
 		}
 	}
 	state = normalizeAppState(state)
 	projectConfigs, configErr := loadProjectConfigs(statePath, state)
 	if configErr != nil {
-		projectConfigs = map[string]projectConfig{
-			defaultProjectName: defaultProjectConfig(),
-		}
+		projectConfigs = map[string]projectConfig{}
 		if err == nil {
 			err = configErr
 		}
@@ -281,7 +279,7 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 		sessionTypes:     normalizeSessionTypes(state.SessionTypes),
 		projectConfigs:   projectConfigs,
 		expandedProjects: state.ExpandedProjects,
-		selectedProject:  defaultProjectName,
+		selectedProject:  "",
 		currentSession:   current,
 		paneID:           paneID,
 		input:            input,
@@ -1447,7 +1445,7 @@ func (m *model) syncSelection() {
 		}
 	}
 	if !containsString(m.projects, m.selectedProject) {
-		m.selectedProject = defaultProjectName
+		m.selectedProject = ""
 	}
 	if m.selectedSession != "" {
 		if _, ok := m.findSession(m.selectedSession); !ok {
@@ -1460,10 +1458,10 @@ func (m *model) syncSelection() {
 			m.selectedProject = normalizeProjectName(m.sessionProjects[m.currentSession])
 		}
 	}
-	if m.selectedProject == "" {
-		m.selectedProject = defaultProjectName
+	if m.selectedProject == "" && len(m.projects) > 0 {
+		m.selectedProject = m.projects[0]
 	}
-	if !m.expandedProjects[m.selectedProject] {
+	if m.selectedProject != "" && !m.expandedProjects[m.selectedProject] {
 		m.expandedProjects[m.selectedProject] = true
 	}
 }
@@ -1655,7 +1653,6 @@ func ensureStartupState() error {
 	if state.ExpandedProjects == nil {
 		state.ExpandedProjects = map[string]bool{}
 	}
-	state.ExpandedProjects[defaultProjectName] = true
 
 	data, err := json.MarshalIndent(normalizeAppState(state), "", "  ")
 	if err != nil {
@@ -1672,11 +1669,11 @@ func loadAppState(path string) (appState, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return appState{
-				Projects:         []string{defaultProjectName},
+				Projects:         []string{},
 				SessionProjects:  map[string]string{},
 				SessionTypes:     map[string]string{},
 				ProjectDirs:      map[string]string{},
-				ExpandedProjects: map[string]bool{defaultProjectName: true},
+				ExpandedProjects: map[string]bool{},
 			}, nil
 		}
 		return appState{}, err
@@ -1741,7 +1738,7 @@ func normalizeAppState(state appState) appState {
 
 func normalizeProjectList(projects []string) []string {
 	seen := map[string]struct{}{}
-	result := make([]string, 0, len(projects)+1)
+	result := make([]string, 0, len(projects))
 	add := func(name string) {
 		name = normalizeProjectName(name)
 		if name == "" {
@@ -1753,12 +1750,11 @@ func normalizeProjectList(projects []string) []string {
 		seen[name] = struct{}{}
 		result = append(result, name)
 	}
-	add(defaultProjectName)
 	for _, project := range projects {
 		add(project)
 	}
 	if len(result) > 1 {
-		sort.Strings(result[1:])
+		sort.Strings(result)
 	}
 	return result
 }

@@ -1,8 +1,12 @@
+<p align="center">
+  <img src="docs/tflow-logo.png" alt="tflow logo" width="180">
+</p>
+
 # tflow
 
-`tflow` is a minimal terminal session manager built on top of `tmux`.
+`tflow` is a focused tmux session switcher for project-scoped terminal, `k9s`, and agent sessions.
 
-It starts by attaching to a fresh temporary session on the dedicated `tflow` tmux socket.
+It boots into a fresh temporary session on the dedicated `tflow` tmux socket, keeps the project tree close at hand, and lets you promote ad-hoc work into a persisted project only when it deserves to stick around.
 
 ## Behavior
 

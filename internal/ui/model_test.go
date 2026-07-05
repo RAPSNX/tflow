@@ -188,6 +188,31 @@ func TestNStartsNewPrefixMode(t *testing.T) {
 	}
 }
 
+func TestNewModelStartsWithoutProjectsWhenConfigIsEmpty(t *testing.T) {
+	configHome := t.TempDir()
+	configDir := configHome + "/tflow"
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(configDir+"/config.yaml", []byte(""), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+	})
+	_ = os.Setenv("XDG_CONFIG_HOME", configHome)
+
+	m := newModel(fakeTmuxController{}, "", "").(model)
+	if len(m.projects) != 0 {
+		t.Fatalf("projects = %#v, want none", m.projects)
+	}
+	if m.selectedProject != "" {
+		t.Fatalf("selectedProject = %q, want empty", m.selectedProject)
+	}
+}
+
 func TestNewPrefixTStartsTerminalCreate(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "", "").(model)
 	m.mode = inputNew
@@ -921,9 +946,9 @@ func TestSanitizeSessionName(t *testing.T) {
 	}
 }
 
-func TestProjectNormalizationKeepsDefaultFirst(t *testing.T) {
+func TestProjectNormalizationSortsAndDeduplicates(t *testing.T) {
 	got := normalizeProjectList([]string{"small", "default", "alpha", "small"})
-	want := []string{"default", "alpha", "small"}
+	want := []string{"alpha", "default", "small"}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("normalizeProjectList = %#v, want %#v", got, want)
 	}

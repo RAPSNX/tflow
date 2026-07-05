@@ -68,9 +68,7 @@ func projectConfigPath(statePath, project string) string {
 }
 
 func loadProjectConfigs(statePath string, state appState) (map[string]projectConfig, error) {
-	configs := map[string]projectConfig{
-		defaultProjectName: defaultProjectConfig(),
-	}
+	configs := map[string]projectConfig{}
 
 	for _, project := range state.Projects {
 		project = normalizeProjectName(project)
