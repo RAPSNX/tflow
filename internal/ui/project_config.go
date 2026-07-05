@@ -56,7 +56,11 @@ func (cfg projectConfig) agentBinary() string {
 }
 
 func projectConfigDir(statePath string) string {
-	return filepath.Join(filepath.Dir(statePath), "projects")
+	cfg, err := loadAppConfigForStatePath(statePath)
+	if err != nil {
+		return filepath.Join(filepath.Dir(statePath), "projects")
+	}
+	return cfg.ProjectsDir
 }
 
 func projectConfigPath(statePath, project string) string {

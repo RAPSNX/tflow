@@ -163,17 +163,23 @@ func (m tmuxSessionManager) EnsureControlMode(binaryPath string) error {
 		return fmt.Errorf("tflow binary path is empty")
 	}
 
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+	palette := themeFromConfig(cfg)
+
 	runShell := "exec " + shellQuote(binaryPath) + " toggle-menu"
-	statusLeft := "#[bg=#313244,fg=#a6adc8]" +
-		"#[bg=#313244,fg=#cdd6f4,bold] project #[fg=#89b4fa]#{@tflow-project} " +
-		"#[bg=#181825,fg=#313244,nobold]" +
-		"  #[bg=#313244,fg=#a6adc8]" +
-		"#[bg=#313244,fg=#cdd6f4,bold] session #[fg=#94e2d5]#S " +
-		"#[bg=#181825,fg=#313244,nobold]"
+	statusLeft := "#[bg=" + palette.Surface0 + ",fg=" + palette.Subtext + "]" +
+		"#[bg=" + palette.Surface0 + ",fg=" + palette.Text + ",bold] project #[fg=" + palette.Blue + "]#{@tflow-project} " +
+		"#[bg=" + palette.Mantle + ",fg=" + palette.Surface0 + ",nobold]" +
+		"  #[bg=" + palette.Surface0 + ",fg=" + palette.Subtext + "]" +
+		"#[bg=" + palette.Surface0 + ",fg=" + palette.Text + ",bold] session #[fg=" + palette.Teal + "]#S " +
+		"#[bg=" + palette.Mantle + ",fg=" + palette.Surface0 + ",nobold]"
 	commands := [][]string{
 		{"set-option", "-g", "status", "on"},
 		{"set-option", "-g", "status-position", "top"},
-		{"set-option", "-g", "status-style", "bg=#181825,fg=#cdd6f4"},
+		{"set-option", "-g", "status-style", "bg=" + palette.Mantle + ",fg=" + palette.Text},
 		{"set-option", "-g", "status-left-length", "120"},
 		{"set-option", "-g", "status-right-length", "0"},
 		{"set-option", "-g", "status-left", statusLeft},

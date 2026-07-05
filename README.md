@@ -9,6 +9,7 @@ It starts by attaching to the `default` session on the dedicated `tflow` tmux so
 - startup attaches to the `default` session
 - each tflow session is backed by a tmux session
 - the menu is a tree of projects and sessions
+- `tflow` reads `config.yaml` from its config directory for the projects folder and theme
 - project configs are persisted as YAML files alongside the app state
 - projects can be expanded, collapsed, edited, and protected from deletion
 - sessions can be selected, created, moved, or killed
@@ -32,7 +33,7 @@ It starts by attaching to the `default` session on the dedicated `tflow` tmux so
 
 ## Project Config
 
-Project configs are stored as YAML in the app config directory under `projects/`.
+Project configs are stored as YAML in the configured projects directory.
 
 ```yaml
 name: "small"
@@ -43,12 +44,27 @@ cluster:
 ```
 
 `cluster.connection-cmd` is also supported for `k9s` sessions.
-
 Projects can also select the agent binary:
 
 ```yaml
 agent-binary: "codex"
 ```
+
+## App Config
+
+`config.yaml` lives beside `state.json` in the tflow config directory.
+
+```yaml
+projects-dir: "~/.config/tflow/projects"
+theme: "catppuccin"
+colors:
+  blue: "#89b4fa"
+```
+
+Built-in themes:
+
+- `catppuccin` (default)
+- `forest`
 
 ## Run
 

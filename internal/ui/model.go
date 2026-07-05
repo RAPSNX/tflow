@@ -183,6 +183,9 @@ func OpenMenu() error {
 }
 
 func prepareStartup(manager tmuxController, binaryPath, cwd string) error {
+	if err := saveDefaultAppConfig(); err != nil {
+		return err
+	}
 	if _, err := manager.CreateSession(defaultSessionName, cwd, ""); err != nil {
 		return err
 	}
@@ -211,6 +214,10 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 	input.Blur()
 
 	statePath := appStatePath()
+	cfg, cfgErr := loadAppConfigForStatePath(statePath)
+	if cfgErr == nil {
+		applyTheme(themeFromConfig(cfg))
+	}
 	state, err := loadAppState(statePath)
 	if err != nil {
 		state = appState{
@@ -230,6 +237,9 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 		if err == nil {
 			err = configErr
 		}
+	}
+	if err == nil {
+		err = cfgErr
 	}
 	for name := range projectConfigs {
 		if !containsString(state.Projects, name) {
@@ -1778,13 +1788,7 @@ func replaceProject(projects []string, oldName, newName string) []string {
 }
 
 func appStatePath() string {
-	if dir, err := os.UserConfigDir(); err == nil && strings.TrimSpace(dir) != "" {
-		return filepath.Join(dir, "tflow", "state.json")
-	}
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, ".config", "tflow", "state.json")
-	}
-	return filepath.Join(".", ".tflow", "state.json")
+	return filepath.Join(appConfigDir(), "state.json")
 }
 
 func (m model) statusView() string {
