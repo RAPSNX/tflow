@@ -317,6 +317,7 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	m.selectedSession = "dev"
 	m.mode = inputRename
 	m.renameRow = treeRow{kind: rowSession, project: defaultProjectName, session: "dev"}
+	m.sessionTypes = map[string]sessionType{"dev": sessionTypeAgent}
 	m.input.SetValue("lala")
 
 	updated, cmd := m.commitRename()
@@ -345,6 +346,9 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	if final.sessionProjects["lala"] != defaultProjectName {
 		t.Fatalf("sessionProjects[lala] = %q, want %q", final.sessionProjects["lala"], defaultProjectName)
 	}
+	if final.sessionTypes["lala"] != sessionTypeAgent {
+		t.Fatalf("sessionTypes[lala] = %q, want %q", final.sessionTypes["lala"], sessionTypeAgent)
+	}
 	if _, ok := final.sessionProjects["dev"]; ok {
 		t.Fatalf("old session project still present: %#v", final.sessionProjects)
 	}
@@ -362,6 +366,10 @@ func TestRenderTreePanelShowsProjectsAndSessionsOnly(t *testing.T) {
 		"dev": defaultProjectName,
 		"api": "small",
 	}
+	m.sessionTypes = map[string]sessionType{
+		"dev": sessionTypeAgent,
+		"api": sessionTypeK9s,
+	}
 	m.expandedProjects = map[string]bool{
 		defaultProjectName: true,
 		"small":            true,
@@ -371,12 +379,12 @@ func TestRenderTreePanelShowsProjectsAndSessionsOnly(t *testing.T) {
 
 	view := m.renderTreePanel(40)
 	plain := stripANSI(view)
-	for _, want := range []string{"Projects", "[-] default", "[-] small", "[live] dev", "  api"} {
+	for _, want := range []string{"Projects", "[-] default", "[-] small", "[live]  [agent]  dev", "[k9s]  api"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("renderTreePanel missing %q in %q", want, plain)
 		}
 	}
-	if !strings.Contains(plain, "[live] dev") {
+	if !strings.Contains(plain, "[live]") {
 		t.Fatalf("renderTreePanel missing inline live badge in %q", plain)
 	}
 	for _, unwanted := range []string{"current dev", "2 projects", "2 sessions", "[open]", "[shut]"} {
@@ -418,6 +426,29 @@ func TestSessionsLoadedSyncsTmuxSessionProjects(t *testing.T) {
 	}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("syncSessionProjects = %#v, want %#v", got, want)
+	}
+}
+
+func TestSaveStatePersistsSessionTypes(t *testing.T) {
+	tmp := t.TempDir()
+	m := newModel(fakeTmuxController{}, "", "").(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{defaultProjectName}
+	m.sessionProjects = map[string]string{"dev": defaultProjectName}
+	m.sessionTypes = map[string]sessionType{"dev": sessionTypeAgent}
+	m.projectConfigs = map[string]projectConfig{defaultProjectName: {Name: defaultProjectName}}
+	m.expandedProjects = map[string]bool{defaultProjectName: true}
+
+	if err := m.saveState(); err != nil {
+		t.Fatalf("saveState returned error: %v", err)
+	}
+
+	state, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatalf("loadAppState returned error: %v", err)
+	}
+	if got := state.SessionTypes["dev"]; got != string(sessionTypeAgent) {
+		t.Fatalf("sessionTypes[dev] = %q, want %q", got, sessionTypeAgent)
 	}
 }
 
@@ -719,7 +750,7 @@ func TestCreateK9sSessionUsesConnectionCommand(t *testing.T) {
 	}
 }
 
-func TestCreateCodexSessionUsesCodexCommand(t *testing.T) {
+func TestCreateAgentSessionUsesConfiguredAgentBinary(t *testing.T) {
 	var gotCommand string
 	m := newModel(fakeTmuxController{
 		createSession: func(name, cwd, command string) (session, error) {
@@ -728,9 +759,12 @@ func TestCreateCodexSessionUsesCodexCommand(t *testing.T) {
 		},
 	}, "", "").(model)
 	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{
+		"small": {Name: "small", AgentBinary: "aider"},
+	}
 	m.mode = inputCreateSession
-	m.createSessionKind = sessionKindCodex
-	m.input.SetValue("codex")
+	m.createSessionKind = sessionKindAgent
+	m.input.SetValue("agent")
 
 	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
@@ -740,7 +774,36 @@ func TestCreateCodexSessionUsesCodexCommand(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
 	}
-	if gotCommand != "exec codex" {
+	if gotCommand != "exec 'aider'" {
+		t.Fatalf("command = %q", gotCommand)
+	}
+	if msg.kind != sessionTypeAgent {
+		t.Fatalf("kind = %q, want %q", msg.kind, sessionTypeAgent)
+	}
+}
+
+func TestCreateAgentSessionDefaultsToCodexBinary(t *testing.T) {
+	var gotCommand string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			gotCommand = command
+			return session{Name: name, Windows: 1}, nil
+		},
+	}, "", "").(model)
+	m.selectedProject = "small"
+	m.mode = inputCreateSession
+	m.createSessionKind = sessionKindAgent
+	m.input.SetValue("agent")
+
+	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected create command")
+	}
+	msg := cmd().(sessionCreatedMsg)
+	if msg.err != nil {
+		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
+	}
+	if gotCommand != "exec 'codex'" {
 		t.Fatalf("command = %q", gotCommand)
 	}
 }

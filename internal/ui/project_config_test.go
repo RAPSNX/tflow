@@ -7,9 +7,10 @@ import (
 
 func TestProjectConfigRoundTrip(t *testing.T) {
 	original := projectConfig{
-		Name:    "small",
-		Workdir: "/tmp/project",
-		Protect: true,
+		Name:        "small",
+		Workdir:     "/tmp/project",
+		AgentBinary: "aider",
+		Protect:     true,
 		Cluster: clusterConfig{
 			ConnectionCmd: "aws eks update-kubeconfig --name prod",
 		},
@@ -28,6 +29,9 @@ func TestProjectConfigRoundTrip(t *testing.T) {
 	}
 	if parsed.Cluster.ConnectionCmd != original.Cluster.ConnectionCmd {
 		t.Fatalf("connection-cmd = %q, want %q", parsed.Cluster.ConnectionCmd, original.Cluster.ConnectionCmd)
+	}
+	if parsed.AgentBinary != original.AgentBinary {
+		t.Fatalf("agent-binary = %q, want %q", parsed.AgentBinary, original.AgentBinary)
 	}
 	if !parsed.Protect {
 		t.Fatal("expected protect to round-trip")
