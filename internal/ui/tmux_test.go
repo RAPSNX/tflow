@@ -107,6 +107,59 @@ func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 	}
 }
 
+func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
+	manager := tmuxSessionManager{
+		run: func(args ...string) (string, error) {
+			return "otter-temp\t1\t1\t1\nsmall\t2\t0\t0\n", nil
+		},
+	}
+
+	sessions, err := manager.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions returned error: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("len(sessions) = %d", len(sessions))
+	}
+	if !sessions[0].Temporary {
+		t.Fatal("expected first session to be temporary")
+	}
+	if sessions[1].Temporary {
+		t.Fatal("expected second session to be persistent")
+	}
+}
+
+func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
+	var calls [][]string
+	manager := tmuxSessionManager{
+		run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
+			return "", nil
+		},
+	}
+
+	if err := manager.SetSessionTemporary("otter-temp", true); err != nil {
+		t.Fatalf("SetSessionTemporary returned error: %v", err)
+	}
+
+	wants := [][]string{
+		{"set-option", "-t", "otter-temp", "destroy-unattached", "on"},
+		{"set-option", "-t", "otter-temp", "@tflow-temp", "1"},
+	}
+	for _, want := range wants {
+		found := false
+		for _, call := range calls {
+			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing call %v in %#v", want, calls)
+		}
+	}
+}
+
 func TestRenameSessionUsesTmuxRenameSession(t *testing.T) {
 	var calls [][]string
 	manager := tmuxSessionManager{

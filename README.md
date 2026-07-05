@@ -2,16 +2,18 @@
 
 `tflow` is a minimal terminal session manager built on top of `tmux`.
 
-It starts by attaching to the `default` session on the dedicated `tflow` tmux socket.
+It starts by attaching to a fresh temporary session on the dedicated `tflow` tmux socket.
 
 ## Behavior
 
-- startup attaches to the `default` session
+- startup attaches to a fresh temporary session like `otter-temp`
 - each tflow session is backed by a tmux session
 - the menu is a tree of projects and sessions
 - project configs are persisted as YAML files alongside the app state
 - projects can be expanded, collapsed, edited, and protected from deletion
 - sessions can be selected, created, moved, or killed
+- temporary sessions stay out of project lists until you add the current temp session to a project
+- unassigned temporary sessions are marked to die when their terminal detaches
 - `Ctrl+F` toggles the menu pane in the current tmux window
 
 ## Keys
@@ -23,6 +25,7 @@ It starts by attaching to the `default` session on the dedicated `tflow` tmux so
 - `n` then `t`: create a new terminal session
 - `n` then `k`: create a new `k9s` session
 - `n` then `c`: create a new `codex` session
+- `n` then `a`: add the current temporary session to the selected project
 - `c`: set the default directory for the current project
 - `e`: edit the current project YAML
 - `m`: move the selected session to another project by prefix
