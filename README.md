@@ -20,9 +20,10 @@ It starts by attaching to the `default` session on the dedicated `tflow` tmux so
 - `Enter`: switch to the selected session
 - `n`: create a new session in the current project
 - `p`: create a new project
+- `c`: set the default directory for the current project
 - `m`: move the selected session to another project by prefix
-- `d`: delete the selected project and move its sessions to `default`
-- `x`: kill the selected session
+- `r`: rename the selected project or section
+- `d`: delete the selected project or section
 - `q`, `Esc`, `Ctrl+C`: close the menu
 
 ## Run
