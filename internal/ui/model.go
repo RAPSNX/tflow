@@ -786,7 +786,7 @@ func (m model) rowLabel(row treeRow) string {
 
 func (m model) renderHeader(width int) string {
 	left := brandBadgeStyle.Render("TFLOW")
-	right := mutedStyle.Render(fmt.Sprintf("%d projects  %d sections", len(m.projects), len(m.sessions)))
+	right := mutedStyle.Render(fmt.Sprintf("%d projects  %d sessions", len(m.projects), len(m.sessions)))
 	gap := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
 	return headerStyle.Width(width).Render(left + strings.Repeat(" ", gap) + right)
 }
@@ -891,7 +891,7 @@ func (m model) renderDeleteOverlay() string {
 	case rowProject:
 		target = "project " + m.deleteRow.project
 	case rowSession:
-		target = "section " + m.deleteRow.session
+		target = "session " + m.deleteRow.session
 	}
 	lines := []string{
 		titleStyle.Render("Confirm Delete"),
@@ -992,7 +992,7 @@ func (m model) killSelectedSession() (tea.Model, tea.Cmd) {
 func (m *model) beginDelete() (tea.Model, tea.Cmd) {
 	row, ok := m.selectedRow()
 	if !ok {
-		m.status = "Select a project or section to delete."
+		m.status = "Select a project or session to delete."
 		return m, nil
 	}
 	if row.kind == rowProject && m.projectConfig(row.project).Protect {
@@ -1006,7 +1006,7 @@ func (m *model) beginDelete() (tea.Model, tea.Cmd) {
 	case rowProject:
 		m.status = fmt.Sprintf("Confirm delete for project %s.", row.project)
 	case rowSession:
-		m.status = fmt.Sprintf("Confirm delete for section %s.", row.session)
+		m.status = fmt.Sprintf("Confirm delete for session %s.", row.session)
 	}
 	return m, nil
 }
@@ -1036,7 +1036,7 @@ func (m model) quitAllCmd() tea.Cmd {
 func (m *model) beginRename() (tea.Model, tea.Cmd) {
 	row, ok := m.selectedRow()
 	if !ok {
-		m.status = "Select a project or section to rename."
+		m.status = "Select a project or session to rename."
 		return m, nil
 	}
 	if row.kind == rowProject && normalizeProjectName(row.project) == defaultProjectName {
@@ -1051,8 +1051,8 @@ func (m *model) beginRename() (tea.Model, tea.Cmd) {
 		m.input.Prompt = "project: "
 		m.status = "Rename the selected project."
 	} else {
-		m.input.Prompt = "section: "
-		m.status = "Rename the selected section."
+		m.input.Prompt = "session: "
+		m.status = "Rename the selected session."
 	}
 	m.input.Focus()
 	return m, nil
@@ -1112,7 +1112,7 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 			return sessionRenamedMsg{oldName: row.session, newName: name, err: m.tmux.RenameSession(row.session, name)}
 		}
 	default:
-		m.status = "Select a project or section to rename."
+		m.status = "Select a project or session to rename."
 		return m, nil
 	}
 }
@@ -1802,17 +1802,17 @@ func (m model) createSessionDir() string {
 func (m *model) startSessionCreate(kind sessionKind) (tea.Model, tea.Cmd) {
 	m.mode = inputCreateSession
 	m.createSessionKind = kind
-	m.input.Prompt = "section: "
+	m.input.Prompt = "session: "
 	switch kind {
 	case sessionKindK9s:
 		m.input.SetValue("k9s")
-		m.status = fmt.Sprintf("Create a new k9s section in %s.", m.contextProject())
+		m.status = fmt.Sprintf("Create a new k9s session in %s.", m.contextProject())
 	case sessionKindCodex:
 		m.input.SetValue("codex")
-		m.status = fmt.Sprintf("Create a new codex section in %s.", m.contextProject())
+		m.status = fmt.Sprintf("Create a new codex session in %s.", m.contextProject())
 	default:
 		m.input.SetValue("")
-		m.status = fmt.Sprintf("Create a new terminal section in %s.", m.contextProject())
+		m.status = fmt.Sprintf("Create a new terminal session in %s.", m.contextProject())
 	}
 	m.input.Focus()
 	m.input.CursorEnd()

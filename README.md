@@ -26,8 +26,8 @@ It starts by attaching to the `default` session on the dedicated `tflow` tmux so
 - `c`: set the default directory for the current project
 - `e`: edit the current project YAML
 - `m`: move the selected session to another project by prefix
-- `r`: rename the selected project or section
-- `d`: confirm-delete the selected project or section
+- `r`: rename the selected project or session
+- `d`: confirm-delete the selected project or session
 - `q`, `Esc`, `Ctrl+C`: close the menu
 
 ## Project Config
