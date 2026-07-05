@@ -1183,10 +1183,6 @@ func (m model) deleteSelectedProject() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	project := normalizeProjectName(row.project)
-	if project == defaultProjectName {
-		m.status = "The default project cannot be deleted."
-		return m, nil
-	}
 
 	for _, s := range m.projectSessions(project) {
 		m.assignSessionProject(s.Name, defaultProjectName)

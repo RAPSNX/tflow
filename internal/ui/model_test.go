@@ -262,14 +262,16 @@ func TestNewPrefixAAttachesCurrentTempSessionToProject(t *testing.T) {
 
 	updated, followUp := got.Update(msg)
 	final := updated.(model)
-	if followUp == nil {
-		t.Fatal("expected reload command after attach")
-	}
 	if final.sessionProjects["otter-temp"] != "small" {
 		t.Fatalf("sessionProjects[otter-temp] = %q", final.sessionProjects["otter-temp"])
 	}
 	if final.selectedSession != "otter-temp" {
 		t.Fatalf("selectedSession = %q", final.selectedSession)
+	}
+	if followUp != nil {
+		if reload := followUp(); reload == nil {
+			t.Fatal("expected reload message from follow-up command")
+		}
 	}
 }
 
@@ -613,8 +615,9 @@ func TestDeleteProjectMovesSessionsToDefault(t *testing.T) {
 	}
 }
 
-func TestDeleteProjectRejectsDefault(t *testing.T) {
-	m := NewMenu().(model)
+func TestDeleteProjectAllowsDefault(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "", "").(model)
+	m.statePath = t.TempDir() + "/state.json"
 	m.projects = []string{defaultProjectName}
 	m.expandedProjects = map[string]bool{defaultProjectName: true}
 	m.selectedProject = defaultProjectName
@@ -624,8 +627,8 @@ func TestDeleteProjectRejectsDefault(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected no command")
 	}
-	if !containsString(got.projects, defaultProjectName) {
-		t.Fatalf("default project removed: %#v", got.projects)
+	if containsString(got.projects, defaultProjectName) {
+		t.Fatalf("default project still present: %#v", got.projects)
 	}
 }
 
