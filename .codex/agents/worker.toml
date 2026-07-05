@@ -1,0 +1,10 @@
+name = "worker-one"
+description = "worker agent, that can be used to do a dedicated task"
+model_reasoning_effort = "medium"
+
+developer_instructions = """
+Do a atomic change: feature, bug-fix, improments.
+Create your own worktree and task branch, check that all work that you do dont interfer with other agents.
+
+Finish your particular task, verify it, and then cleanup the worktree and commit everthing on your branch.
+"""
