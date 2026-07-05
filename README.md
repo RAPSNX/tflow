@@ -24,7 +24,7 @@ It starts by attaching to a `default` zellij session. The session switcher is a 
 - `m`: move the selected session to another project by prefix
 - `d`: delete the selected project and move its sessions to `default`
 - `x`: kill the selected session
-- `q`, `Esc`, `Ctrl+C`, `Ctrl+F`: close the menu
+- `q`, `Esc`, `Ctrl+C`: close the menu
 
 ## Run
 
@@ -37,3 +37,6 @@ Open the switcher from inside or outside zellij with:
 ```sh
 go run ./cmd/tflow menu
 ```
+
+When `tflow` starts or attaches a zellij session, it also provisions a zellij keybinding so `Ctrl+F`
+opens the switcher in a floating pane.

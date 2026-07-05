@@ -41,7 +41,7 @@ func TestMenuEnterSelectsSession(t *testing.T) {
 	}
 }
 
-func TestMenuCtrlFTogglesClosed(t *testing.T) {
+func TestMenuCtrlFDoesNotCloseMenu(t *testing.T) {
 	m := NewMenu().(model)
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}}
@@ -55,8 +55,8 @@ func TestMenuCtrlFTogglesClosed(t *testing.T) {
 	if got.exitSession != "" {
 		t.Fatalf("exitSession = %q, want empty", got.exitSession)
 	}
-	if cmd == nil {
-		t.Fatal("expected quit command")
+	if cmd != nil {
+		t.Fatal("expected no command")
 	}
 }
 

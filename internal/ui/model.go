@@ -263,9 +263,6 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlC:
 		m.exitSession = ""
 		return m, tea.Quit
-	case tea.KeyCtrlF:
-		m.exitSession = ""
-		return m, tea.Quit
 	case tea.KeyEsc:
 		m.exitSession = ""
 		return m, tea.Quit

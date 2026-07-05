@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -280,12 +281,15 @@ func currentZellijSession() string {
 }
 
 func runZellijOutput(args ...string) (string, error) {
-	cmd := exec.Command("zellij", args...)
+	cmd, err := zellijCommand(args...)
+	if err != nil {
+		return "", err
+	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
+	err = cmd.Run()
 	output := strings.TrimSpace(stdout.String())
 	if stderr.Len() > 0 {
 		if output != "" {
@@ -297,11 +301,92 @@ func runZellijOutput(args ...string) (string, error) {
 }
 
 func runInteractiveZellij(args ...string) error {
-	cmd := exec.Command("zellij", args...)
+	cmd, err := zellijCommand(args...)
+	if err != nil {
+		return err
+	}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func zellijCommand(args ...string) (*exec.Cmd, error) {
+	allArgs := make([]string, 0, len(args)+2)
+	configPath, err := ensureZellijConfig()
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(configPath) != "" {
+		allArgs = append(allArgs, "--config", configPath)
+	}
+	allArgs = append(allArgs, args...)
+	return exec.Command("zellij", allArgs...), nil
+}
+
+func ensureZellijConfig() (string, error) {
+	configPath := zellijConfigPath()
+	launcherPath := zellijLauncherPath()
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(launcherPath, []byte(zellijLauncherScript()), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(configPath, []byte(zellijConfigContents(launcherPath)), 0o644); err != nil {
+		return "", err
+	}
+	return configPath, nil
+}
+
+func zellijConfigPath() string {
+	return filepath.Join(filepath.Dir(appStatePath()), "zellij.kdl")
+}
+
+func zellijLauncherPath() string {
+	return filepath.Join(filepath.Dir(appStatePath()), "open-menu")
+}
+
+func zellijLauncherScript() string {
+	executable, err := os.Executable()
+	if err != nil {
+		executable = ""
+	}
+	var lines []string
+	lines = append(lines, "#!/bin/sh", "set -eu")
+	if strings.TrimSpace(executable) != "" {
+		lines = append(lines, "if [ -x "+shellQuote(executable)+" ]; then")
+		lines = append(lines, "  exec "+shellQuote(executable)+" menu")
+		lines = append(lines, "fi")
+	}
+	lines = append(lines, "exec tflow menu", "")
+	return strings.Join(lines, "\n")
+}
+
+func zellijConfigContents(launcherPath string) string {
+	runAction := fmt.Sprintf(
+		"Run %s {\n                floating true\n                close_on_exit true\n            }\n            SwitchToMode \"Normal\"",
+		strconv.Quote(launcherPath),
+	)
+	return strings.Join([]string{
+		"keybinds {",
+		"    shared_except \"locked\" \"scroll\" \"search\" {",
+		"        bind \"Ctrl f\" {",
+		"            " + runAction,
+		"        }",
+		"    }",
+		"    shared_among \"scroll\" \"search\" {",
+		"        bind \"Ctrl f\" {",
+		"            " + runAction,
+		"        }",
+		"    }",
+		"}",
+		"",
+	}, "\n")
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
 func commandError(err error, output string) error {
