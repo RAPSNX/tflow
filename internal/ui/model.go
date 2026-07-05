@@ -32,6 +32,19 @@ const (
 
 const defaultProjectName = "default"
 
+var tempSessionAnimals = []string{
+	"otter",
+	"fox",
+	"lynx",
+	"koala",
+	"badger",
+	"panda",
+	"falcon",
+	"gecko",
+	"orca",
+	"wombat",
+}
+
 type sessionsLoadedMsg struct {
 	sessions []session
 	err      error
@@ -39,6 +52,7 @@ type sessionsLoadedMsg struct {
 
 type sessionCreatedMsg struct {
 	session session
+	kind    sessionType
 	err     error
 }
 
@@ -83,6 +97,7 @@ type menuActionMsg struct {
 type appState struct {
 	Projects         []string          `json:"projects"`
 	SessionProjects  map[string]string `json:"session_projects"`
+	SessionTypes     map[string]string `json:"session_types"`
 	ProjectDirs      map[string]string `json:"project_dirs"`
 	ExpandedProjects map[string]bool   `json:"expanded_projects"`
 }
@@ -112,6 +127,7 @@ type model struct {
 	sessions         []session
 	projects         []string
 	sessionProjects  map[string]string
+	sessionTypes     map[string]sessionType
 	projectConfigs   map[string]projectConfig
 	expandedProjects map[string]bool
 	selectedProject  string
@@ -137,7 +153,15 @@ type sessionKind int
 const (
 	sessionKindTerminal sessionKind = iota
 	sessionKindK9s
-	sessionKindCodex
+	sessionKindAgent
+)
+
+type sessionType string
+
+const (
+	sessionTypeTerminal sessionType = "terminal"
+	sessionTypeK9s      sessionType = "k9s"
+	sessionTypeAgent    sessionType = "agent"
 )
 
 func NewMenu() tea.Model {
@@ -152,11 +176,12 @@ func Start() error {
 	}
 
 	manager := newSessionManager()
-	if err := prepareStartup(manager, exe, cwd); err != nil {
+	sessionName, err := prepareStartup(manager, exe, cwd)
+	if err != nil {
 		return err
 	}
 
-	cmd, err := manager.AttachCommand(defaultSessionName)
+	cmd, err := manager.AttachCommand(sessionName)
 	if err != nil {
 		return err
 	}
@@ -171,14 +196,28 @@ func OpenMenu() error {
 	return err
 }
 
-func prepareStartup(manager tmuxController, binaryPath, cwd string) error {
-	if _, err := manager.CreateSession(defaultSessionName, cwd, ""); err != nil {
-		return err
+func prepareStartup(manager tmuxController, binaryPath, cwd string) (string, error) {
+	if err := saveDefaultAppConfig(); err != nil {
+		return "", err
+	}
+	existing, err := manager.ListSessions()
+	if err != nil {
+		return "", err
+	}
+	name := nextTempSessionName(existing)
+	if _, err := manager.CreateSession(name, cwd, ""); err != nil {
+		return "", err
+	}
+	if err := manager.SetSessionTemporary(name, true); err != nil {
+		return "", err
 	}
 	if err := manager.EnsureControlMode(binaryPath); err != nil {
-		return err
+		return "", err
 	}
-	return ensureDefaultStartupState()
+	if err := ensureStartupState(); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func defaultSessionDir() string {
@@ -200,11 +239,16 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 	input.Blur()
 
 	statePath := appStatePath()
+	cfg, cfgErr := loadAppConfigForStatePath(statePath)
+	if cfgErr == nil {
+		applyTheme(themeFromConfig(cfg))
+	}
 	state, err := loadAppState(statePath)
 	if err != nil {
 		state = appState{
 			Projects:         []string{defaultProjectName},
 			SessionProjects:  map[string]string{},
+			SessionTypes:     map[string]string{},
 			ProjectDirs:      map[string]string{},
 			ExpandedProjects: map[string]bool{defaultProjectName: true},
 		}
@@ -219,6 +263,9 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 			err = configErr
 		}
 	}
+	if err == nil {
+		err = cfgErr
+	}
 	for name := range projectConfigs {
 		if !containsString(state.Projects, name) {
 			state.Projects = append(state.Projects, name)
@@ -231,6 +278,7 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 		mode:             inputNone,
 		projects:         state.Projects,
 		sessionProjects:  state.SessionProjects,
+		sessionTypes:     normalizeSessionTypes(state.SessionTypes),
 		projectConfigs:   projectConfigs,
 		expandedProjects: state.ExpandedProjects,
 		selectedProject:  defaultProjectName,
@@ -283,6 +331,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		project := m.contextProject()
 		m.assignSessionProject(msg.session.Name, project)
+		m.setSessionType(msg.session.Name, msg.kind)
 		m.expandedProjects[project] = true
 		m.selectedProject = project
 		m.selectedSession = msg.session.Name
@@ -302,6 +351,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		delete(m.sessionProjects, msg.name)
+		delete(m.sessionTypes, msg.name)
 		if m.selectedSession == msg.name {
 			m.selectedSession = ""
 		}
@@ -366,6 +416,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		delete(m.sessionProjects, msg.oldName)
 		m.sessionProjects[msg.newName] = project
+		if sessionType, ok := m.sessionTypes[msg.oldName]; ok {
+			delete(m.sessionTypes, msg.oldName)
+			m.sessionTypes[msg.newName] = sessionType
+		}
 		if m.selectedSession == msg.oldName {
 			m.selectedSession = msg.newName
 		}
@@ -499,7 +553,7 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.switchSelectedSession()
 	case "n":
 		m.mode = inputNew
-		m.status = "New: np project, nt terminal, nk k9s, nc codex."
+		m.status = "New: np project, nt terminal, nk k9s, nc agent, na add current temp."
 		return m, nil
 	case "c":
 		m.mode = inputSetProjectDir
@@ -560,7 +614,7 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if err != nil {
 					return sessionCreatedMsg{err: err}
 				}
-				return sessionCreatedMsg{session: s, err: nil}
+				return sessionCreatedMsg{session: s, kind: sessionTypeFromKind(m.createSessionKind), err: nil}
 			}
 		}
 		next, cmd := m.input.Update(msg)
@@ -712,10 +766,12 @@ func (m model) updateNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startSessionCreate(sessionKindTerminal)
 	case "k":
 		return m.startSessionCreate(sessionKindK9s)
+	case "a":
+		return m.addCurrentTempSession()
 	case "c":
-		return m.startSessionCreate(sessionKindCodex)
+		return m.startSessionCreate(sessionKindAgent)
 	default:
-		m.status = "New: use np, nt, nk, or nc."
+		m.status = "New: use np, nt, nk, nc, or na."
 		return m, nil
 	}
 }
@@ -786,7 +842,7 @@ func (m model) rowLabel(row treeRow) string {
 
 func (m model) renderHeader(width int) string {
 	left := brandBadgeStyle.Render("TFLOW")
-	right := mutedStyle.Render(fmt.Sprintf("%d projects  %d sessions", len(m.projects), len(m.sessions)))
+	right := mutedStyle.Render(fmt.Sprintf("%d projects  %d sessions", len(m.projects), m.visibleSessionCount()))
 	gap := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
 	return headerStyle.Width(width).Render(left + strings.Repeat(" ", gap) + right)
 }
@@ -818,13 +874,18 @@ func (m model) renderProjectRow(row treeRow, selected bool) string {
 }
 
 func (m model) renderSessionRow(row treeRow, selected bool) string {
-	content := "  " + row.session
+	parts := []string{"  "}
+	if sessionType := m.sessionType(row.session); sessionType != sessionTypeTerminal {
+		parts = append(parts, m.sessionTypeBadge(sessionType), " ")
+	}
+	parts = append(parts, row.session)
+	content := strings.Join(parts, "")
 	if row.session == m.currentSession {
 		badge := "[live]"
 		if !selected {
 			badge = currentBadgeStyle.Render(badge)
 		}
-		content = "  " + badge + " " + row.session
+		content = "  " + badge + " " + strings.TrimLeft(content, " ")
 	}
 	return m.renderInlineRow(content, selected, false, row.project)
 }
@@ -852,7 +913,7 @@ func (m model) renderInlineRow(content string, selected, project bool, projectNa
 func (m model) renderFooter(width int) string {
 	lines := []string{}
 	if m.mode == inputNew {
-		lines = append(lines, hintStyle.Render("new: [p] project  [t] terminal  [k] k9s  [c] codex  [esc] cancel"))
+		lines = append(lines, hintStyle.Render("new: [p] project  [t] terminal  [k] k9s  [c] agent  [a] add temp  [esc] cancel"))
 	}
 	if m.mode == inputMoveProject {
 		lines = append(lines, hintStyle.Render("move: type a project prefix and the matching initials stay highlighted"))
@@ -1332,6 +1393,13 @@ func (m model) selectedSessionInfo() (session, bool) {
 	return m.findSession(m.selectedSession)
 }
 
+func (m model) currentSessionInfo() (session, bool) {
+	if strings.TrimSpace(m.currentSession) == "" {
+		return session{}, false
+	}
+	return m.findSession(m.currentSession)
+}
+
 func (m model) findSession(name string) (session, bool) {
 	for _, s := range m.sessions {
 		if s.Name == name {
@@ -1339,6 +1407,23 @@ func (m model) findSession(name string) (session, bool) {
 		}
 	}
 	return session{}, false
+}
+
+func (m model) addCurrentTempSession() (tea.Model, tea.Cmd) {
+	current, ok := m.currentSessionInfo()
+	if !ok {
+		m.status = "No current session to add."
+		return m, nil
+	}
+	if !current.Temporary {
+		m.status = "Current session is not temporary."
+		return m, nil
+	}
+	project := m.contextProject()
+	return m, func() tea.Msg {
+		err := m.tmux.SetSessionTemporary(current.Name, false)
+		return sessionMovedMsg{session: current.Name, project: project, err: err}
+	}
 }
 
 func (m model) contextProject() string {
@@ -1370,7 +1455,7 @@ func (m *model) syncSelection() {
 		}
 	}
 	if m.selectedSession == "" && m.currentSession != "" {
-		if _, ok := m.findSession(m.currentSession); ok {
+		if current, ok := m.findSession(m.currentSession); ok && !current.Temporary {
 			m.selectedSession = m.currentSession
 			m.selectedProject = normalizeProjectName(m.sessionProjects[m.currentSession])
 		}
@@ -1389,11 +1474,18 @@ func (m *model) ensureSessionProjects() bool {
 		m.sessionProjects = map[string]string{}
 		changed = true
 	}
+	if m.sessionTypes == nil {
+		m.sessionTypes = map[string]sessionType{}
+		changed = true
+	}
 	if m.expandedProjects == nil {
 		m.expandedProjects = map[string]bool{}
 		changed = true
 	}
 	for _, s := range m.sessions {
+		if s.Temporary {
+			continue
+		}
 		project := normalizeProjectName(m.sessionProjects[s.Name])
 		if project == "" {
 			project = defaultProjectName
@@ -1408,6 +1500,10 @@ func (m *model) ensureSessionProjects() bool {
 		}
 		if _, ok := m.expandedProjects[project]; !ok {
 			m.expandedProjects[project] = true
+			changed = true
+		}
+		if _, ok := m.sessionTypes[s.Name]; !ok {
+			m.sessionTypes[s.Name] = sessionTypeTerminal
 			changed = true
 		}
 	}
@@ -1488,6 +1584,17 @@ func (m model) rowStyle(selected, project bool, projectName string) lipgloss.Sty
 	}
 }
 
+func (m model) visibleSessionCount() int {
+	count := 0
+	for _, session := range m.sessions {
+		if session.Temporary {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
 func (m model) singleMatchingProject() (string, bool) {
 	matches := m.matchingProjects(m.moveQuery)
 	if len(matches) == 1 {
@@ -1500,11 +1607,15 @@ func (m model) saveState() error {
 	state := appState{
 		Projects:         append([]string(nil), m.projects...),
 		SessionProjects:  map[string]string{},
+		SessionTypes:     map[string]string{},
 		ProjectDirs:      map[string]string{},
 		ExpandedProjects: map[string]bool{},
 	}
 	for name, project := range m.sessionProjects {
 		state.SessionProjects[name] = normalizeProjectName(project)
+	}
+	for name, sessionType := range m.sessionTypes {
+		state.SessionTypes[name] = string(sessionType)
 	}
 	for project, cfg := range m.projectConfigs {
 		project = normalizeProjectName(project)
@@ -1531,7 +1642,7 @@ func (m model) saveState() error {
 	return saveProjectConfigs(m.statePath, m.projectConfigs)
 }
 
-func ensureDefaultStartupState() error {
+func ensureStartupState() error {
 	path := appStatePath()
 	state, err := loadAppState(path)
 	if err != nil {
@@ -1544,7 +1655,6 @@ func ensureDefaultStartupState() error {
 	if state.ExpandedProjects == nil {
 		state.ExpandedProjects = map[string]bool{}
 	}
-	state.SessionProjects[defaultSessionName] = defaultProjectName
 	state.ExpandedProjects[defaultProjectName] = true
 
 	data, err := json.MarshalIndent(normalizeAppState(state), "", "  ")
@@ -1564,6 +1674,7 @@ func loadAppState(path string) (appState, error) {
 			return appState{
 				Projects:         []string{defaultProjectName},
 				SessionProjects:  map[string]string{},
+				SessionTypes:     map[string]string{},
 				ProjectDirs:      map[string]string{},
 				ExpandedProjects: map[string]bool{defaultProjectName: true},
 			}, nil
@@ -1581,6 +1692,9 @@ func normalizeAppState(state appState) appState {
 	state.Projects = normalizeProjectList(state.Projects)
 	if state.SessionProjects == nil {
 		state.SessionProjects = map[string]string{}
+	}
+	if state.SessionTypes == nil {
+		state.SessionTypes = map[string]string{}
 	}
 	if state.ProjectDirs == nil {
 		state.ProjectDirs = map[string]string{}
@@ -1604,6 +1718,9 @@ func normalizeAppState(state appState) appState {
 		}
 		if _, ok := state.ExpandedProjects[normalized]; !ok {
 			state.ExpandedProjects[normalized] = true
+		}
+		if _, ok := state.SessionTypes[name]; !ok {
+			state.SessionTypes[name] = string(sessionTypeTerminal)
 		}
 	}
 	for project, dir := range state.ProjectDirs {
@@ -1734,13 +1851,28 @@ func replaceProject(projects []string, oldName, newName string) []string {
 }
 
 func appStatePath() string {
-	if dir, err := os.UserConfigDir(); err == nil && strings.TrimSpace(dir) != "" {
-		return filepath.Join(dir, "tflow", "state.json")
+	return filepath.Join(appConfigDir(), "state.json")
+}
+
+func nextTempSessionName(existing []session) string {
+	used := map[string]struct{}{}
+	for _, session := range existing {
+		used[session.Name] = struct{}{}
 	}
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, ".config", "tflow", "state.json")
+	for _, animal := range tempSessionAnimals {
+		name := animal + "-temp"
+		if _, ok := used[name]; !ok {
+			return name
+		}
 	}
-	return filepath.Join(".", ".tflow", "state.json")
+	for i := 2; ; i++ {
+		for _, animal := range tempSessionAnimals {
+			name := fmt.Sprintf("%s-temp-%d", animal, i)
+			if _, ok := used[name]; !ok {
+				return name
+			}
+		}
+	}
 }
 
 func (m model) statusView() string {
@@ -1764,6 +1896,64 @@ func (m model) syncTmuxSessionProjects() error {
 		sessionProjects[s.Name] = project
 	}
 	return m.tmux.SyncSessionProjects(sessionProjects)
+}
+
+func normalizeSessionTypes(raw map[string]string) map[string]sessionType {
+	normalized := map[string]sessionType{}
+	for name, value := range raw {
+		normalized[name] = normalizeSessionType(value)
+	}
+	return normalized
+}
+
+func normalizeSessionType(value string) sessionType {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case string(sessionTypeK9s):
+		return sessionTypeK9s
+	case string(sessionTypeAgent):
+		return sessionTypeAgent
+	default:
+		return sessionTypeTerminal
+	}
+}
+
+func sessionTypeFromKind(kind sessionKind) sessionType {
+	switch kind {
+	case sessionKindK9s:
+		return sessionTypeK9s
+	case sessionKindAgent:
+		return sessionTypeAgent
+	default:
+		return sessionTypeTerminal
+	}
+}
+
+func (m model) sessionType(name string) sessionType {
+	if m.sessionTypes == nil {
+		return sessionTypeTerminal
+	}
+	if value, ok := m.sessionTypes[name]; ok {
+		return value
+	}
+	return sessionTypeTerminal
+}
+
+func (m *model) setSessionType(name string, value sessionType) {
+	if m.sessionTypes == nil {
+		m.sessionTypes = map[string]sessionType{}
+	}
+	m.sessionTypes[name] = value
+}
+
+func (m model) sessionTypeBadge(value sessionType) string {
+	switch value {
+	case sessionTypeK9s:
+		return countBadgeStyle.Render("[k9s]")
+	case sessionTypeAgent:
+		return countBadgeStyle.Render("[agent]")
+	default:
+		return ""
+	}
 }
 
 func (m model) projectConfig(project string) projectConfig {
@@ -1807,9 +1997,9 @@ func (m *model) startSessionCreate(kind sessionKind) (tea.Model, tea.Cmd) {
 	case sessionKindK9s:
 		m.input.SetValue("k9s")
 		m.status = fmt.Sprintf("Create a new k9s session in %s.", m.contextProject())
-	case sessionKindCodex:
-		m.input.SetValue("codex")
-		m.status = fmt.Sprintf("Create a new codex session in %s.", m.contextProject())
+	case sessionKindAgent:
+		m.input.SetValue("agent")
+		m.status = fmt.Sprintf("Create a new agent session in %s.", m.contextProject())
 	default:
 		m.input.SetValue("")
 		m.status = fmt.Sprintf("Create a new terminal session in %s.", m.contextProject())
@@ -1832,8 +2022,8 @@ func (m model) sessionStartupCommand(kind sessionKind) (string, error) {
 			return cfg.Cluster.ConnectionCmd + " && exec k9s", nil
 		}
 		return "", fmt.Errorf("project %s has no cluster configured", cfg.Name)
-	case sessionKindCodex:
-		return "exec codex", nil
+	case sessionKindAgent:
+		return "exec " + shellQuote(cfg.agentBinary()), nil
 	default:
 		return "", nil
 	}

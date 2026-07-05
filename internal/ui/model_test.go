@@ -35,6 +35,9 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 
 	var calls []string
 	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return nil, nil
+		},
 		createSession: func(name, cwd, command string) (session, error) {
 			calls = append(calls, "create:"+name)
 			if command != "" {
@@ -42,17 +45,25 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 			}
 			return session{Name: name}, nil
 		},
+		setSessionTemporary: func(name string, temporary bool) error {
+			calls = append(calls, fmt.Sprintf("temporary:%s:%t", name, temporary))
+			return nil
+		},
 		ensureControlMode: func(binaryPath string) error {
 			calls = append(calls, "control:"+binaryPath)
 			return nil
 		},
 	}
 
-	if err := prepareStartup(manager, "/tmp/tflow", "/tmp/project"); err != nil {
+	name, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project")
+	if err != nil {
 		t.Fatalf("prepareStartup returned error: %v", err)
 	}
+	if !strings.HasSuffix(name, "-temp") {
+		t.Fatalf("name = %q, want temp session name", name)
+	}
 
-	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{"create:default", "control:/tmp/tflow"}); got != want {
+	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{"create:" + name, "temporary:" + name + ":true", "control:/tmp/tflow"}); got != want {
 		t.Fatalf("calls = %s, want %s", got, want)
 	}
 }
@@ -195,6 +206,48 @@ func TestNewPrefixTStartsTerminalCreate(t *testing.T) {
 	}
 }
 
+func TestNewPrefixAAttachesCurrentTempSessionToProject(t *testing.T) {
+	var tempChanges []string
+	m := newModel(fakeTmuxController{
+		setSessionTemporary: func(name string, temporary bool) error {
+			tempChanges = append(tempChanges, fmt.Sprintf("%s:%t", name, temporary))
+			return nil
+		},
+	}, "otter-temp", "").(model)
+	m.mode = inputNew
+	m.projects = []string{defaultProjectName, "small"}
+	m.sessions = []session{{Name: "otter-temp", Temporary: true}}
+	m.selectedProject = "small"
+
+	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	got := updated.(model)
+	if got.mode != inputNew {
+		t.Fatalf("mode = %v, want inputNew before ack", got.mode)
+	}
+	if cmd == nil {
+		t.Fatal("expected attach command")
+	}
+	msg := cmd().(sessionMovedMsg)
+	if msg.err != nil {
+		t.Fatalf("attach returned error: %v", msg.err)
+	}
+	if got, want := fmt.Sprint(tempChanges), fmt.Sprint([]string{"otter-temp:false"}); got != want {
+		t.Fatalf("tempChanges = %s, want %s", got, want)
+	}
+
+	updated, followUp := got.Update(msg)
+	final := updated.(model)
+	if followUp == nil {
+		t.Fatal("expected reload command after attach")
+	}
+	if final.sessionProjects["otter-temp"] != "small" {
+		t.Fatalf("sessionProjects[otter-temp] = %q", final.sessionProjects["otter-temp"])
+	}
+	if final.selectedSession != "otter-temp" {
+		t.Fatalf("selectedSession = %q", final.selectedSession)
+	}
+}
+
 func TestCommandModeQAQuitsAll(t *testing.T) {
 	quitAllPane := ""
 	m := newModel(fakeTmuxController{
@@ -317,6 +370,7 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	m.selectedSession = "dev"
 	m.mode = inputRename
 	m.renameRow = treeRow{kind: rowSession, project: defaultProjectName, session: "dev"}
+	m.sessionTypes = map[string]sessionType{"dev": sessionTypeAgent}
 	m.input.SetValue("lala")
 
 	updated, cmd := m.commitRename()
@@ -345,6 +399,9 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	if final.sessionProjects["lala"] != defaultProjectName {
 		t.Fatalf("sessionProjects[lala] = %q, want %q", final.sessionProjects["lala"], defaultProjectName)
 	}
+	if final.sessionTypes["lala"] != sessionTypeAgent {
+		t.Fatalf("sessionTypes[lala] = %q, want %q", final.sessionTypes["lala"], sessionTypeAgent)
+	}
 	if _, ok := final.sessionProjects["dev"]; ok {
 		t.Fatalf("old session project still present: %#v", final.sessionProjects)
 	}
@@ -362,6 +419,10 @@ func TestRenderTreePanelShowsProjectsAndSessionsOnly(t *testing.T) {
 		"dev": defaultProjectName,
 		"api": "small",
 	}
+	m.sessionTypes = map[string]sessionType{
+		"dev": sessionTypeAgent,
+		"api": sessionTypeK9s,
+	}
 	m.expandedProjects = map[string]bool{
 		defaultProjectName: true,
 		"small":            true,
@@ -371,12 +432,12 @@ func TestRenderTreePanelShowsProjectsAndSessionsOnly(t *testing.T) {
 
 	view := m.renderTreePanel(40)
 	plain := stripANSI(view)
-	for _, want := range []string{"Projects", "[-] default", "[-] small", "[live] dev", "  api"} {
+	for _, want := range []string{"Projects", "[-] default", "[-] small", "[live]  [agent]  dev", "[k9s]  api"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("renderTreePanel missing %q in %q", want, plain)
 		}
 	}
-	if !strings.Contains(plain, "[live] dev") {
+	if !strings.Contains(plain, "[live]") {
 		t.Fatalf("renderTreePanel missing inline live badge in %q", plain)
 	}
 	for _, unwanted := range []string{"current dev", "2 projects", "2 sessions", "[open]", "[shut]"} {
@@ -418,6 +479,51 @@ func TestSessionsLoadedSyncsTmuxSessionProjects(t *testing.T) {
 	}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("syncSessionProjects = %#v, want %#v", got, want)
+	}
+}
+
+func TestSaveStatePersistsSessionTypes(t *testing.T) {
+	tmp := t.TempDir()
+	m := newModel(fakeTmuxController{}, "", "").(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{defaultProjectName}
+	m.sessionProjects = map[string]string{"dev": defaultProjectName}
+	m.sessionTypes = map[string]sessionType{"dev": sessionTypeAgent}
+	m.projectConfigs = map[string]projectConfig{defaultProjectName: {Name: defaultProjectName}}
+	m.expandedProjects = map[string]bool{defaultProjectName: true}
+
+	if err := m.saveState(); err != nil {
+		t.Fatalf("saveState returned error: %v", err)
+	}
+
+	state, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatalf("loadAppState returned error: %v", err)
+	}
+	if got := state.SessionTypes["dev"]; got != string(sessionTypeAgent) {
+		t.Fatalf("sessionTypes[dev] = %q, want %q", got, sessionTypeAgent)
+	}
+}
+
+func TestSessionsLoadedSkipsTemporarySessions(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "otter-temp", "").(model)
+	m.statePath = t.TempDir() + "/state.json"
+	m.projects = []string{defaultProjectName}
+	m.sessionProjects = map[string]string{}
+	m.expandedProjects = map[string]bool{defaultProjectName: true}
+
+	updated, cmd := m.Update(sessionsLoadedMsg{
+		sessions: []session{{Name: "otter-temp", Temporary: true}},
+	})
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	got := updated.(model)
+	if len(got.sessionProjects) != 0 {
+		t.Fatalf("sessionProjects = %#v, want empty", got.sessionProjects)
+	}
+	if got.selectedSession != "" {
+		t.Fatalf("selectedSession = %q, want empty", got.selectedSession)
 	}
 }
 
@@ -719,7 +825,7 @@ func TestCreateK9sSessionUsesConnectionCommand(t *testing.T) {
 	}
 }
 
-func TestCreateCodexSessionUsesCodexCommand(t *testing.T) {
+func TestCreateAgentSessionUsesConfiguredAgentBinary(t *testing.T) {
 	var gotCommand string
 	m := newModel(fakeTmuxController{
 		createSession: func(name, cwd, command string) (session, error) {
@@ -728,9 +834,12 @@ func TestCreateCodexSessionUsesCodexCommand(t *testing.T) {
 		},
 	}, "", "").(model)
 	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{
+		"small": {Name: "small", AgentBinary: "aider"},
+	}
 	m.mode = inputCreateSession
-	m.createSessionKind = sessionKindCodex
-	m.input.SetValue("codex")
+	m.createSessionKind = sessionKindAgent
+	m.input.SetValue("agent")
 
 	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
@@ -740,7 +849,36 @@ func TestCreateCodexSessionUsesCodexCommand(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
 	}
-	if gotCommand != "exec codex" {
+	if gotCommand != "exec 'aider'" {
+		t.Fatalf("command = %q", gotCommand)
+	}
+	if msg.kind != sessionTypeAgent {
+		t.Fatalf("kind = %q, want %q", msg.kind, sessionTypeAgent)
+	}
+}
+
+func TestCreateAgentSessionDefaultsToCodexBinary(t *testing.T) {
+	var gotCommand string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			gotCommand = command
+			return session{Name: name, Windows: 1}, nil
+		},
+	}, "", "").(model)
+	m.selectedProject = "small"
+	m.mode = inputCreateSession
+	m.createSessionKind = sessionKindAgent
+	m.input.SetValue("agent")
+
+	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected create command")
+	}
+	msg := cmd().(sessionCreatedMsg)
+	if msg.err != nil {
+		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
+	}
+	if gotCommand != "exec 'codex'" {
 		t.Fatalf("command = %q", gotCommand)
 	}
 }
@@ -794,6 +932,7 @@ func TestProjectNormalizationKeepsDefaultFirst(t *testing.T) {
 type fakeTmuxController struct {
 	listSessions        func() ([]session, error)
 	createSession       func(name, cwd, command string) (session, error)
+	setSessionTemporary func(name string, temporary bool) error
 	attachCommand       func(name string) (*exec.Cmd, error)
 	killSession         func(name string) error
 	renameSession       func(oldName, newName string) error
@@ -817,6 +956,13 @@ func (f fakeTmuxController) CreateSession(name, cwd, command string) (session, e
 		return f.createSession(name, cwd, command)
 	}
 	return session{Name: name, Windows: 1}, nil
+}
+
+func (f fakeTmuxController) SetSessionTemporary(name string, temporary bool) error {
+	if f.setSessionTemporary != nil {
+		return f.setSessionTemporary(name, temporary)
+	}
+	return nil
 }
 
 func (f fakeTmuxController) AttachCommand(name string) (*exec.Cmd, error) {

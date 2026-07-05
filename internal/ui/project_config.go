@@ -17,10 +17,11 @@ type clusterConfig struct {
 }
 
 type projectConfig struct {
-	Name    string
-	Workdir string
-	Cluster clusterConfig
-	Protect bool
+	Name        string
+	Workdir     string
+	Cluster     clusterConfig
+	AgentBinary string
+	Protect     bool
 }
 
 func defaultProjectConfig() projectConfig {
@@ -35,19 +36,31 @@ func normalizeProjectConfig(cfg projectConfig) projectConfig {
 	}
 	cfg.Cluster.Path = strings.TrimSpace(cfg.Cluster.Path)
 	cfg.Cluster.ConnectionCmd = strings.TrimSpace(cfg.Cluster.ConnectionCmd)
+	cfg.AgentBinary = strings.TrimSpace(cfg.AgentBinary)
 	return cfg
 }
 
 func (cfg projectConfig) isZero() bool {
-	return cfg.Name == "" && cfg.Workdir == "" && cfg.Cluster.Path == "" && cfg.Cluster.ConnectionCmd == "" && !cfg.Protect
+	return cfg.Name == "" && cfg.Workdir == "" && cfg.Cluster.Path == "" && cfg.Cluster.ConnectionCmd == "" && cfg.AgentBinary == "" && !cfg.Protect
 }
 
 func (cfg projectConfig) clusterConfigured() bool {
 	return cfg.Cluster.Path != "" || cfg.Cluster.ConnectionCmd != ""
 }
 
+func (cfg projectConfig) agentBinary() string {
+	if strings.TrimSpace(cfg.AgentBinary) == "" {
+		return "codex"
+	}
+	return cfg.AgentBinary
+}
+
 func projectConfigDir(statePath string) string {
-	return filepath.Join(filepath.Dir(statePath), "projects")
+	cfg, err := loadAppConfigForStatePath(statePath)
+	if err != nil {
+		return filepath.Join(filepath.Dir(statePath), "projects")
+	}
+	return cfg.ProjectsDir
 }
 
 func projectConfigPath(statePath, project string) string {
@@ -152,6 +165,11 @@ func marshalProjectConfig(cfg projectConfig) []byte {
 	if cfg.Protect {
 		buf.WriteString("protect: true\n")
 	}
+	if cfg.AgentBinary != "" {
+		buf.WriteString("agent-binary: ")
+		buf.WriteString(yamlString(cfg.AgentBinary))
+		buf.WriteByte('\n')
+	}
 	if cfg.Cluster.Path != "" || cfg.Cluster.ConnectionCmd != "" {
 		buf.WriteString("cluster:\n")
 		if cfg.Cluster.Path != "" {
@@ -213,6 +231,12 @@ func parseProjectConfig(data []byte) (projectConfig, error) {
 				return cfg, fmt.Errorf("line %d: invalid bool", i+1)
 			}
 			cfg.Protect = parsed
+		case "agent-binary":
+			parsed, err := parseYAMLString(value)
+			if err != nil {
+				return cfg, fmt.Errorf("line %d: %w", i+1, err)
+			}
+			cfg.AgentBinary = parsed
 		case "cluster":
 			value = strings.TrimSpace(value)
 			if value != "" {

@@ -12,24 +12,26 @@ import (
 )
 
 const (
-	tmuxSocket         = "tflow"
-	defaultSessionName = "default"
-	menuMarker         = "@tflow-menu"
-	projectMarker      = "@tflow-project"
-	menuWidth          = "36"
-	menuToggleKey      = "C-f"
-	menuCurrentEnv     = "TFLOW_CURRENT_SESSION"
+	tmuxSocket     = "tflow"
+	menuMarker     = "@tflow-menu"
+	projectMarker  = "@tflow-project"
+	tempMarker     = "@tflow-temp"
+	menuWidth      = "36"
+	menuToggleKey  = "C-f"
+	menuCurrentEnv = "TFLOW_CURRENT_SESSION"
 )
 
 type session struct {
-	Name     string
-	Windows  int
-	Attached bool
+	Name      string
+	Windows   int
+	Attached  bool
+	Temporary bool
 }
 
 type tmuxController interface {
 	ListSessions() ([]session, error)
 	CreateSession(name, cwd, command string) (session, error)
+	SetSessionTemporary(name string, temporary bool) error
 	AttachCommand(name string) (*exec.Cmd, error)
 	KillSession(name string) error
 	RenameSession(oldName, newName string) error
@@ -67,7 +69,7 @@ func (m tmuxSessionManager) runner() tmuxRunner {
 }
 
 func (m tmuxSessionManager) ListSessions() ([]session, error) {
-	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}")
+	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}")
 	if err != nil {
 		if isNoTmuxServer(err) {
 			return nil, nil
@@ -92,6 +94,9 @@ func (m tmuxSessionManager) ListSessions() ([]session, error) {
 		}
 		if len(parts) > 2 {
 			s.Attached = strings.TrimSpace(parts[2]) == "1"
+		}
+		if len(parts) > 3 {
+			s.Temporary = strings.TrimSpace(parts[3]) == "1"
 		}
 		sessions = append(sessions, s)
 	}
@@ -123,6 +128,20 @@ func (m tmuxSessionManager) CreateSession(name, cwd, command string) (session, e
 		return session{}, err
 	}
 	return session{Name: name, Windows: 1}, nil
+}
+
+func (m tmuxSessionManager) SetSessionTemporary(name string, temporary bool) error {
+	value := "off"
+	marker := "0"
+	if temporary {
+		value = "on"
+		marker = "1"
+	}
+	if _, err := m.runner()("set-option", "-t", name, "destroy-unattached", value); err != nil {
+		return err
+	}
+	_, err := m.runner()("set-option", "-t", name, tempMarker, marker)
+	return err
 }
 
 func (tmuxSessionManager) AttachCommand(name string) (*exec.Cmd, error) {
@@ -163,17 +182,23 @@ func (m tmuxSessionManager) EnsureControlMode(binaryPath string) error {
 		return fmt.Errorf("tflow binary path is empty")
 	}
 
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+	palette := themeFromConfig(cfg)
+
 	runShell := "exec " + shellQuote(binaryPath) + " toggle-menu"
-	statusLeft := "#[bg=#313244,fg=#a6adc8]" +
-		"#[bg=#313244,fg=#cdd6f4,bold] project #[fg=#89b4fa]#{@tflow-project} " +
-		"#[bg=#181825,fg=#313244,nobold]" +
-		"  #[bg=#313244,fg=#a6adc8]" +
-		"#[bg=#313244,fg=#cdd6f4,bold] session #[fg=#94e2d5]#S " +
-		"#[bg=#181825,fg=#313244,nobold]"
+	statusLeft := "#[bg=" + palette.Surface0 + ",fg=" + palette.Subtext + "]" +
+		"#[bg=" + palette.Surface0 + ",fg=" + palette.Text + ",bold] project #[fg=" + palette.Blue + "]#{@tflow-project} " +
+		"#[bg=" + palette.Mantle + ",fg=" + palette.Surface0 + ",nobold]" +
+		"  #[bg=" + palette.Surface0 + ",fg=" + palette.Subtext + "]" +
+		"#[bg=" + palette.Surface0 + ",fg=" + palette.Text + ",bold] session #[fg=" + palette.Teal + "]#S " +
+		"#[bg=" + palette.Mantle + ",fg=" + palette.Surface0 + ",nobold]"
 	commands := [][]string{
 		{"set-option", "-g", "status", "on"},
 		{"set-option", "-g", "status-position", "top"},
-		{"set-option", "-g", "status-style", "bg=#181825,fg=#cdd6f4"},
+		{"set-option", "-g", "status-style", "bg=" + palette.Mantle + ",fg=" + palette.Text},
 		{"set-option", "-g", "status-left-length", "120"},
 		{"set-option", "-g", "status-right-length", "0"},
 		{"set-option", "-g", "status-left", statusLeft},
