@@ -1,11 +1,36 @@
-# Issues / Bus
+# Open
+
+## Issues / Bugs
+
+- there is a typo, section should be session, tflow has projects and sessions, sessions have a type: `terminal`, `k9s` and `agent`
+
+## Features
+- Create a `README.md` with style, add the logo from actual repo root there, but move it somewhere.
+    - Look into other readmes like `zellij` and my others in `rapsnx/dotfiles` and `rapsnx/neonix` as a example.
+- Design change: Temporary sessions
+    - the default session will be removed, per default it starts a new temporary session, with a <animal>-temp name.
+    - temp sessions are not part of any project, or in any list.
+    - I can add a temp session with `na` to the selected project
+    - A temp session which is not added to any project, dies with the terminal itself.
+- tflow should have a config file, which refers to a projects folder with the yamls of each project.
+    - the config file can be used to set colors / style
+        - per default it uses catpuccin
+- Add `flake.nix` to build `tflow`.
+- In a Project its possible to configure which agent binary should be spawned.
+- Add a home-manager module to configure it:
+    - enable and pkg as usual
+    - settings:
+        - projects can be configured here
+
+# Done
+## Issues / Bugs
 This describes issues that are existing, which should be fixed in future.
 
 - [x] no deletion prevention, should ask if deletion is ok
     - [x] project yaml option: protect: true
 
 
-# Features
+## Features
 This are a list of featuures that need to be implemented:
 
 - [x] Make a project configuratble `e` for edit, a project is a yaml with: `name`, `workdir`, `cluster`

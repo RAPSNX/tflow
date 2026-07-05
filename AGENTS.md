@@ -1,6 +1,9 @@
+## Rules
 - Keep edits small, reviewable, and testable.
 - Create or use the codex-agent branch for your work.
 - Use a worktree, verify the work is done, and merge it everytime on that branch.
+- The `TODO.md` contains all open & finished tasks for features, bugs, changes or issues.
+    - When working on these, always mark them as done acrodingly.
 
 ## Workflow
 
