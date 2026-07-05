@@ -32,6 +32,19 @@ const (
 
 const defaultProjectName = "default"
 
+var tempSessionAnimals = []string{
+	"otter",
+	"fox",
+	"lynx",
+	"koala",
+	"badger",
+	"panda",
+	"falcon",
+	"gecko",
+	"orca",
+	"wombat",
+}
+
 type sessionsLoadedMsg struct {
 	sessions []session
 	err      error
@@ -163,11 +176,12 @@ func Start() error {
 	}
 
 	manager := newSessionManager()
-	if err := prepareStartup(manager, exe, cwd); err != nil {
+	sessionName, err := prepareStartup(manager, exe, cwd)
+	if err != nil {
 		return err
 	}
 
-	cmd, err := manager.AttachCommand(defaultSessionName)
+	cmd, err := manager.AttachCommand(sessionName)
 	if err != nil {
 		return err
 	}
@@ -182,17 +196,28 @@ func OpenMenu() error {
 	return err
 }
 
-func prepareStartup(manager tmuxController, binaryPath, cwd string) error {
+func prepareStartup(manager tmuxController, binaryPath, cwd string) (string, error) {
 	if err := saveDefaultAppConfig(); err != nil {
-		return err
+		return "", err
 	}
-	if _, err := manager.CreateSession(defaultSessionName, cwd, ""); err != nil {
-		return err
+	existing, err := manager.ListSessions()
+	if err != nil {
+		return "", err
+	}
+	name := nextTempSessionName(existing)
+	if _, err := manager.CreateSession(name, cwd, ""); err != nil {
+		return "", err
+	}
+	if err := manager.SetSessionTemporary(name, true); err != nil {
+		return "", err
 	}
 	if err := manager.EnsureControlMode(binaryPath); err != nil {
-		return err
+		return "", err
 	}
-	return ensureDefaultStartupState()
+	if err := ensureStartupState(); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func defaultSessionDir() string {
@@ -528,7 +553,7 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.switchSelectedSession()
 	case "n":
 		m.mode = inputNew
-		m.status = "New: np project, nt terminal, nk k9s, nc agent."
+		m.status = "New: np project, nt terminal, nk k9s, nc agent, na add current temp."
 		return m, nil
 	case "c":
 		m.mode = inputSetProjectDir
@@ -741,10 +766,12 @@ func (m model) updateNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startSessionCreate(sessionKindTerminal)
 	case "k":
 		return m.startSessionCreate(sessionKindK9s)
+	case "a":
+		return m.addCurrentTempSession()
 	case "c":
 		return m.startSessionCreate(sessionKindAgent)
 	default:
-		m.status = "New: use np, nt, nk, or nc."
+		m.status = "New: use np, nt, nk, nc, or na."
 		return m, nil
 	}
 }
@@ -815,7 +842,7 @@ func (m model) rowLabel(row treeRow) string {
 
 func (m model) renderHeader(width int) string {
 	left := brandBadgeStyle.Render("TFLOW")
-	right := mutedStyle.Render(fmt.Sprintf("%d projects  %d sessions", len(m.projects), len(m.sessions)))
+	right := mutedStyle.Render(fmt.Sprintf("%d projects  %d sessions", len(m.projects), m.visibleSessionCount()))
 	gap := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
 	return headerStyle.Width(width).Render(left + strings.Repeat(" ", gap) + right)
 }
@@ -886,7 +913,7 @@ func (m model) renderInlineRow(content string, selected, project bool, projectNa
 func (m model) renderFooter(width int) string {
 	lines := []string{}
 	if m.mode == inputNew {
-		lines = append(lines, hintStyle.Render("new: [p] project  [t] terminal  [k] k9s  [c] agent  [esc] cancel"))
+		lines = append(lines, hintStyle.Render("new: [p] project  [t] terminal  [k] k9s  [c] agent  [a] add temp  [esc] cancel"))
 	}
 	if m.mode == inputMoveProject {
 		lines = append(lines, hintStyle.Render("move: type a project prefix and the matching initials stay highlighted"))
@@ -1366,6 +1393,13 @@ func (m model) selectedSessionInfo() (session, bool) {
 	return m.findSession(m.selectedSession)
 }
 
+func (m model) currentSessionInfo() (session, bool) {
+	if strings.TrimSpace(m.currentSession) == "" {
+		return session{}, false
+	}
+	return m.findSession(m.currentSession)
+}
+
 func (m model) findSession(name string) (session, bool) {
 	for _, s := range m.sessions {
 		if s.Name == name {
@@ -1373,6 +1407,23 @@ func (m model) findSession(name string) (session, bool) {
 		}
 	}
 	return session{}, false
+}
+
+func (m model) addCurrentTempSession() (tea.Model, tea.Cmd) {
+	current, ok := m.currentSessionInfo()
+	if !ok {
+		m.status = "No current session to add."
+		return m, nil
+	}
+	if !current.Temporary {
+		m.status = "Current session is not temporary."
+		return m, nil
+	}
+	project := m.contextProject()
+	return m, func() tea.Msg {
+		err := m.tmux.SetSessionTemporary(current.Name, false)
+		return sessionMovedMsg{session: current.Name, project: project, err: err}
+	}
 }
 
 func (m model) contextProject() string {
@@ -1404,7 +1455,7 @@ func (m *model) syncSelection() {
 		}
 	}
 	if m.selectedSession == "" && m.currentSession != "" {
-		if _, ok := m.findSession(m.currentSession); ok {
+		if current, ok := m.findSession(m.currentSession); ok && !current.Temporary {
 			m.selectedSession = m.currentSession
 			m.selectedProject = normalizeProjectName(m.sessionProjects[m.currentSession])
 		}
@@ -1432,6 +1483,9 @@ func (m *model) ensureSessionProjects() bool {
 		changed = true
 	}
 	for _, s := range m.sessions {
+		if s.Temporary {
+			continue
+		}
 		project := normalizeProjectName(m.sessionProjects[s.Name])
 		if project == "" {
 			project = defaultProjectName
@@ -1530,6 +1584,17 @@ func (m model) rowStyle(selected, project bool, projectName string) lipgloss.Sty
 	}
 }
 
+func (m model) visibleSessionCount() int {
+	count := 0
+	for _, session := range m.sessions {
+		if session.Temporary {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
 func (m model) singleMatchingProject() (string, bool) {
 	matches := m.matchingProjects(m.moveQuery)
 	if len(matches) == 1 {
@@ -1577,7 +1642,7 @@ func (m model) saveState() error {
 	return saveProjectConfigs(m.statePath, m.projectConfigs)
 }
 
-func ensureDefaultStartupState() error {
+func ensureStartupState() error {
 	path := appStatePath()
 	state, err := loadAppState(path)
 	if err != nil {
@@ -1590,8 +1655,6 @@ func ensureDefaultStartupState() error {
 	if state.ExpandedProjects == nil {
 		state.ExpandedProjects = map[string]bool{}
 	}
-	state.SessionProjects[defaultSessionName] = defaultProjectName
-	state.SessionTypes[defaultSessionName] = string(sessionTypeTerminal)
 	state.ExpandedProjects[defaultProjectName] = true
 
 	data, err := json.MarshalIndent(normalizeAppState(state), "", "  ")
@@ -1791,6 +1854,27 @@ func appStatePath() string {
 	return filepath.Join(appConfigDir(), "state.json")
 }
 
+func nextTempSessionName(existing []session) string {
+	used := map[string]struct{}{}
+	for _, session := range existing {
+		used[session.Name] = struct{}{}
+	}
+	for _, animal := range tempSessionAnimals {
+		name := animal + "-temp"
+		if _, ok := used[name]; !ok {
+			return name
+		}
+	}
+	for i := 2; ; i++ {
+		for _, animal := range tempSessionAnimals {
+			name := fmt.Sprintf("%s-temp-%d", animal, i)
+			if _, ok := used[name]; !ok {
+				return name
+			}
+		}
+	}
+}
+
 func (m model) statusView() string {
 	if strings.TrimSpace(m.status) == "" {
 		return ""
@@ -1909,14 +1993,14 @@ func (m *model) startSessionCreate(kind sessionKind) (tea.Model, tea.Cmd) {
 	m.mode = inputCreateSession
 	m.createSessionKind = kind
 	m.input.Prompt = "session: "
-switch kind {
-case sessionKindK9s:
-	m.input.SetValue("k9s")
-	m.status = fmt.Sprintf("Create a new k9s session in %s.", m.contextProject())
-case sessionKindAgent:
-	m.input.SetValue("agent")
-	m.status = fmt.Sprintf("Create a new agent session in %s.", m.contextProject())
-default:
+	switch kind {
+	case sessionKindK9s:
+		m.input.SetValue("k9s")
+		m.status = fmt.Sprintf("Create a new k9s session in %s.", m.contextProject())
+	case sessionKindAgent:
+		m.input.SetValue("agent")
+		m.status = fmt.Sprintf("Create a new agent session in %s.", m.contextProject())
+	default:
 		m.input.SetValue("")
 		m.status = fmt.Sprintf("Create a new terminal session in %s.", m.contextProject())
 	}
