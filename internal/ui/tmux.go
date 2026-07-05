@@ -12,29 +12,35 @@ import (
 )
 
 const (
-	tmuxSocket         = "tflow"
-	defaultSessionName = "default"
-	menuMarker         = "@tflow-menu"
-	menuWidth          = "36"
-	menuToggleKey      = "C-f"
-	menuCurrentEnv     = "TFLOW_CURRENT_SESSION"
+	tmuxSocket     = "tflow"
+	menuMarker     = "@tflow-menu"
+	projectMarker  = "@tflow-project"
+	tempMarker     = "@tflow-temp"
+	menuWidth      = "36"
+	menuToggleKey  = "C-f"
+	menuCurrentEnv = "TFLOW_CURRENT_SESSION"
 )
 
 type session struct {
-	Name     string
-	Windows  int
-	Attached bool
+	Name      string
+	Windows   int
+	Attached  bool
+	Temporary bool
 }
 
-type sessionManager interface {
+type tmuxController interface {
 	ListSessions() ([]session, error)
-	CreateSession(name, cwd string) (session, error)
+	CreateSession(name, cwd, command string) (session, error)
+	SetSessionTemporary(name string, temporary bool) error
 	AttachCommand(name string) (*exec.Cmd, error)
 	KillSession(name string) error
+	RenameSession(oldName, newName string) error
 	SwitchClient(name string) error
 	EnsureControlMode(binaryPath string) error
+	SyncSessionProjects(sessionProjects map[string]string) error
 	ToggleMenu(binaryPath string) error
 	ClosePane(paneID string) error
+	QuitAll(paneID string) error
 }
 
 type tmuxRunner func(args ...string) (string, error)
@@ -43,7 +49,7 @@ type tmuxSessionManager struct {
 	run tmuxRunner
 }
 
-func newSessionManager() sessionManager {
+func newSessionManager() tmuxController {
 	return tmuxSessionManager{run: runTmux}
 }
 
@@ -63,7 +69,7 @@ func (m tmuxSessionManager) runner() tmuxRunner {
 }
 
 func (m tmuxSessionManager) ListSessions() ([]session, error) {
-	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}")
+	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}")
 	if err != nil {
 		if isNoTmuxServer(err) {
 			return nil, nil
@@ -89,28 +95,21 @@ func (m tmuxSessionManager) ListSessions() ([]session, error) {
 		if len(parts) > 2 {
 			s.Attached = strings.TrimSpace(parts[2]) == "1"
 		}
+		if len(parts) > 3 {
+			s.Temporary = strings.TrimSpace(parts[3]) == "1"
+		}
 		sessions = append(sessions, s)
 	}
 	return sessions, nil
 }
 
-func (m tmuxSessionManager) CreateSession(name, cwd string) (session, error) {
+func (m tmuxSessionManager) CreateSession(name, cwd, command string) (session, error) {
 	name = sanitizeSessionName(name)
 	if name == "" {
 		return session{}, fmt.Errorf("session name is empty")
 	}
-	if strings.TrimSpace(cwd) == "" {
-		if wd, err := os.Getwd(); err == nil {
-			cwd = wd
-		}
-	}
-	if strings.TrimSpace(cwd) == "" {
-		cwd = "."
-	}
-	absCwd, err := filepath.Abs(cwd)
-	if err == nil {
-		cwd = absCwd
-	}
+	cwd = normalizeCWD(cwd)
+	command = strings.TrimSpace(command)
 
 	if _, err := m.runner()("has-session", "-t", name); err == nil {
 		return session{Name: name}, nil
@@ -118,13 +117,41 @@ func (m tmuxSessionManager) CreateSession(name, cwd string) (session, error) {
 		return session{}, err
 	}
 
-	if _, err := m.runner()("new-session", "-d", "-s", name, "-c", cwd); err != nil {
+	args := []string{"new-session", "-d", "-s", name, "-c", cwd}
+	if command != "" {
+		args = append(args, userShell(), "-lc", command)
+	}
+	if _, err := m.runner()(args...); err != nil {
 		return session{}, err
 	}
 	if _, err := m.runner()("rename-window", "-t", name+":1", name); err != nil && !strings.Contains(err.Error(), "can't find window") {
 		return session{}, err
 	}
 	return session{Name: name, Windows: 1}, nil
+}
+
+func (m tmuxSessionManager) SetSessionTemporary(name string, temporary bool) error {
+	marker := "0"
+	if temporary {
+		marker = "1"
+	}
+	if _, err := m.runner()("set-option", "-t", name, "destroy-unattached", "off"); err != nil {
+		return err
+	}
+	if temporary {
+		// A detached session would be destroyed immediately with destroy-unattached on,
+		// so defer enabling it until the first client actually attaches.
+		hook := "set-option -t " + shellQuote(name) + " destroy-unattached on; set-hook -u -t " + shellQuote(name) + " client-attached"
+		if _, err := m.runner()("set-hook", "-t", name, "client-attached", hook); err != nil {
+			return err
+		}
+	} else {
+		if _, err := m.runner()("set-hook", "-u", "-t", name, "client-attached"); err != nil {
+			return err
+		}
+	}
+	_, err := m.runner()("set-option", "-t", name, tempMarker, marker)
+	return err
 }
 
 func (tmuxSessionManager) AttachCommand(name string) (*exec.Cmd, error) {
@@ -142,6 +169,19 @@ func (m tmuxSessionManager) KillSession(name string) error {
 	return err
 }
 
+func (m tmuxSessionManager) RenameSession(oldName, newName string) error {
+	oldName = sanitizeSessionName(oldName)
+	newName = sanitizeSessionName(newName)
+	if oldName == "" || newName == "" {
+		return fmt.Errorf("session name is empty")
+	}
+	if oldName == newName {
+		return nil
+	}
+	_, err := m.runner()("rename-session", "-t", oldName, newName)
+	return err
+}
+
 func (m tmuxSessionManager) SwitchClient(name string) error {
 	_, err := m.runner()("switch-client", "-t", name)
 	return err
@@ -152,9 +192,33 @@ func (m tmuxSessionManager) EnsureControlMode(binaryPath string) error {
 		return fmt.Errorf("tflow binary path is empty")
 	}
 
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+	palette := themeFromConfig(cfg)
+
 	runShell := "exec " + shellQuote(binaryPath) + " toggle-menu"
+	statusLeft := "#[bg=" + palette.Surface0 + ",fg=" + palette.Subtext + "]" +
+		"#[bg=" + palette.Surface0 + ",fg=" + palette.Text + ",bold] project #[fg=" + palette.Blue + "]#{@tflow-project} " +
+		"#[bg=" + palette.Mantle + ",fg=" + palette.Surface0 + ",nobold]" +
+		"  #[bg=" + palette.Surface0 + ",fg=" + palette.Subtext + "]" +
+		"#[bg=" + palette.Surface0 + ",fg=" + palette.Text + ",bold] session #[fg=" + palette.Teal + "]#S " +
+		"#[bg=" + palette.Mantle + ",fg=" + palette.Surface0 + ",nobold]"
 	commands := [][]string{
-		{"set-option", "-g", "status", "off"},
+		{"set-option", "-g", "status", "on"},
+		{"set-option", "-g", "status-position", "top"},
+		{"set-option", "-g", "status-style", "bg=" + palette.Mantle + ",fg=" + palette.Text},
+		{"set-option", "-g", "default-terminal", "tmux-256color"},
+		{"set-option", "-g", "terminal-overrides", ",*:Tc"},
+		{"set-option", "-g", "terminal-features", "xterm-256color:RGB,screen-256color:RGB,tmux-256color:RGB"},
+		{"set-option", "-g", "status-left-length", "120"},
+		{"set-option", "-g", "status-right-length", "0"},
+		{"set-option", "-g", "status-left", statusLeft},
+		{"set-option", "-g", "status-right", ""},
+		{"set-option", "-g", "window-status-separator", ""},
+		{"set-option", "-g", "window-status-format", ""},
+		{"set-option", "-g", "window-status-current-format", ""},
 		{"set-option", "-g", "detach-on-destroy", "off"},
 		{"set-option", "-g", "default-shell", userShell()},
 		{"set-option", "-g", "default-command", loginShellCommand()},
@@ -162,6 +226,26 @@ func (m tmuxSessionManager) EnsureControlMode(binaryPath string) error {
 	}
 	for _, args := range commands {
 		if _, err := m.runner()(args...); err != nil && !isNoTmuxServer(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m tmuxSessionManager) SyncSessionProjects(sessionProjects map[string]string) error {
+	for name, project := range sessionProjects {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		project = normalizeProjectName(project)
+		if project == "" {
+			project = defaultProjectName
+		}
+		if _, err := m.runner()("set-option", "-t", name, projectMarker, project); err != nil {
+			if isNoTmuxSession(err) || isNoTmuxServer(err) {
+				continue
+			}
 			return err
 		}
 	}
@@ -212,6 +296,16 @@ func (m tmuxSessionManager) ClosePane(paneID string) error {
 	return err
 }
 
+func (m tmuxSessionManager) QuitAll(paneID string) error {
+	script := []string{}
+	if trimmed := strings.TrimSpace(paneID); trimmed != "" {
+		script = append(script, "tmux -L "+shellQuote(tmuxSocket)+" kill-pane -t "+shellQuote(trimmed)+" >/dev/null 2>&1")
+	}
+	script = append(script, "tmux -L "+shellQuote(tmuxSocket)+" detach-client >/dev/null 2>&1")
+	_, err := m.runner()("run-shell", strings.Join(script, "; "))
+	return err
+}
+
 func (m tmuxSessionManager) currentValue(format string) (string, error) {
 	out, err := m.runner()("display-message", "-p", format)
 	if err != nil {
@@ -232,6 +326,40 @@ func (m tmuxSessionManager) menuPane(windowID string) (string, bool, error) {
 		}
 	}
 	return "", false, nil
+}
+
+func normalizeCWD(cwd string) string {
+	if strings.TrimSpace(cwd) == "" {
+		if wd, err := os.Getwd(); err == nil {
+			cwd = wd
+		}
+	}
+	if strings.TrimSpace(cwd) == "" {
+		cwd = "."
+	}
+	cwd = expandHomeDir(cwd)
+	if abs, err := filepath.Abs(cwd); err == nil {
+		return abs
+	}
+	return cwd
+}
+
+func expandHomeDir(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || path[0] != '~' {
+		return path
+	}
+	if len(path) > 1 && path[1] != '/' {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return path
+	}
+	if path == "~" {
+		return home
+	}
+	return filepath.Join(home, path[2:])
 }
 
 func sanitizeSessionName(name string) string {

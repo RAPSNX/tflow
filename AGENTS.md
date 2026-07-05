@@ -1,14 +1,10 @@
-# Agent instructions
-
-You are working on the `tflow`, a terminal project and session manager.
-Primary this is a orchestrator for terminal sessions, that can be created in so called Projects.
-It is possible to switch between sessions, or projects.
-
-## Hard rules
-
+## Rules
 - Keep edits small, reviewable, and testable.
 - Create or use the codex-agent branch for your work.
+- Verify always to work cleanly, finished work should always end with a cleanup and a merge into the `codex-agent` branch.
 - Use a worktree, verify the work is done, and merge it everytime on that branch.
+- The `TODO.md` contains all open & finished tasks for features, bugs, changes or issues.
+    - When working on these, always mark them as done acrodingly.
 
 ## Workflow
 
@@ -16,7 +12,8 @@ It is possible to switch between sessions, or projects.
 2. Create or reuse a dedicated worktree for the change.
 3. Make the code change in that worktree.
 4. Run focused tests first.
-5. Merge it into your codex-agent branch
+5. Merge all of the work into your branch `codex-agent`
+6. Cleanup any other branch or worktree
 
 ## Commands
 
@@ -34,9 +31,16 @@ It is possible to switch between sessions, or projects.
 
 ## Subagents
 
-Use subagents only when useful:
+Use subagents selectively. Do not invoke them for trivial changes or when the main agent can complete the task efficiently.
 
-- `explorer`: before larger changes, to map relevant code paths.
-- `reviewer`: after implementation, to review the diff.
+### Available Subagents
 
-Do not use subagents for trivial changes.
+- `explorer`: Use before larger or unfamiliar changes to identify relevant files, code paths, dependencies, and existing patterns.
+- `worker`: Use to delegate clearly scoped work that can be done in parallel, such as an isolated feature, bug fix, refactor, or investigation.
+- `reviewer`: Use after implementation to review the diff, check for regressions, and identify missed edge cases.
+
+### Usage Guidelines
+
+Prefer subagents when they reduce risk, improve coverage, or allow meaningful parallelization.
+
+Avoid subagents when the task is small, obvious, purely mechanical, or faster to complete directly.

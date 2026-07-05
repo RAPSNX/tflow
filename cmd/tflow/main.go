@@ -6,8 +6,6 @@ import (
 	"os"
 
 	"tflow/internal/ui"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func main() {
@@ -21,7 +19,7 @@ func run() error {
 	if len(args) > 0 {
 		switch args[0] {
 		case "menu":
-			return runProgram(ui.NewMenu())
+			return ui.OpenMenu()
 		case "toggle-menu":
 			return ui.ToggleMenu()
 		default:
@@ -29,10 +27,4 @@ func run() error {
 		}
 	}
 	return ui.Start()
-}
-
-func runProgram(m tea.Model) error {
-	program := tea.NewProgram(m, tea.WithAltScreen())
-	_, err := program.Run()
-	return err
 }
