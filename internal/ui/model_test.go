@@ -521,6 +521,47 @@ func TestProtectedProjectRejectsDelete(t *testing.T) {
 	}
 }
 
+func TestProtectedProjectStillAllowsSessionDelete(t *testing.T) {
+	var killed []string
+	m := newModel(fakeTmuxController{
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+	}, "", "").(model)
+	m.projects = []string{defaultProjectName, "small"}
+	m.sessions = []session{{Name: "dev"}}
+	m.sessionProjects = map[string]string{"dev": "small"}
+	m.projectConfigs = map[string]projectConfig{
+		defaultProjectName: {Name: defaultProjectName},
+		"small":            {Name: "small", Protect: true},
+	}
+	m.expandedProjects = map[string]bool{defaultProjectName: true, "small": true}
+	m.selectedProject = "small"
+	m.selectedSession = "dev"
+
+	updated, cmd := m.beginDelete()
+	got := *(updated.(*model))
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if got.mode != inputConfirmDelete {
+		t.Fatalf("mode = %v, want inputConfirmDelete", got.mode)
+	}
+
+	_, cmd = got.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected kill command")
+	}
+	msg := cmd().(sessionKilledMsg)
+	if msg.err != nil {
+		t.Fatalf("kill returned error: %v", msg.err)
+	}
+	if got, want := fmt.Sprint(killed), fmt.Sprint([]string{"dev"}); got != want {
+		t.Fatalf("killed = %s, want %s", got, want)
+	}
+}
+
 func TestDefaultSessionDirPrefersHome(t *testing.T) {
 	oldHome := os.Getenv("HOME")
 	t.Cleanup(func() {
@@ -587,17 +628,47 @@ func TestCreateSessionUsesProjectDirectoryWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestCreateSessionUsesExpandedHomeDirectoryWhenConfigured(t *testing.T) {
+	t.Setenv("HOME", "/tmp/home")
+
+	var gotCWD string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			gotCWD = cwd
+			return session{Name: name, Windows: 1}, nil
+		},
+	}, "", "").(model)
+	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "~/project-small"}}
+	m.mode = inputCreateSession
+	m.input.SetValue("dev")
+
+	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected create command")
+	}
+	msg := cmd().(sessionCreatedMsg)
+	if msg.err != nil {
+		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
+	}
+	if gotCWD != "/tmp/home/project-small" {
+		t.Fatalf("cwd = %q, want /tmp/home/project-small", gotCWD)
+	}
+}
+
 func TestCreateK9sSessionUsesClusterPath(t *testing.T) {
+	var gotCWD string
 	var gotCommand string
 	m := newModel(fakeTmuxController{
 		createSession: func(name, cwd, command string) (session, error) {
+			gotCWD = cwd
 			gotCommand = command
 			return session{Name: name, Windows: 1}, nil
 		},
 	}, "", "").(model)
 	m.selectedProject = "small"
 	m.projectConfigs = map[string]projectConfig{
-		"small": {Name: "small", Cluster: clusterConfig{Path: "/tmp/kubeconfig"}},
+		"small": {Name: "small", Workdir: "/tmp/project-small", Cluster: clusterConfig{Path: "/tmp/kubeconfig"}},
 	}
 	m.mode = inputCreateSession
 	m.createSessionKind = sessionKindK9s
@@ -613,6 +684,9 @@ func TestCreateK9sSessionUsesClusterPath(t *testing.T) {
 	}
 	if gotCommand != "export KUBECONFIG='/tmp/kubeconfig'; exec k9s" {
 		t.Fatalf("command = %q", gotCommand)
+	}
+	if gotCWD != "/tmp/project-small" {
+		t.Fatalf("cwd = %q, want /tmp/project-small", gotCWD)
 	}
 }
 

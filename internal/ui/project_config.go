@@ -30,6 +30,9 @@ func defaultProjectConfig() projectConfig {
 func normalizeProjectConfig(cfg projectConfig) projectConfig {
 	cfg.Name = normalizeProjectName(cfg.Name)
 	cfg.Workdir = strings.TrimSpace(cfg.Workdir)
+	if cfg.Workdir != "" {
+		cfg.Workdir = normalizeCWD(cfg.Workdir)
+	}
 	cfg.Cluster.Path = strings.TrimSpace(cfg.Cluster.Path)
 	cfg.Cluster.ConnectionCmd = strings.TrimSpace(cfg.Cluster.ConnectionCmd)
 	return cfg

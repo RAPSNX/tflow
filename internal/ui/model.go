@@ -995,11 +995,8 @@ func (m *model) beginDelete() (tea.Model, tea.Cmd) {
 		m.status = "Select a project or section to delete."
 		return m, nil
 	}
-	project := row.project
-	if row.kind == rowProject {
-		project = row.project
-	}
-	if m.projectConfig(project).Protect {
+	if row.kind == rowProject && m.projectConfig(row.project).Protect {
+		project := row.project
 		m.status = fmt.Sprintf("Project %s is protected.", project)
 		return m, nil
 	}
