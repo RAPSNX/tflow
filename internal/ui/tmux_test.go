@@ -12,6 +12,14 @@ func TestShellQuote(t *testing.T) {
 	}
 }
 
+func TestNormalizeCWDExpandsHome(t *testing.T) {
+	t.Setenv("HOME", "/tmp/home")
+
+	if got := normalizeCWD("~/project"); got != "/tmp/home/project" {
+		t.Fatalf("normalizeCWD = %q, want /tmp/home/project", got)
+	}
+}
+
 func TestAttachCommandUsesTflowSocket(t *testing.T) {
 	cmd, err := tmuxSessionManager{}.AttachCommand("dev")
 	if err != nil {
