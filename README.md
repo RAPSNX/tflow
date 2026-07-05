@@ -22,7 +22,7 @@ It starts by attaching to the `default` session on the dedicated `tflow` tmux so
 - `n` then `p`: create a new project
 - `n` then `t`: create a new terminal session
 - `n` then `k`: create a new `k9s` session
-- `n` then `c`: create a new `codex` session
+- `n` then `c`: create a new agent session
 - `c`: set the default directory for the current project
 - `e`: edit the current project YAML
 - `m`: move the selected session to another project by prefix
@@ -43,6 +43,12 @@ cluster:
 ```
 
 `cluster.connection-cmd` is also supported for `k9s` sessions.
+
+Projects can also select the agent binary:
+
+```yaml
+agent-binary: "codex"
+```
 
 ## Run
 
