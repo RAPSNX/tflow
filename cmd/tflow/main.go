@@ -20,6 +20,8 @@ func run() error {
 		switch args[0] {
 		case "menu":
 			return ui.OpenMenu()
+		case "toggle-menu":
+			return ui.ToggleMenu()
 		default:
 			return fmt.Errorf("unknown command %q", args[0])
 		}

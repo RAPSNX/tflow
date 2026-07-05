@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,27 +23,48 @@ func TestMenuStartsWithCurrentSessionSelected(t *testing.T) {
 	}
 }
 
-func TestMenuEnterSelectsSession(t *testing.T) {
-	m := NewMenu().(model)
-	m.projects = []string{defaultProjectName}
-	m.sessions = []session{{Name: "dev"}}
-	m.sessionProjects = map[string]string{"dev": defaultProjectName}
-	m.expandedProjects = map[string]bool{defaultProjectName: true}
-	m.selectedProject = defaultProjectName
-	m.selectedSession = "dev"
+func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
+	tmp := t.TempDir()
+	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+	})
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
 
-	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyEnter})
-	got := updated.(model)
-	if got.exitSession != "dev" {
-		t.Fatalf("exitSession = %q, want dev", got.exitSession)
+	var calls []string
+	manager := fakeTmuxController{
+		createSession: func(name, cwd string) (session, error) {
+			calls = append(calls, "create:"+name)
+			return session{Name: name}, nil
+		},
+		ensureControlMode: func(binaryPath string) error {
+			calls = append(calls, "control:"+binaryPath)
+			return nil
+		},
 	}
-	if cmd == nil {
-		t.Fatal("expected quit command")
+
+	if err := prepareStartup(manager, "/tmp/tflow", "/tmp/project"); err != nil {
+		t.Fatalf("prepareStartup returned error: %v", err)
+	}
+
+	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{"create:default", "control:/tmp/tflow"}); got != want {
+		t.Fatalf("calls = %s, want %s", got, want)
 	}
 }
 
-func TestMenuCtrlFDoesNotCloseMenu(t *testing.T) {
-	m := NewMenu().(model)
+func TestMenuEnterSwitchesSessionAndClosesPane(t *testing.T) {
+	var switched []string
+	var closed []string
+	m := newModel(fakeTmuxController{
+		switchClient: func(name string) error {
+			switched = append(switched, name)
+			return nil
+		},
+		closePane: func(paneID string) error {
+			closed = append(closed, paneID)
+			return nil
+		},
+	}, "dev", "%3").(model)
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}}
 	m.sessionProjects = map[string]string{"dev": defaultProjectName}
@@ -50,13 +72,41 @@ func TestMenuCtrlFDoesNotCloseMenu(t *testing.T) {
 	m.selectedProject = defaultProjectName
 	m.selectedSession = "dev"
 
-	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyCtrlF})
-	got := updated.(model)
-	if got.exitSession != "" {
-		t.Fatalf("exitSession = %q, want empty", got.exitSession)
+	_, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected switch command")
 	}
-	if cmd != nil {
-		t.Fatal("expected no command")
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("menu action returned error: %v", msg.err)
+	}
+	if got, want := fmt.Sprint(switched), fmt.Sprint([]string{"dev"}); got != want {
+		t.Fatalf("switches = %s, want %s", got, want)
+	}
+	if got, want := fmt.Sprint(closed), fmt.Sprint([]string{"%3"}); got != want {
+		t.Fatalf("closed = %s, want %s", got, want)
+	}
+}
+
+func TestCtrlCClosesMenuPane(t *testing.T) {
+	closed := ""
+	m := newModel(fakeTmuxController{
+		closePane: func(paneID string) error {
+			closed = paneID
+			return nil
+		},
+	}, "", "%3").(model)
+
+	_, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("expected close command")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("close returned error: %v", msg.err)
+	}
+	if closed != "%3" {
+		t.Fatalf("closed = %q, want %%3", closed)
 	}
 }
 
@@ -87,14 +137,7 @@ func TestMoveProjectUsesIncrementalPrefix(t *testing.T) {
 
 func TestDeleteProjectMovesSessionsToDefault(t *testing.T) {
 	tmp := t.TempDir()
-	moved := map[string]string{}
-
-	m := newModel(fakeSessionManager{
-		setProject: func(name, project string) error {
-			moved[name] = project
-			return nil
-		},
-	}, "").(model)
+	m := newModel(fakeTmuxController{}, "", "").(model)
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{defaultProjectName, "small"}
 	m.sessions = []session{{Name: "dev"}}
@@ -115,9 +158,6 @@ func TestDeleteProjectMovesSessionsToDefault(t *testing.T) {
 	}
 	if got.selectedProject != defaultProjectName {
 		t.Fatalf("selectedProject = %q, want %q", got.selectedProject, defaultProjectName)
-	}
-	if moved["dev"] != defaultProjectName {
-		t.Fatalf("session project move = %q, want %q", moved["dev"], defaultProjectName)
 	}
 }
 
@@ -149,14 +189,14 @@ func TestDefaultSessionDirPrefersHome(t *testing.T) {
 	}
 }
 
-func TestCreateSessionUsesSelectedProject(t *testing.T) {
-	var gotProject string
-	m := newModel(fakeSessionManager{
-		createSession: func(name, cwd, project string) (session, error) {
-			gotProject = project
+func TestCreateSessionUsesCurrentDirectory(t *testing.T) {
+	var gotCWD string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd string) (session, error) {
+			gotCWD = cwd
 			return session{Name: name, Windows: 1}, nil
 		},
-	}, "").(model)
+	}, "", "").(model)
 	m.selectedProject = "small"
 	m.mode = inputCreateSession
 	m.input.SetValue("dev")
@@ -169,8 +209,8 @@ func TestCreateSessionUsesSelectedProject(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
 	}
-	if gotProject != "small" {
-		t.Fatalf("project = %q, want %q", gotProject, "small")
+	if gotCWD != m.cwd {
+		t.Fatalf("cwd = %q, want %q", gotCWD, m.cwd)
 	}
 }
 
@@ -188,37 +228,69 @@ func TestProjectNormalizationKeepsDefaultFirst(t *testing.T) {
 	}
 }
 
-type fakeSessionManager struct {
-	listSessions  func() ([]session, error)
-	createSession func(name, cwd, project string) (session, error)
-	killSession   func(name string) error
-	setProject    func(name, project string) error
+type fakeTmuxController struct {
+	listSessions      func() ([]session, error)
+	createSession     func(name, cwd string) (session, error)
+	attachCommand     func(name string) (*exec.Cmd, error)
+	killSession       func(name string) error
+	switchClient      func(name string) error
+	ensureControlMode func(binaryPath string) error
+	toggleMenu        func(binaryPath string) error
+	closePane         func(paneID string) error
 }
 
-func (f fakeSessionManager) ListSessions() ([]session, error) {
+func (f fakeTmuxController) ListSessions() ([]session, error) {
 	if f.listSessions != nil {
 		return f.listSessions()
 	}
 	return nil, nil
 }
 
-func (f fakeSessionManager) CreateSession(name, cwd, project string) (session, error) {
+func (f fakeTmuxController) CreateSession(name, cwd string) (session, error) {
 	if f.createSession != nil {
-		return f.createSession(name, cwd, project)
+		return f.createSession(name, cwd)
 	}
 	return session{Name: name, Windows: 1}, nil
 }
 
-func (f fakeSessionManager) KillSession(name string) error {
+func (f fakeTmuxController) AttachCommand(name string) (*exec.Cmd, error) {
+	if f.attachCommand != nil {
+		return f.attachCommand(name)
+	}
+	return exec.Command("sh", "-lc", ":"), nil
+}
+
+func (f fakeTmuxController) KillSession(name string) error {
 	if f.killSession != nil {
 		return f.killSession(name)
 	}
 	return nil
 }
 
-func (f fakeSessionManager) SetSessionProject(name, project string) error {
-	if f.setProject != nil {
-		return f.setProject(name, project)
+func (f fakeTmuxController) SwitchClient(name string) error {
+	if f.switchClient != nil {
+		return f.switchClient(name)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) EnsureControlMode(binaryPath string) error {
+	if f.ensureControlMode != nil {
+		return f.ensureControlMode(binaryPath)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) ToggleMenu(binaryPath string) error {
+	if f.toggleMenu != nil {
+		return f.toggleMenu(binaryPath)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) ClosePane(paneID string) error {
+	if f.closePane != nil {
+		return f.closePane(paneID)
 	}
 	return nil
 }

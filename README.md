@@ -1,18 +1,17 @@
 # tflow
 
-`tflow` is a minimal terminal session manager built on top of `zellij`.
+`tflow` is a minimal terminal session manager built on top of `tmux`.
 
-It starts by attaching to a `default` zellij session. The session switcher is a separate minimal menu opened with `tflow menu`.
+It starts by attaching to the `default` session on the dedicated `tflow` tmux socket.
 
 ## Behavior
 
-- startup attaches to the `default` session in the `default` project
-- each tflow session is backed by a zellij session
-- the active zellij tab is renamed to the current project
+- startup attaches to the `default` session
+- each tflow session is backed by a tmux session
 - the menu is a tree of projects and sessions
 - projects can be expanded and collapsed
 - sessions can be selected, created, moved, or killed
-- zellij is started with a compact layout and reduced chrome
+- `Ctrl+F` toggles the menu pane in the current tmux window
 
 ## Keys
 
@@ -32,11 +31,11 @@ It starts by attaching to a `default` zellij session. The session switcher is a 
 go run ./cmd/tflow
 ```
 
-Open the switcher from inside or outside zellij with:
+Open the switcher directly with:
 
 ```sh
 go run ./cmd/tflow menu
 ```
 
-When `tflow` starts or attaches a zellij session, it also provisions a zellij keybinding so `Ctrl+F`
-opens the switcher in a floating pane.
+When `tflow` starts or attaches a tmux session, it provisions a `Ctrl+F` binding that toggles the
+menu pane.
