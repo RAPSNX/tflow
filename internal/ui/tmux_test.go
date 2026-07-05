@@ -143,8 +143,41 @@ func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
 	}
 
 	wants := [][]string{
-		{"set-option", "-t", "otter-temp", "destroy-unattached", "on"},
+		{"set-option", "-t", "otter-temp", "destroy-unattached", "off"},
+		{"set-hook", "-t", "otter-temp", "client-attached", "set-option -t 'otter-temp' destroy-unattached on; set-hook -u -t 'otter-temp' client-attached"},
 		{"set-option", "-t", "otter-temp", "@tflow-temp", "1"},
+	}
+	for _, want := range wants {
+		found := false
+		for _, call := range calls {
+			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing call %v in %#v", want, calls)
+		}
+	}
+}
+
+func TestSetSessionTemporaryClearsDeferredCleanupWhenMadePersistent(t *testing.T) {
+	var calls [][]string
+	manager := tmuxSessionManager{
+		run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
+			return "", nil
+		},
+	}
+
+	if err := manager.SetSessionTemporary("otter-temp", false); err != nil {
+		t.Fatalf("SetSessionTemporary returned error: %v", err)
+	}
+
+	wants := [][]string{
+		{"set-option", "-t", "otter-temp", "destroy-unattached", "off"},
+		{"set-hook", "-u", "-t", "otter-temp", "client-attached"},
+		{"set-option", "-t", "otter-temp", "@tflow-temp", "0"},
 	}
 	for _, want := range wants {
 		found := false

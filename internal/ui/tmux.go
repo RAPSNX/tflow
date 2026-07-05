@@ -131,14 +131,24 @@ func (m tmuxSessionManager) CreateSession(name, cwd, command string) (session, e
 }
 
 func (m tmuxSessionManager) SetSessionTemporary(name string, temporary bool) error {
-	value := "off"
 	marker := "0"
 	if temporary {
-		value = "on"
 		marker = "1"
 	}
-	if _, err := m.runner()("set-option", "-t", name, "destroy-unattached", value); err != nil {
+	if _, err := m.runner()("set-option", "-t", name, "destroy-unattached", "off"); err != nil {
 		return err
+	}
+	if temporary {
+		// A detached session would be destroyed immediately with destroy-unattached on,
+		// so defer enabling it until the first client actually attaches.
+		hook := "set-option -t " + shellQuote(name) + " destroy-unattached on; set-hook -u -t " + shellQuote(name) + " client-attached"
+		if _, err := m.runner()("set-hook", "-t", name, "client-attached", hook); err != nil {
+			return err
+		}
+	} else {
+		if _, err := m.runner()("set-hook", "-u", "-t", name, "client-attached"); err != nil {
+			return err
+		}
 	}
 	_, err := m.runner()("set-option", "-t", name, tempMarker, marker)
 	return err
