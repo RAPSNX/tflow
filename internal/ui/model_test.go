@@ -35,8 +35,11 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 
 	var calls []string
 	manager := fakeTmuxController{
-		createSession: func(name, cwd string) (session, error) {
+		createSession: func(name, cwd, command string) (session, error) {
 			calls = append(calls, "create:"+name)
+			if command != "" {
+				t.Fatalf("command = %q, want empty", command)
+			}
 			return session{Name: name}, nil
 		},
 		ensureControlMode: func(binaryPath string) error {
@@ -105,7 +108,12 @@ func TestDDeletesSelectedSession(t *testing.T) {
 	m.selectedProject = defaultProjectName
 	m.selectedSession = "dev"
 
-	_, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	pending := *(updated.(*model))
+	if pending.mode != inputConfirmDelete {
+		t.Fatalf("mode = %v, want inputConfirmDelete", pending.mode)
+	}
+	_, cmd = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("expected kill command")
 	}
@@ -153,6 +161,37 @@ func TestColonEntersCommandMode(t *testing.T) {
 	}
 	if got.input.Prompt != ":" {
 		t.Fatalf("prompt = %q, want :", got.input.Prompt)
+	}
+}
+
+func TestNStartsNewPrefixMode(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "", "").(model)
+
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if got.mode != inputNew {
+		t.Fatalf("mode = %v, want inputNew", got.mode)
+	}
+}
+
+func TestNewPrefixTStartsTerminalCreate(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "", "").(model)
+	m.mode = inputNew
+	m.selectedProject = "small"
+
+	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	got := *(updated.(*model))
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if got.mode != inputCreateSession {
+		t.Fatalf("mode = %v, want inputCreateSession", got.mode)
+	}
+	if got.createSessionKind != sessionKindTerminal {
+		t.Fatalf("createSessionKind = %v", got.createSessionKind)
 	}
 }
 
@@ -396,17 +435,18 @@ func TestMoveProjectUsesIncrementalPrefix(t *testing.T) {
 	m.sessions = []session{{Name: "dev"}}
 	m.projects = []string{defaultProjectName, "small", "storage"}
 	m.sessionProjects = map[string]string{"dev": defaultProjectName}
+	m.projectConfigs = map[string]projectConfig{
+		defaultProjectName: {Name: defaultProjectName},
+		"small":            {Name: "small"},
+		"storage":          {Name: "storage"},
+	}
 	m.expandedProjects = map[string]bool{defaultProjectName: true, "small": true, "storage": true}
 	m.selectedProject = defaultProjectName
 	m.selectedSession = "dev"
 	m.mode = inputMoveProject
 	m.moveQuery = "sm"
 
-	updated, cmd := m.resolveMoveProject()
-	got := updated.(model)
-	if got.mode != inputNone {
-		t.Fatalf("mode = %v, want inputNone", got.mode)
-	}
+	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("expected move command")
 	}
@@ -458,6 +498,29 @@ func TestDeleteProjectRejectsDefault(t *testing.T) {
 	}
 }
 
+func TestProtectedProjectRejectsDelete(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "", "").(model)
+	m.projects = []string{defaultProjectName, "small"}
+	m.projectConfigs = map[string]projectConfig{
+		defaultProjectName: {Name: defaultProjectName},
+		"small":            {Name: "small", Protect: true},
+	}
+	m.expandedProjects = map[string]bool{defaultProjectName: true, "small": true}
+	m.selectedProject = "small"
+
+	updated, cmd := m.beginDelete()
+	got := *(updated.(*model))
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone", got.mode)
+	}
+	if got.status != "Project small is protected." {
+		t.Fatalf("status = %q", got.status)
+	}
+}
+
 func TestDefaultSessionDirPrefersHome(t *testing.T) {
 	oldHome := os.Getenv("HOME")
 	t.Cleanup(func() {
@@ -473,8 +536,11 @@ func TestDefaultSessionDirPrefersHome(t *testing.T) {
 func TestCreateSessionUsesCurrentDirectory(t *testing.T) {
 	var gotCWD string
 	m := newModel(fakeTmuxController{
-		createSession: func(name, cwd string) (session, error) {
+		createSession: func(name, cwd, command string) (session, error) {
 			gotCWD = cwd
+			if command != "" {
+				t.Fatalf("command = %q, want empty", command)
+			}
 			return session{Name: name, Windows: 1}, nil
 		},
 	}, "", "").(model)
@@ -498,13 +564,13 @@ func TestCreateSessionUsesCurrentDirectory(t *testing.T) {
 func TestCreateSessionUsesProjectDirectoryWhenConfigured(t *testing.T) {
 	var gotCWD string
 	m := newModel(fakeTmuxController{
-		createSession: func(name, cwd string) (session, error) {
+		createSession: func(name, cwd, command string) (session, error) {
 			gotCWD = cwd
 			return session{Name: name, Windows: 1}, nil
 		},
 	}, "", "").(model)
 	m.selectedProject = "small"
-	m.projectDirs = map[string]string{"small": "/tmp/project-small"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/tmp/project-small"}}
 	m.mode = inputCreateSession
 	m.input.SetValue("dev")
 
@@ -521,12 +587,108 @@ func TestCreateSessionUsesProjectDirectoryWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestCreateK9sSessionUsesClusterPath(t *testing.T) {
+	var gotCommand string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			gotCommand = command
+			return session{Name: name, Windows: 1}, nil
+		},
+	}, "", "").(model)
+	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{
+		"small": {Name: "small", Cluster: clusterConfig{Path: "/tmp/kubeconfig"}},
+	}
+	m.mode = inputCreateSession
+	m.createSessionKind = sessionKindK9s
+	m.input.SetValue("k9s")
+
+	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected create command")
+	}
+	msg := cmd().(sessionCreatedMsg)
+	if msg.err != nil {
+		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
+	}
+	if gotCommand != "export KUBECONFIG='/tmp/kubeconfig'; exec k9s" {
+		t.Fatalf("command = %q", gotCommand)
+	}
+}
+
+func TestCreateK9sSessionUsesConnectionCommand(t *testing.T) {
+	var gotCommand string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			gotCommand = command
+			return session{Name: name, Windows: 1}, nil
+		},
+	}, "", "").(model)
+	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{
+		"small": {Name: "small", Cluster: clusterConfig{ConnectionCmd: "aws eks update-kubeconfig --name prod"}},
+	}
+	m.mode = inputCreateSession
+	m.createSessionKind = sessionKindK9s
+	m.input.SetValue("k9s")
+
+	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected create command")
+	}
+	msg := cmd().(sessionCreatedMsg)
+	if msg.err != nil {
+		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
+	}
+	if gotCommand != "aws eks update-kubeconfig --name prod && exec k9s" {
+		t.Fatalf("command = %q", gotCommand)
+	}
+}
+
+func TestCreateCodexSessionUsesCodexCommand(t *testing.T) {
+	var gotCommand string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			gotCommand = command
+			return session{Name: name, Windows: 1}, nil
+		},
+	}, "", "").(model)
+	m.selectedProject = "small"
+	m.mode = inputCreateSession
+	m.createSessionKind = sessionKindCodex
+	m.input.SetValue("codex")
+
+	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected create command")
+	}
+	msg := cmd().(sessionCreatedMsg)
+	if msg.err != nil {
+		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
+	}
+	if gotCommand != "exec codex" {
+		t.Fatalf("command = %q", gotCommand)
+	}
+}
+
+func TestProjectEditorCommandSplitsEditorArgs(t *testing.T) {
+	t.Setenv("EDITOR", "code --wait")
+
+	cmd, err := projectEditorCommand("/tmp/project.yaml")
+	if err != nil {
+		t.Fatalf("projectEditorCommand returned error: %v", err)
+	}
+	if got, want := fmt.Sprint(cmd.Args), fmt.Sprint([]string{"code", "--wait", "/tmp/project.yaml"}); got != want {
+		t.Fatalf("args = %s, want %s", got, want)
+	}
+}
+
 func TestSetProjectDirectoryPersistsValue(t *testing.T) {
 	tmp := t.TempDir()
 	m := newModel(fakeTmuxController{}, "", "").(model)
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{defaultProjectName, "small"}
-	m.projectDirs = map[string]string{}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}}
 	m.selectedProject = "small"
 	m.mode = inputSetProjectDir
 	m.input.SetValue("/tmp/small-project")
@@ -536,8 +698,8 @@ func TestSetProjectDirectoryPersistsValue(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected no command")
 	}
-	if got.projectDirs["small"] != "/tmp/small-project" {
-		t.Fatalf("projectDirs[small] = %q, want /tmp/small-project", got.projectDirs["small"])
+	if got.projectConfig("small").Workdir != "/tmp/small-project" {
+		t.Fatalf("workdir = %q, want /tmp/small-project", got.projectConfig("small").Workdir)
 	}
 }
 
@@ -557,7 +719,7 @@ func TestProjectNormalizationKeepsDefaultFirst(t *testing.T) {
 
 type fakeTmuxController struct {
 	listSessions        func() ([]session, error)
-	createSession       func(name, cwd string) (session, error)
+	createSession       func(name, cwd, command string) (session, error)
 	attachCommand       func(name string) (*exec.Cmd, error)
 	killSession         func(name string) error
 	renameSession       func(oldName, newName string) error
@@ -576,9 +738,9 @@ func (f fakeTmuxController) ListSessions() ([]session, error) {
 	return nil, nil
 }
 
-func (f fakeTmuxController) CreateSession(name, cwd string) (session, error) {
+func (f fakeTmuxController) CreateSession(name, cwd, command string) (session, error) {
 	if f.createSession != nil {
-		return f.createSession(name, cwd)
+		return f.createSession(name, cwd, command)
 	}
 	return session{Name: name, Windows: 1}, nil
 }

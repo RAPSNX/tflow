@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,10 +20,12 @@ type inputMode int
 
 const (
 	inputNone inputMode = iota
+	inputNew
 	inputCreateSession
 	inputCreateProject
 	inputMoveProject
 	inputSetProjectDir
+	inputConfirmDelete
 	inputRename
 	inputCommand
 )
@@ -45,8 +48,8 @@ type sessionKilledMsg struct {
 }
 
 type projectCreatedMsg struct {
-	name string
-	err  error
+	config projectConfig
+	err    error
 }
 
 type sessionMovedMsg struct {
@@ -64,6 +67,12 @@ type sessionRenamedMsg struct {
 type projectRenamedMsg struct {
 	oldName string
 	newName string
+	err     error
+}
+
+type projectEditedMsg struct {
+	oldName string
+	config  projectConfig
 	err     error
 }
 
@@ -103,16 +112,18 @@ type model struct {
 	sessions         []session
 	projects         []string
 	sessionProjects  map[string]string
-	projectDirs      map[string]string
+	projectConfigs   map[string]projectConfig
 	expandedProjects map[string]bool
 	selectedProject  string
 	selectedSession  string
 	currentSession   string
 	paneID           string
 
-	input     textinput.Model
-	moveQuery string
-	renameRow treeRow
+	input             textinput.Model
+	moveQuery         string
+	renameRow         treeRow
+	deleteRow         treeRow
+	createSessionKind sessionKind
 
 	cwd       string
 	statePath string
@@ -120,6 +131,14 @@ type model struct {
 	status string
 	err    error
 }
+
+type sessionKind int
+
+const (
+	sessionKindTerminal sessionKind = iota
+	sessionKindK9s
+	sessionKindCodex
+)
 
 func NewMenu() tea.Model {
 	return newModel(newSessionManager(), os.Getenv(menuCurrentEnv), os.Getenv("TMUX_PANE"))
@@ -153,7 +172,7 @@ func OpenMenu() error {
 }
 
 func prepareStartup(manager tmuxController, binaryPath, cwd string) error {
-	if _, err := manager.CreateSession(defaultSessionName, cwd); err != nil {
+	if _, err := manager.CreateSession(defaultSessionName, cwd, ""); err != nil {
 		return err
 	}
 	if err := manager.EnsureControlMode(binaryPath); err != nil {
@@ -191,13 +210,28 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 		}
 	}
 	state = normalizeAppState(state)
+	projectConfigs, configErr := loadProjectConfigs(statePath, state)
+	if configErr != nil {
+		projectConfigs = map[string]projectConfig{
+			defaultProjectName: defaultProjectConfig(),
+		}
+		if err == nil {
+			err = configErr
+		}
+	}
+	for name := range projectConfigs {
+		if !containsString(state.Projects, name) {
+			state.Projects = append(state.Projects, name)
+		}
+	}
+	state = normalizeAppState(state)
 
 	return model{
 		tmux:             manager,
 		mode:             inputNone,
 		projects:         state.Projects,
 		sessionProjects:  state.SessionProjects,
-		projectDirs:      state.ProjectDirs,
+		projectConfigs:   projectConfigs,
 		expandedProjects: state.ExpandedProjects,
 		selectedProject:  defaultProjectName,
 		currentSession:   current,
@@ -285,9 +319,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
-		m.addProject(msg.name)
-		m.expandedProjects[msg.name] = true
-		m.selectedProject = msg.name
+		msg.config = normalizeProjectConfig(msg.config)
+		m.addProject(msg.config.Name)
+		m.setProjectConfig(msg.config)
+		m.expandedProjects[msg.config.Name] = true
+		m.selectedProject = msg.config.Name
 		m.selectedSession = ""
 		m.mode = inputNone
 		if err := m.saveState(); err != nil {
@@ -362,14 +398,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.sessionProjects[name] = msg.newName
 			}
 		}
-		if dir, ok := m.projectDirs[msg.oldName]; ok {
-			delete(m.projectDirs, msg.oldName)
-			m.projectDirs[msg.newName] = dir
-		}
+		cfg := m.projectConfig(msg.oldName)
+		delete(m.projectConfigs, msg.oldName)
+		cfg.Name = msg.newName
+		m.setProjectConfig(cfg)
 		m.projects = replaceProject(m.projects, msg.oldName, msg.newName)
 		expanded := m.expandedProjects[msg.oldName]
 		delete(m.expandedProjects, msg.oldName)
 		m.expandedProjects[msg.newName] = expanded
+		if err := removeProjectConfigFile(m.statePath, msg.oldName); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
 		if m.selectedProject == msg.oldName {
 			m.selectedProject = msg.newName
 		}
@@ -389,6 +430,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.status = ""
 		return m, nil
+	case projectEditedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.status = msg.err.Error()
+			return m, nil
+		}
+		return m.applyProjectEdit(msg.oldName, msg.config)
 	case menuActionMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -450,18 +498,8 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.switchSelectedSession()
 	case "n":
-		m.mode = inputCreateSession
-		m.input.Prompt = "session: "
-		m.input.SetValue("")
-		m.input.Focus()
-		m.status = fmt.Sprintf("Create a new session in %s.", m.contextProject())
-		return m, nil
-	case "p":
-		m.mode = inputCreateProject
-		m.input.Prompt = "project: "
-		m.input.SetValue("")
-		m.input.Focus()
-		m.status = "Create a new project."
+		m.mode = inputNew
+		m.status = "New: np project, nt terminal, nk k9s, nc codex."
 		return m, nil
 	case "c":
 		m.mode = inputSetProjectDir
@@ -477,12 +515,14 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.mode = inputMoveProject
 		m.moveQuery = ""
-		m.status = "Type a project prefix to move the selected session."
+		m.status = "Move: type project prefix."
 		return m, nil
 	case "d":
-		return m.deleteSelection()
+		return m.beginDelete()
 	case "r":
 		return m.beginRename()
+	case "e":
+		return m.editProject()
 	}
 
 	return m, nil
@@ -490,6 +530,8 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.mode {
+	case inputNew:
+		return m.updateNew(msg)
 	case inputCreateSession:
 		switch msg.Type {
 		case tea.KeyEsc:
@@ -504,11 +546,17 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = "Session name is empty."
 				return m, nil
 			}
+			command, err := m.sessionStartupCommand(m.createSessionKind)
+			if err != nil {
+				m.err = err
+				m.status = err.Error()
+				return m, nil
+			}
 			m.mode = inputNone
 			m.input.Blur()
 			m.input.Prompt = ""
 			return m, func() tea.Msg {
-				s, err := m.tmux.CreateSession(name, m.createSessionDir())
+				s, err := m.tmux.CreateSession(name, m.createSessionDir(), command)
 				if err != nil {
 					return sessionCreatedMsg{err: err}
 				}
@@ -532,11 +580,15 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = "Project name is empty."
 				return m, nil
 			}
+			if containsString(m.projects, name) {
+				m.status = "Project already exists."
+				return m, nil
+			}
 			m.mode = inputNone
 			m.input.Blur()
 			m.input.Prompt = ""
 			return m, func() tea.Msg {
-				return projectCreatedMsg{name: name}
+				return projectCreatedMsg{config: projectConfig{Name: name}}
 			}
 		}
 		next, cmd := m.input.Update(msg)
@@ -553,7 +605,8 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.moveQuery != "" {
 				m.moveQuery = m.moveQuery[:len(m.moveQuery)-1]
 			}
-			return m.resolveMoveProject()
+			m.updateMoveStatus()
+			return m, nil
 		case tea.KeyEnter:
 			return m.commitMoveProject()
 		}
@@ -561,7 +614,14 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			r := []rune(msg.String())[0]
 			if unicode.IsLetter(r) || unicode.IsDigit(r) {
 				m.moveQuery += strings.ToLower(string(r))
-				return m.resolveMoveProject()
+				if project, ok := m.singleMatchingProject(); ok {
+					return m, func() tea.Msg {
+						s, _ := m.selectedSessionInfo()
+						return sessionMovedMsg{session: s.Name, project: project}
+					}
+				}
+				m.updateMoveStatus()
+				return m, nil
 			}
 		}
 	case inputSetProjectDir:
@@ -578,6 +638,20 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		next, cmd := m.input.Update(msg)
 		m.input = next
 		return m, cmd
+	case inputConfirmDelete:
+		switch msg.Type {
+		case tea.KeyEsc:
+			m.mode = inputNone
+			m.deleteRow = treeRow{}
+			m.status = "Delete cancelled."
+			return m, nil
+		case tea.KeyEnter:
+			return m.confirmDelete()
+		}
+		switch msg.String() {
+		case "d", "y":
+			return m.confirmDelete()
+		}
 	case inputCommand:
 		switch msg.Type {
 		case tea.KeyEsc:
@@ -618,20 +692,52 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) updateNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.mode = inputNone
+		m.status = "New cancelled."
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "p":
+		m.mode = inputCreateProject
+		m.input.Prompt = "project: "
+		m.input.SetValue("")
+		m.input.Focus()
+		m.status = "Create a new project."
+		return m, nil
+	case "t":
+		return m.startSessionCreate(sessionKindTerminal)
+	case "k":
+		return m.startSessionCreate(sessionKindK9s)
+	case "c":
+		return m.startSessionCreate(sessionKindCodex)
+	default:
+		m.status = "New: use np, nt, nk, or nc."
+		return m, nil
+	}
+}
+
 func (m model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
 	}
 
 	switch m.mode {
+	case inputNew:
+		return appStyle.Width(m.width).Height(m.height).Render(m.renderMenu())
 	case inputCreateSession:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Session"))
 	case inputCreateProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Project"))
 	case inputMoveProject:
-		return appStyle.Width(m.width).Height(m.height).Render(m.renderMoveOverlay())
+		return appStyle.Width(m.width).Height(m.height).Render(m.renderMenu())
 	case inputSetProjectDir:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderProjectDirOverlay())
+	case inputConfirmDelete:
+		return appStyle.Width(m.width).Height(m.height).Render(m.renderDeleteOverlay())
 	case inputRename:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderRenameOverlay())
 	default:
@@ -679,7 +785,10 @@ func (m model) rowLabel(row treeRow) string {
 }
 
 func (m model) renderHeader(width int) string {
-	return headerStyle.Width(width).Render(lipgloss.PlaceHorizontal(width, lipgloss.Center, brandBadgeStyle.Render("TFLOW")))
+	left := brandBadgeStyle.Render("TFLOW")
+	right := mutedStyle.Render(fmt.Sprintf("%d projects  %d sections", len(m.projects), len(m.sessions)))
+	gap := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
+	return headerStyle.Width(width).Render(left + strings.Repeat(" ", gap) + right)
 }
 
 func (m model) renderTreePanel(width int) string {
@@ -705,7 +814,7 @@ func (m model) renderProjectRow(row treeRow, selected bool) string {
 	if !m.expandedProjects[row.project] {
 		toggle = "[+]"
 	}
-	return m.renderLabeledRow(fmt.Sprintf("%s %s", toggle, row.project), "", selected, true, row.project)
+	return m.renderLabeledRow(fmt.Sprintf("%s %s", toggle, m.projectLabel(row.project)), "", selected, true, row.project)
 }
 
 func (m model) renderSessionRow(row treeRow, selected bool) string {
@@ -742,6 +851,12 @@ func (m model) renderInlineRow(content string, selected, project bool, projectNa
 
 func (m model) renderFooter(width int) string {
 	lines := []string{}
+	if m.mode == inputNew {
+		lines = append(lines, hintStyle.Render("new: [p] project  [t] terminal  [k] k9s  [c] codex  [esc] cancel"))
+	}
+	if m.mode == inputMoveProject {
+		lines = append(lines, hintStyle.Render("move: type a project prefix and the matching initials stay highlighted"))
+	}
 	if m.mode == inputCommand {
 		lines = append(lines, inputStyle.Render(m.input.View()), hintStyle.Render("Enter runs. Esc cancels."))
 	}
@@ -767,6 +882,24 @@ func (m model) renderInputOverlay(title string) string {
 		hintStyle.Render("Enter saves. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(36, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m model) renderDeleteOverlay() string {
+	target := "selection"
+	switch m.deleteRow.kind {
+	case rowProject:
+		target = "project " + m.deleteRow.project
+	case rowSession:
+		target = "section " + m.deleteRow.session
+	}
+	lines := []string{
+		titleStyle.Render("Confirm Delete"),
+		mutedStyle.Render("Delete " + target + "?"),
+		"",
+		hintStyle.Render("Enter, d, or y confirms. Esc cancels."),
+	}
+	box := overlayStyle.Width(max(24, min(42, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 
@@ -856,12 +989,35 @@ func (m model) killSelectedSession() (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m model) deleteSelection() (tea.Model, tea.Cmd) {
+func (m *model) beginDelete() (tea.Model, tea.Cmd) {
 	row, ok := m.selectedRow()
 	if !ok {
 		m.status = "Select a project or section to delete."
 		return m, nil
 	}
+	project := row.project
+	if row.kind == rowProject {
+		project = row.project
+	}
+	if m.projectConfig(project).Protect {
+		m.status = fmt.Sprintf("Project %s is protected.", project)
+		return m, nil
+	}
+	m.mode = inputConfirmDelete
+	m.deleteRow = row
+	switch row.kind {
+	case rowProject:
+		m.status = fmt.Sprintf("Confirm delete for project %s.", row.project)
+	case rowSession:
+		m.status = fmt.Sprintf("Confirm delete for section %s.", row.session)
+	}
+	return m, nil
+}
+
+func (m model) confirmDelete() (tea.Model, tea.Cmd) {
+	row := m.deleteRow
+	m.mode = inputNone
+	m.deleteRow = treeRow{}
 	if row.kind == rowSession {
 		return m.killSelectedSession()
 	}
@@ -980,11 +1136,16 @@ func (m model) deleteSelectedProject() (tea.Model, tea.Cmd) {
 		m.assignSessionProject(s.Name, defaultProjectName)
 	}
 	m.projects = removeProject(m.projects, project)
-	delete(m.projectDirs, project)
+	delete(m.projectConfigs, project)
 	delete(m.expandedProjects, project)
 	if m.selectedProject == project {
 		m.selectedProject = defaultProjectName
 		m.selectedSession = ""
+	}
+	if err := removeProjectConfigFile(m.statePath, project); err != nil {
+		m.err = err
+		m.status = err.Error()
+		return m, nil
 	}
 	if err := m.saveState(); err != nil {
 		m.err = err
@@ -1005,17 +1166,16 @@ func (m model) deleteSelectedProject() (tea.Model, tea.Cmd) {
 func (m *model) commitProjectDir() (tea.Model, tea.Cmd) {
 	project := m.contextProject()
 	dir := strings.TrimSpace(m.input.Value())
-	if m.projectDirs == nil {
-		m.projectDirs = map[string]string{}
-	}
+	cfg := m.projectConfig(project)
 	m.mode = inputNone
 	m.input.Blur()
 	m.input.Prompt = ""
 	if dir == "" {
-		delete(m.projectDirs, project)
+		cfg.Workdir = ""
 	} else {
-		m.projectDirs[project] = normalizeCWD(dir)
+		cfg.Workdir = normalizeCWD(dir)
 	}
+	m.setProjectConfig(cfg)
 	if err := m.saveState(); err != nil {
 		m.err = err
 		m.status = err.Error()
@@ -1037,27 +1197,6 @@ func (m model) commitMoveProject() (tea.Model, tea.Cmd) {
 	project, ok := m.singleMatchingProject()
 	if !ok {
 		m.status = "No unique project match."
-		return m, nil
-	}
-	m.mode = inputNone
-	return m, func() tea.Msg {
-		return sessionMovedMsg{session: s.Name, project: project}
-	}
-}
-
-func (m model) resolveMoveProject() (tea.Model, tea.Cmd) {
-	s, ok := m.selectedSessionInfo()
-	if !ok {
-		m.status = "No session selected."
-		return m, nil
-	}
-	project, ok := m.singleMatchingProject()
-	if !ok {
-		if m.moveQuery == "" {
-			m.status = "Type a project prefix."
-			return m, nil
-		}
-		m.status = fmt.Sprintf("Matching projects: %s", strings.Join(m.matchingProjects(m.moveQuery), ", "))
 		return m, nil
 	}
 	m.mode = inputNone
@@ -1289,6 +1428,9 @@ func (m *model) assignSessionProject(name, project string) {
 	}
 	m.sessionProjects[name] = project
 	m.addProject(project)
+	if _, ok := m.projectConfigs[project]; !ok {
+		m.setProjectConfig(projectConfig{Name: project})
+	}
 }
 
 func (m *model) addProject(name string) {
@@ -1367,9 +1509,9 @@ func (m model) saveState() error {
 	for name, project := range m.sessionProjects {
 		state.SessionProjects[name] = normalizeProjectName(project)
 	}
-	for project, dir := range m.projectDirs {
+	for project, cfg := range m.projectConfigs {
 		project = normalizeProjectName(project)
-		dir = strings.TrimSpace(dir)
+		dir := strings.TrimSpace(cfg.Workdir)
 		if project == "" || dir == "" {
 			continue
 		}
@@ -1386,7 +1528,10 @@ func (m model) saveState() error {
 	if err := os.MkdirAll(filepath.Dir(m.statePath), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(m.statePath, data, 0o644)
+	if err := os.WriteFile(m.statePath, data, 0o644); err != nil {
+		return err
+	}
+	return saveProjectConfigs(m.statePath, m.projectConfigs)
 }
 
 func ensureDefaultStartupState() error {
@@ -1624,12 +1769,30 @@ func (m model) syncTmuxSessionProjects() error {
 	return m.tmux.SyncSessionProjects(sessionProjects)
 }
 
-func (m model) projectDir(project string) string {
+func (m model) projectConfig(project string) projectConfig {
 	project = normalizeProjectName(project)
 	if project == "" {
 		project = defaultProjectName
 	}
-	return strings.TrimSpace(m.projectDirs[project])
+	if cfg, ok := m.projectConfigs[project]; ok {
+		return normalizeProjectConfig(cfg)
+	}
+	return projectConfig{Name: project}
+}
+
+func (m *model) setProjectConfig(cfg projectConfig) {
+	cfg = normalizeProjectConfig(cfg)
+	if cfg.Name == "" {
+		return
+	}
+	if m.projectConfigs == nil {
+		m.projectConfigs = map[string]projectConfig{}
+	}
+	m.projectConfigs[cfg.Name] = cfg
+}
+
+func (m model) projectDir(project string) string {
+	return strings.TrimSpace(m.projectConfig(project).Workdir)
 }
 
 func (m model) createSessionDir() string {
@@ -1637,6 +1800,189 @@ func (m model) createSessionDir() string {
 		return dir
 	}
 	return m.cwd
+}
+
+func (m *model) startSessionCreate(kind sessionKind) (tea.Model, tea.Cmd) {
+	m.mode = inputCreateSession
+	m.createSessionKind = kind
+	m.input.Prompt = "section: "
+	switch kind {
+	case sessionKindK9s:
+		m.input.SetValue("k9s")
+		m.status = fmt.Sprintf("Create a new k9s section in %s.", m.contextProject())
+	case sessionKindCodex:
+		m.input.SetValue("codex")
+		m.status = fmt.Sprintf("Create a new codex section in %s.", m.contextProject())
+	default:
+		m.input.SetValue("")
+		m.status = fmt.Sprintf("Create a new terminal section in %s.", m.contextProject())
+	}
+	m.input.Focus()
+	m.input.CursorEnd()
+	return m, nil
+}
+
+func (m model) sessionStartupCommand(kind sessionKind) (string, error) {
+	cfg := m.projectConfig(m.contextProject())
+	switch kind {
+	case sessionKindTerminal:
+		return "", nil
+	case sessionKindK9s:
+		if cfg.Cluster.Path != "" {
+			return "export KUBECONFIG=" + shellQuote(cfg.Cluster.Path) + "; exec k9s", nil
+		}
+		if cfg.Cluster.ConnectionCmd != "" {
+			return cfg.Cluster.ConnectionCmd + " && exec k9s", nil
+		}
+		return "", fmt.Errorf("project %s has no cluster configured", cfg.Name)
+	case sessionKindCodex:
+		return "exec codex", nil
+	default:
+		return "", nil
+	}
+}
+
+func (m *model) updateMoveStatus() {
+	matches := m.matchingProjects(m.moveQuery)
+	switch {
+	case m.moveQuery == "":
+		m.status = "Move: type project prefix."
+	case len(matches) == 0:
+		m.status = "Move: no matching project."
+	default:
+		m.status = "Move matches: " + strings.Join(matches, ", ")
+	}
+}
+
+func (m model) projectLabel(project string) string {
+	project = normalizeProjectName(project)
+	if m.mode != inputMoveProject {
+		return project
+	}
+	if m.moveQuery == "" {
+		return project
+	}
+	if !strings.HasPrefix(project, m.moveQuery) {
+		return project
+	}
+	prefix := lipgloss.NewStyle().Bold(true).Foreground(yellowColor).Render(project[:len(m.moveQuery)])
+	return prefix + project[len(m.moveQuery):]
+}
+
+func (m model) editProject() (tea.Model, tea.Cmd) {
+	project := m.contextProject()
+	cfg := m.projectConfig(project)
+	path, err := writeProjectEditFile(cfg)
+	if err != nil {
+		m.err = err
+		m.status = err.Error()
+		return m, nil
+	}
+	cmd, err := projectEditorCommand(path)
+	if err != nil {
+		_ = os.Remove(path)
+		m.err = err
+		m.status = err.Error()
+		return m, nil
+	}
+	return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
+		defer os.Remove(path)
+		if err != nil {
+			return projectEditedMsg{oldName: project, err: err}
+		}
+		edited, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return projectEditedMsg{oldName: project, err: readErr}
+		}
+		parsed, parseErr := parseProjectConfig(edited)
+		if parseErr != nil {
+			return projectEditedMsg{oldName: project, err: parseErr}
+		}
+		return projectEditedMsg{oldName: project, config: parsed}
+	})
+}
+
+func writeProjectEditFile(cfg projectConfig) (string, error) {
+	file, err := os.CreateTemp("", "tflow-project-*.yaml")
+	if err != nil {
+		return "", err
+	}
+	path := file.Name()
+	if _, err := file.Write(marshalProjectConfig(cfg)); err != nil {
+		file.Close()
+		_ = os.Remove(path)
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	return path, nil
+}
+
+func projectEditorCommand(path string) (*exec.Cmd, error) {
+	editor := strings.TrimSpace(os.Getenv("EDITOR"))
+	if editor == "" {
+		editor = "vi"
+	}
+	args := strings.Fields(editor)
+	if len(args) == 0 {
+		return nil, fmt.Errorf("EDITOR is empty")
+	}
+	args = append(args, path)
+	return exec.Command(args[0], args[1:]...), nil
+}
+
+func (m model) applyProjectEdit(oldName string, cfg projectConfig) (tea.Model, tea.Cmd) {
+	cfg = normalizeProjectConfig(cfg)
+	if cfg.Name == "" {
+		m.err = fmt.Errorf("project name is empty")
+		m.status = "Project name is empty."
+		return m, nil
+	}
+	if oldName == defaultProjectName && cfg.Name != defaultProjectName {
+		m.err = fmt.Errorf("cannot rename default project")
+		m.status = "The default project cannot be renamed."
+		return m, nil
+	}
+	if oldName != cfg.Name && containsString(m.projects, cfg.Name) {
+		m.err = fmt.Errorf("project already exists")
+		m.status = "Project already exists."
+		return m, nil
+	}
+	if oldName != cfg.Name {
+		for name, project := range m.sessionProjects {
+			if normalizeProjectName(project) == oldName {
+				m.sessionProjects[name] = cfg.Name
+			}
+		}
+		m.projects = replaceProject(m.projects, oldName, cfg.Name)
+		delete(m.projectConfigs, oldName)
+		delete(m.expandedProjects, oldName)
+		m.expandedProjects[cfg.Name] = true
+		if m.selectedProject == oldName {
+			m.selectedProject = cfg.Name
+		}
+		if err := removeProjectConfigFile(m.statePath, oldName); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
+	}
+	m.setProjectConfig(cfg)
+	if err := m.saveState(); err != nil {
+		m.err = err
+		m.status = err.Error()
+		return m, nil
+	}
+	if err := m.syncTmuxSessionProjects(); err != nil {
+		m.err = err
+		m.status = err.Error()
+		return m, nil
+	}
+	m.err = nil
+	m.status = ""
+	return m, nil
 }
 
 func (m model) executeCommand(command string) (tea.Model, tea.Cmd) {
