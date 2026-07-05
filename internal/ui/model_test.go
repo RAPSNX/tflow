@@ -87,8 +87,14 @@ func TestMoveProjectUsesIncrementalPrefix(t *testing.T) {
 
 func TestDeleteProjectMovesSessionsToDefault(t *testing.T) {
 	tmp := t.TempDir()
+	moved := map[string]string{}
 
-	m := NewMenu().(model)
+	m := newModel(fakeSessionManager{
+		setProject: func(name, project string) error {
+			moved[name] = project
+			return nil
+		},
+	}, "").(model)
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{defaultProjectName, "small"}
 	m.sessions = []session{{Name: "dev"}}
@@ -109,6 +115,9 @@ func TestDeleteProjectMovesSessionsToDefault(t *testing.T) {
 	}
 	if got.selectedProject != defaultProjectName {
 		t.Fatalf("selectedProject = %q, want %q", got.selectedProject, defaultProjectName)
+	}
+	if moved["dev"] != defaultProjectName {
+		t.Fatalf("session project move = %q, want %q", moved["dev"], defaultProjectName)
 	}
 }
 
@@ -140,6 +149,31 @@ func TestDefaultSessionDirPrefersHome(t *testing.T) {
 	}
 }
 
+func TestCreateSessionUsesSelectedProject(t *testing.T) {
+	var gotProject string
+	m := newModel(fakeSessionManager{
+		createSession: func(name, cwd, project string) (session, error) {
+			gotProject = project
+			return session{Name: name, Windows: 1}, nil
+		},
+	}, "").(model)
+	m.selectedProject = "small"
+	m.mode = inputCreateSession
+	m.input.SetValue("dev")
+
+	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected create command")
+	}
+	msg := cmd().(sessionCreatedMsg)
+	if msg.err != nil {
+		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
+	}
+	if gotProject != "small" {
+		t.Fatalf("project = %q, want %q", gotProject, "small")
+	}
+}
+
 func TestSanitizeSessionName(t *testing.T) {
 	if got, want := sanitizeSessionName(" Prod/Main 01 "), "prod-main-01"; got != want {
 		t.Fatalf("sanitizeSessionName = %q, want %q", got, want)
@@ -156,8 +190,9 @@ func TestProjectNormalizationKeepsDefaultFirst(t *testing.T) {
 
 type fakeSessionManager struct {
 	listSessions  func() ([]session, error)
-	createSession func(name, cwd string) (session, error)
+	createSession func(name, cwd, project string) (session, error)
 	killSession   func(name string) error
+	setProject    func(name, project string) error
 }
 
 func (f fakeSessionManager) ListSessions() ([]session, error) {
@@ -167,9 +202,9 @@ func (f fakeSessionManager) ListSessions() ([]session, error) {
 	return nil, nil
 }
 
-func (f fakeSessionManager) CreateSession(name, cwd string) (session, error) {
+func (f fakeSessionManager) CreateSession(name, cwd, project string) (session, error) {
 	if f.createSession != nil {
-		return f.createSession(name, cwd)
+		return f.createSession(name, cwd, project)
 	}
 	return session{Name: name, Windows: 1}, nil
 }
@@ -177,6 +212,13 @@ func (f fakeSessionManager) CreateSession(name, cwd string) (session, error) {
 func (f fakeSessionManager) KillSession(name string) error {
 	if f.killSession != nil {
 		return f.killSession(name)
+	}
+	return nil
+}
+
+func (f fakeSessionManager) SetSessionProject(name, project string) error {
+	if f.setProject != nil {
+		return f.setProject(name, project)
 	}
 	return nil
 }

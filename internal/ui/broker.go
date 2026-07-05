@@ -2,22 +2,23 @@ package ui
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
-	"sync"
+	"time"
 	"unicode"
-
-	"github.com/creack/pty"
-	"golang.org/x/term"
 )
 
-const defaultSessionName = "default"
-const maxSessionHistoryBytes = 512 * 1024
+const (
+	defaultSessionName  = "default"
+	zellijDefaultLayout = "compact"
+	zellijSetupWait     = 2 * time.Second
+)
 
 type session struct {
 	Name     string
@@ -27,25 +28,16 @@ type session struct {
 
 type sessionManager interface {
 	ListSessions() ([]session, error)
-	CreateSession(name, cwd string) (session, error)
+	CreateSession(name, cwd, project string) (session, error)
 	KillSession(name string) error
+	SetSessionProject(name, project string) error
 }
 
-type sessionBroker struct {
-	mu       sync.Mutex
-	sessions map[string]*sessionProcess
-}
+type sessionBroker struct{}
 
-type sessionProcess struct {
-	name     string
-	cwd      string
-	cmd      *exec.Cmd
-	master   *os.File
-	buf      bytes.Buffer
-	history  bytes.Buffer
-	cond     *sync.Cond
-	attached bool
-	closed   bool
+type zellijTab struct {
+	Name  string `json:"name"`
+	TabID int    `json:"tab_id"`
 }
 
 func newSessionManager() sessionManager {
@@ -53,36 +45,217 @@ func newSessionManager() sessionManager {
 }
 
 func newSessionBroker() *sessionBroker {
-	return &sessionBroker{sessions: map[string]*sessionProcess{}}
+	return &sessionBroker{}
 }
 
 func (b *sessionBroker) ListSessions() ([]session, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	names := make([]string, 0, len(b.sessions))
-	for name := range b.sessions {
-		names = append(names, name)
+	output, err := runZellijOutput("list-sessions", "--short", "--no-formatting")
+	if err != nil {
+		if strings.Contains(output, "No active zellij sessions found.") {
+			return nil, nil
+		}
+		return nil, commandError(err, output)
 	}
-	sort.Strings(names)
 
-	result := make([]session, 0, len(names))
+	current := currentZellijSession()
+	names := parseSessionNames(output)
+	sessions := make([]session, 0, len(names))
 	for _, name := range names {
-		proc := b.sessions[name]
-		result = append(result, session{
-			Name:     proc.name,
+		sessions = append(sessions, session{
+			Name:     name,
 			Windows:  1,
-			Attached: proc.attached,
+			Attached: name == current,
 		})
 	}
-	return result, nil
+	return sessions, nil
 }
 
-func (b *sessionBroker) CreateSession(name, cwd string) (session, error) {
+func (b *sessionBroker) CreateSession(name, cwd, project string) (session, error) {
 	name = sanitizeSessionName(name)
 	if name == "" {
 		return session{}, fmt.Errorf("session name is empty")
 	}
+	project = normalizeProjectName(project)
+	if project == "" {
+		project = defaultProjectName
+	}
+	cwd = normalizeCWD(cwd)
+
+	sessions, err := b.ListSessions()
+	if err != nil {
+		return session{}, err
+	}
+	for _, existing := range sessions {
+		if existing.Name == name {
+			if err := b.SetSessionProject(name, project); err != nil {
+				return session{}, err
+			}
+			existing.Attached = existing.Name == currentZellijSession()
+			return existing, nil
+		}
+	}
+
+	args := []string{
+		"attach", "-b", "-c", name, "options",
+		"--default-cwd", cwd,
+		"--default-layout", zellijDefaultLayout,
+		"--pane-frames", "false",
+		"--show-startup-tips", "false",
+		"--show-release-notes", "false",
+		"--simplified-ui", "true",
+		"--mouse-mode", "false",
+	}
+	if output, err := runZellijOutput(args...); err != nil {
+		return session{}, commandError(err, output)
+	}
+	if err := waitForSession(name, zellijSetupWait); err != nil {
+		return session{}, err
+	}
+	if err := b.SetSessionProject(name, project); err != nil {
+		return session{}, err
+	}
+	return session{Name: name, Windows: 1, Attached: name == currentZellijSession()}, nil
+}
+
+func (b *sessionBroker) KillSession(name string) error {
+	name = sanitizeSessionName(name)
+	if name == "" {
+		return nil
+	}
+	output, err := runZellijOutput("kill-session", name)
+	if err != nil {
+		if strings.Contains(output, "No session named") {
+			return nil
+		}
+		return commandError(err, output)
+	}
+	return nil
+}
+
+func (b *sessionBroker) SetSessionProject(name, project string) error {
+	name = sanitizeSessionName(name)
+	project = normalizeProjectName(project)
+	if name == "" {
+		return fmt.Errorf("session name is empty")
+	}
+	if project == "" {
+		project = defaultProjectName
+	}
+
+	tabs, err := listSessionTabs(name)
+	if err != nil {
+		return err
+	}
+	if len(tabs) == 0 {
+		return fmt.Errorf("session %q has no tabs", name)
+	}
+	if tabs[0].Name == project {
+		return nil
+	}
+
+	output, err := runZellijOutput("--session", name, "action", "rename-tab-by-id", fmt.Sprint(tabs[0].TabID), project)
+	if err != nil {
+		return commandError(err, output)
+	}
+	return nil
+}
+
+func (b *sessionBroker) AttachSession(name, cwd string) error {
+	name = sanitizeSessionName(name)
+	if name == "" {
+		return fmt.Errorf("session name is empty")
+	}
+	cwd = normalizeCWD(cwd)
+
+	if currentZellijSession() != "" {
+		if currentZellijSession() == name {
+			return nil
+		}
+		return runInteractiveZellij(
+			"action", "switch-session", name,
+			"--cwd", cwd,
+		)
+	}
+
+	return runInteractiveZellij(
+		"attach", name, "options",
+		"--default-cwd", cwd,
+		"--default-layout", zellijDefaultLayout,
+		"--pane-frames", "false",
+		"--show-startup-tips", "false",
+		"--show-release-notes", "false",
+		"--simplified-ui", "true",
+		"--mouse-mode", "false",
+	)
+}
+
+func Start() error {
+	broker := newSessionBroker()
+	if _, err := broker.CreateSession(defaultSessionName, defaultSessionDir(), defaultProjectName); err != nil {
+		return err
+	}
+	if err := ensureDefaultStartupState(); err != nil {
+		return err
+	}
+	return broker.AttachSession(defaultSessionName, defaultSessionDir())
+}
+
+func RunMenu(current string) (string, error) {
+	return runMenu(newSessionManager(), current)
+}
+
+func OpenMenu() error {
+	current := currentZellijSession()
+	selected, err := RunMenu(current)
+	if err != nil {
+		return err
+	}
+	if selected == "" {
+		return nil
+	}
+
+	broker := newSessionBroker()
+	return broker.AttachSession(selected, defaultSessionDir())
+}
+
+func defaultSessionDir() string {
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return home
+	}
+	if cwd, err := os.Getwd(); err == nil && strings.TrimSpace(cwd) != "" {
+		return cwd
+	}
+	return "."
+}
+
+func listSessionTabs(name string) ([]zellijTab, error) {
+	output, err := runZellijOutput("--session", name, "action", "list-tabs", "--json")
+	if err != nil {
+		return nil, commandError(err, output)
+	}
+	var tabs []zellijTab
+	if err := json.Unmarshal([]byte(output), &tabs); err != nil {
+		return nil, err
+	}
+	slices.SortFunc(tabs, func(a, b zellijTab) int {
+		return a.TabID - b.TabID
+	})
+	return tabs, nil
+}
+
+func waitForSession(name string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		tabs, err := listSessionTabs(name)
+		if err == nil && len(tabs) > 0 {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("session %q did not become ready", name)
+}
+
+func normalizeCWD(cwd string) string {
 	if strings.TrimSpace(cwd) == "" {
 		if wd, err := os.Getwd(); err == nil {
 			cwd = wd
@@ -91,283 +264,76 @@ func (b *sessionBroker) CreateSession(name, cwd string) (session, error) {
 	if strings.TrimSpace(cwd) == "" {
 		cwd = "."
 	}
-	absCwd, err := filepath.Abs(cwd)
+	if abs, err := filepath.Abs(cwd); err == nil {
+		return abs
+	}
+	return cwd
+}
+
+func currentZellijSession() string {
+	for _, key := range []string{"ZELLIJ_SESSION_NAME", "ZELLIJ_SESSION"} {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return sanitizeSessionName(value)
+		}
+	}
+	return ""
+}
+
+func runZellijOutput(args ...string) (string, error) {
+	cmd := exec.Command("zellij", args...)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	output := strings.TrimSpace(stdout.String())
+	if stderr.Len() > 0 {
+		if output != "" {
+			output += "\n"
+		}
+		output += strings.TrimSpace(stderr.String())
+	}
+	return output, err
+}
+
+func runInteractiveZellij(args ...string) error {
+	cmd := exec.Command("zellij", args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func commandError(err error, output string) error {
 	if err == nil {
-		cwd = absCwd
-	}
-
-	b.mu.Lock()
-	if proc, ok := b.sessions[name]; ok && !proc.closed {
-		b.mu.Unlock()
-		return session{Name: name, Windows: 1, Attached: proc.attached}, nil
-	}
-	b.mu.Unlock()
-
-	proc, err := startSessionProcess(name, cwd)
-	if err != nil {
-		return session{}, err
-	}
-
-	b.mu.Lock()
-	b.sessions[name] = proc
-	b.mu.Unlock()
-
-	return session{Name: name, Windows: 1}, nil
-}
-
-func (b *sessionBroker) KillSession(name string) error {
-	name = sanitizeSessionName(name)
-	if name == "" {
 		return nil
 	}
-
-	b.mu.Lock()
-	proc, ok := b.sessions[name]
-	if ok {
-		delete(b.sessions, name)
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && strings.TrimSpace(output) != "" {
+		return fmt.Errorf("%s", strings.TrimSpace(output))
 	}
-	b.mu.Unlock()
-	if !ok {
-		return nil
+	if strings.TrimSpace(output) != "" {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
 	}
-	proc.close()
-	return nil
+	return err
 }
 
-func (b *sessionBroker) getSession(name string) (*sessionProcess, bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	proc, ok := b.sessions[sanitizeSessionName(name)]
-	if !ok || proc.closed {
-		return nil, false
-	}
-	return proc, true
-}
-
-func (b *sessionBroker) ensureSession(name, cwd string) (*sessionProcess, error) {
-	if proc, ok := b.getSession(name); ok {
-		return proc, nil
-	}
-	if _, err := b.CreateSession(name, cwd); err != nil {
-		return nil, err
-	}
-	proc, ok := b.getSession(name)
-	if !ok {
-		return nil, fmt.Errorf("session %q not available", name)
-	}
-	return proc, nil
-}
-
-func (b *sessionBroker) runSession(name, cwd string) error {
-	proc, err := b.ensureSession(name, cwd)
-	if err != nil {
-		return err
-	}
-
-	fd := int(os.Stdin.Fd())
-	oldState, err := enterRaw(fd)
-	if err != nil {
-		return err
-	}
-	defer leaveRaw(fd, oldState)
-
-	current := proc
-	for {
-		next, err := current.attachLoop(func() (string, error) {
-			if err := leaveRaw(fd, oldState); err != nil {
-				return "", err
-			}
-			selected, runErr := runMenu(b, current.name)
-			if _, err := enterRaw(fd); err != nil {
-				return "", err
-			}
-			if runErr != nil {
-				return "", runErr
-			}
-			return selected, nil
-		})
-		if err != nil {
-			return err
-		}
-		if next == "" {
-			return nil
-		}
-		current, err = b.ensureSession(next, cwd)
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func startSessionProcess(name, cwd string) (*sessionProcess, error) {
-	shell := userShell()
-	cmd := exec.Command(shell, "-i", "-l")
-	cmd.Dir = cwd
-	cmd.Env = os.Environ()
-	tty, err := pty.Start(cmd)
-	if err != nil {
-		return nil, err
-	}
-
-	proc := &sessionProcess{
-		name:   name,
-		cwd:    cwd,
-		cmd:    cmd,
-		master: tty,
-	}
-	proc.cond = sync.NewCond(&sync.Mutex{})
-	go proc.readLoop()
-	return proc, nil
-}
-
-func (s *sessionProcess) readLoop() {
-	buf := make([]byte, 4096)
-	for {
-		n, err := s.master.Read(buf)
-		if n > 0 {
-			s.cond.L.Lock()
-			_, _ = s.buf.Write(buf[:n])
-			s.appendHistory(buf[:n])
-			s.cond.Broadcast()
-			s.cond.L.Unlock()
-		}
-		if err != nil {
-			s.close()
-			return
-		}
-	}
-}
-
-func (s *sessionProcess) attachLoop(menu func() (string, error)) (string, error) {
-	s.prepareAttach()
-	s.setAttached(true)
-	done := make(chan struct{})
-	go s.flushLoop(done)
-	defer func() {
-		s.setAttached(false)
-		s.signal()
-		<-done
-	}()
-
-	in := make([]byte, 1)
-	for {
-		n, err := os.Stdin.Read(in)
-		if err != nil {
-			if err == io.EOF {
-				return "", nil
-			}
-			return "", err
-		}
-		if n == 0 {
+func parseSessionNames(output string) []string {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	names := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
-		if in[0] == 0x06 {
-			s.setAttached(false)
-			s.signal()
-			<-done
-			selected, err := menu()
-			if err != nil {
-				return "", err
-			}
-			if selected == "" {
-				s.setAttached(true)
-				done = make(chan struct{})
-				go s.flushLoop(done)
-				continue
-			}
-			return selected, nil
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
 		}
-		if _, err := s.master.Write(in[:1]); err != nil {
-			return "", err
-		}
+		names = append(names, fields[0])
 	}
-}
-
-func (s *sessionProcess) prepareAttach() {
-	width, height, err := term.GetSize(int(os.Stdout.Fd()))
-	if err == nil && width > 0 && height > 0 {
-		_ = pty.Setsize(s.master, &pty.Winsize{
-			Cols: uint16(width),
-			Rows: uint16(height),
-		})
-	}
-
-	s.cond.L.Lock()
-	history := append([]byte(nil), s.history.Bytes()...)
-	s.buf.Reset()
-	s.cond.L.Unlock()
-
-	_, _ = os.Stdout.Write([]byte("\x1b[2J\x1b[H"))
-	if len(history) > 0 {
-		_, _ = os.Stdout.Write(history)
-	}
-}
-
-func (s *sessionProcess) appendHistory(data []byte) {
-	if len(data) == 0 {
-		return
-	}
-	_, _ = s.history.Write(data)
-	if s.history.Len() <= maxSessionHistoryBytes {
-		return
-	}
-
-	trim := s.history.Len() - maxSessionHistoryBytes
-	next := append([]byte(nil), s.history.Bytes()[trim:]...)
-	s.history.Reset()
-	_, _ = s.history.Write(next)
-}
-
-func (s *sessionProcess) flushLoop(done chan struct{}) {
-	for {
-		s.cond.L.Lock()
-		for s.buf.Len() == 0 && s.attached && !s.closed {
-			s.cond.Wait()
-		}
-		if !s.attached || s.closed {
-			s.cond.L.Unlock()
-			close(done)
-			return
-		}
-		data := append([]byte(nil), s.buf.Bytes()...)
-		s.buf.Reset()
-		s.cond.L.Unlock()
-		if len(data) > 0 {
-			_, _ = os.Stdout.Write(data)
-		}
-	}
-}
-
-func (s *sessionProcess) setAttached(v bool) {
-	s.cond.L.Lock()
-	s.attached = v
-	s.cond.Broadcast()
-	s.cond.L.Unlock()
-}
-
-func (s *sessionProcess) signal() {
-	s.cond.L.Lock()
-	s.cond.Broadcast()
-	s.cond.L.Unlock()
-}
-
-func (s *sessionProcess) close() {
-	s.cond.L.Lock()
-	if s.closed {
-		s.cond.L.Unlock()
-		return
-	}
-	s.closed = true
-	s.attached = false
-	s.cond.Broadcast()
-	s.cond.L.Unlock()
-
-	if s.master != nil {
-		_ = s.master.Close()
-	}
-	if s.cmd != nil && s.cmd.Process != nil {
-		_ = s.cmd.Process.Kill()
-	}
+	slices.Sort(names)
+	return names
 }
 
 func sanitizeSessionName(name string) string {
@@ -387,11 +353,4 @@ func sanitizeSessionName(name string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
-}
-
-func userShell() string {
-	if shell := strings.TrimSpace(os.Getenv("SHELL")); shell != "" {
-		return shell
-	}
-	return "/bin/sh"
 }

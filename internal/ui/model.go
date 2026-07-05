@@ -102,24 +102,6 @@ func NewMenu() tea.Model {
 	return newModel(newSessionManager(), "")
 }
 
-func Start() error {
-	broker := newSessionBroker()
-	if _, err := broker.CreateSession(defaultSessionName, defaultSessionDir()); err != nil {
-		return err
-	}
-	return broker.runSession(defaultSessionName, defaultSessionDir())
-}
-
-func defaultSessionDir() string {
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		return home
-	}
-	if cwd, err := os.Getwd(); err == nil && strings.TrimSpace(cwd) != "" {
-		return cwd
-	}
-	return "."
-}
-
 func newModel(manager sessionManager, current string) tea.Model {
 	cwd, _ := os.Getwd()
 
@@ -150,7 +132,7 @@ func newModel(manager sessionManager, current string) tea.Model {
 		input:            input,
 		cwd:              cwd,
 		statePath:        statePath,
-		status:           "j/k move  h/l close/open project  enter open  n new session  p new project  m move  d delete project  x kill",
+		status:           "enter switch  n session  p project  m move  d delete  x kill  esc close",
 		err:              err,
 	}
 }
@@ -164,10 +146,6 @@ func runMenu(manager sessionManager, current string) (string, error) {
 		return m.exitSession, nil
 	}
 	return "", nil
-}
-
-func RunMenu(current string) (string, error) {
-	return runMenu(newSessionManager(), current)
 }
 
 func (m model) Init() tea.Cmd {
@@ -374,7 +352,7 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.input.Blur()
 			m.input.Prompt = ""
 			return m, func() tea.Msg {
-				s, err := m.manager.CreateSession(name, m.cwd)
+				s, err := m.manager.CreateSession(name, m.cwd, m.contextProject())
 				if err != nil {
 					return sessionCreatedMsg{err: err}
 				}
@@ -476,22 +454,17 @@ func (m model) renderRow(index int, row treeRow) string {
 func (m model) rowLabel(row treeRow) string {
 	switch row.kind {
 	case rowProject:
-		prefix := "[-]"
+		prefix := "v"
 		if !m.expandedProjects[row.project] {
-			prefix = "[+]"
+			prefix = ">"
 		}
 		return fmt.Sprintf("%s %s", prefix, row.project)
 	case rowSession:
-		session, _ := m.findSession(row.session)
 		marker := "  "
 		if row.session == m.currentSession {
 			marker = "* "
 		}
-		suffix := ""
-		if session.Windows > 0 {
-			suffix = fmt.Sprintf(" (%d)", session.Windows)
-		}
-		return strings.Repeat(" ", row.depth*2) + marker + row.session + suffix
+		return strings.Repeat(" ", row.depth*2) + marker + row.session
 	default:
 		return ""
 	}
@@ -558,6 +531,11 @@ func (m model) deleteSelectedProject() (tea.Model, tea.Cmd) {
 	}
 
 	for _, s := range m.projectSessions(project) {
+		if err := m.manager.SetSessionProject(s.Name, defaultProjectName); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
 		m.assignSessionProject(s.Name, defaultProjectName)
 	}
 	m.projects = removeProject(m.projects, project)
@@ -591,7 +569,7 @@ func (m model) commitMoveProject() (tea.Model, tea.Cmd) {
 	}
 	m.mode = inputNone
 	return m, func() tea.Msg {
-		return sessionMovedMsg{session: s.Name, project: project}
+		return sessionMovedMsg{session: s.Name, project: project, err: m.manager.SetSessionProject(s.Name, project)}
 	}
 }
 
@@ -612,7 +590,7 @@ func (m model) resolveMoveProject() (tea.Model, tea.Cmd) {
 	}
 	m.mode = inputNone
 	return m, func() tea.Msg {
-		return sessionMovedMsg{session: s.Name, project: project}
+		return sessionMovedMsg{session: s.Name, project: project, err: m.manager.SetSessionProject(s.Name, project)}
 	}
 }
 

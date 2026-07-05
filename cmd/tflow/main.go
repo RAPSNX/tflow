@@ -19,8 +19,7 @@ func run() error {
 	if len(args) > 0 {
 		switch args[0] {
 		case "menu":
-			_, err := ui.RunMenu("")
-			return err
+			return ui.OpenMenu()
 		default:
 			return fmt.Errorf("unknown command %q", args[0])
 		}
