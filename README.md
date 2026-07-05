@@ -61,3 +61,30 @@ go run ./cmd/tflow menu
 
 When `tflow` starts or attaches a tmux session, it provisions a `Ctrl+F` binding that toggles the
 menu pane.
+
+## Nix
+
+Build the package with:
+
+```sh
+nix build .#tflow
+```
+
+The flake also exports a Home Manager module:
+
+```nix
+{
+  imports = [ inputs.tflow.homeManagerModules.default ];
+
+  programs.tflow = {
+    enable = true;
+    package = inputs.tflow.packages.${pkgs.system}.default;
+    settings.projects = {
+      small = {
+        workdir = "~/src/small";
+        agentBinary = "codex";
+      };
+    };
+  };
+}
+```
