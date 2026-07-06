@@ -6,58 +6,75 @@ _Last verified against the repository on 2026-07-06._
 
 ### Bugs
 - [ ] Remove the remaining `default` project fallback.
-  - The current code still uses `default` as the implicit project for persistent sessions.
-  - Deleting or renaming behavior still treats `default` as a special built-in project.
+  - Persistent sessions are still auto-assigned to `default` when no project is set.
+  - `default` is still treated as a special built-in project in rename, delete, and sync flows.
   - The original intent was to remove the default project concept entirely.
 
 - [ ] Deleting a project should delete the sessions that belong to it.
   - The current implementation reassigns those sessions back to `default` instead of removing them.
 
-### Features
-- [ ] Rework the session and project model.
-  1. Starting `tflow` should create a random animal project.
-  2. The sidebar should focus on sessions, with each project only showing its own sessions.
-  3. Replace the current keymap with the planned workflow:
-     - `t` creates a terminal session
-     - `a` creates an agent session
-     - `k` creates a `k9s` session
-     - `n` creates a `nvim` session
-     - `r` renames the session
-     - `R` renames the project
-     - `Ctrl+Q` kills everything
-     - `P` opens a project switcher overlay and `Enter` switches into it
+- [ ] Finish the session terminology cleanup.
+  - Some user-facing rename and validation messages still say `Section` instead of `Session`.
 
-- [ ] Simplify the Nix packaging and Home Manager module.
-  - Refactor `flake.nix` to match the lighter pattern used in the other RAPSNX repositories.
-  - Reduce Home Manager module surface area.
-  - Remove the module package override option if it is no longer needed.
+### Planned changes
+- [ ] Rework the startup and sidebar model.
+  - Startup currently creates a random `<animal>-temp` session, not a project.
+  - The sidebar is still a project tree, not the planned session-first view.
+  - Sessions are project-scoped already, but the broader conceptual overhaul is not finished.
 
-## Done
+- [ ] Replace the current keymap with the planned workflow.
+  - Current creation still uses the prefixed flow `np`, `nt`, `nk`, `nc`, and `na`.
+  - There is no direct `nvim` session creation flow.
+  - `r` still handles both project and session renaming instead of splitting `r` and `R`.
+  - `Ctrl+Q` is not bound; quit-all currently exists only via `:qa` or `:qa!`.
+  - There is no `P` project switcher overlay.
+
+## Completed
 
 ### Bugs
-- [x] Fix session terminology: `tflow` has projects and sessions, and sessions have explicit types.
+- [x] Introduce explicit project/session terminology and typed sessions.
+  - Sessions have explicit types: `terminal`, `k9s`, and `agent`.
+
 - [x] Add deletion confirmation before removing a project or session.
+
 - [x] Support project protection with `protect: true`.
 
 ### Features
-- [x] Make project configuration editable as YAML with `name`, `workdir`, and `cluster`.
+- [x] Make project configuration editable as YAML with `e`.
+  - Supported fields include `name`, `workdir`, `cluster`, `agent-binary`, and `protect`.
+
 - [x] Persist projects on disk.
+
 - [x] Support `cluster.path` and `cluster.connection-cmd`.
-- [x] Change new-item creation to prefixed key sequences:
-  - [x] `np` new project
-  - [x] `nt` new terminal session
-  - [x] `nk` new `k9s` session
-  - [x] `nc` new agent session
+
+- [x] Change new-item creation to prefixed key sequences.
+  - [x] `np` creates a project.
+  - [x] `nt` creates a terminal session.
+  - [x] `nk` creates a `k9s` session.
+  - [x] `nc` creates an agent session.
+
 - [x] Add move mode with project-prefix targeting.
+
 - [x] Improve the general design and styling.
-- [x] Add a `README.md` and move the logo into `docs/`.
+
+- [x] Add `README.md` and move the logo into `docs/`.
+
 - [x] Replace the default startup session with a temporary `<animal>-temp` session.
+
 - [x] Keep temporary sessions out of the project list until they are assigned.
+
 - [x] Allow adding the current temp session to the selected project with `na`.
+
 - [x] Destroy unassigned temporary sessions when their terminal detaches.
+
 - [x] Add an app config file with a configurable projects directory.
+
 - [x] Add theme and color configuration, defaulting to Catppuccin.
+
 - [x] Start with no projects when the config is empty.
+
 - [x] Add `flake.nix` packaging for `tflow`.
+
 - [x] Allow configuring the agent binary per project.
+
 - [x] Add a Home Manager module with project configuration support.
