@@ -1,80 +1,158 @@
-# TODO
+# tflow
 
-_Last verified against the repository on 2026-07-06._
+## Overview
 
-## Open
+`tflow` is a minimal, keyboard-first terminal session manager with an `nvim`-style workflow.
 
-### Bugs
-- [ ] Remove the remaining `default` project fallback.
-  - Persistent sessions are still auto-assigned to `default` when no project is set.
-  - `default` is still treated as a special built-in project in rename, delete, and sync flows.
-  - The original intent was to remove the default project concept entirely.
+It organizes terminal sessions into projects. A session can only exist inside a project, and each project acts as the lifecycle boundary for its sessions.
 
-- [ ] Deleting a project should delete the sessions that belong to it.
-  - The current implementation reassigns those sessions back to `default` instead of removing them.
+On first start, `tflow` creates:
 
-- [ ] Finish the session terminology cleanup.
-  - Some user-facing rename and validation messages still say `Section` instead of `Session`.
+- a project with a random animal name
+- a default session named `code`
 
-### Planned changes
-- [ ] Rework the startup and sidebar model.
-  - Startup currently creates a random `<animal>-temp` session, not a project.
-  - The sidebar is still a project tree, not the planned session-first view.
-  - Sessions are project-scoped already, but the broader conceptual overhaul is not finished.
+The main interaction model is the sidebar mode, which can be toggled with `Ctrl+F`.
 
-- [ ] Replace the current keymap with the planned workflow.
-  - Current creation still uses the prefixed flow `np`, `nt`, `nk`, `nc`, and `na`.
-  - There is no direct `nvim` session creation flow.
-  - `r` still handles both project and session renaming instead of splitting `r` and `R`.
-  - `Ctrl+Q` is not bound; quit-all currently exists only via `:qa` or `:qa!`.
-  - There is no `P` project switcher overlay.
+## Core Concepts
 
-## Completed
+### Project
 
-### Bugs
-- [x] Introduce explicit project/session terminology and typed sessions.
-  - Sessions have explicit types: `terminal`, `k9s`, and `agent`.
+A project groups related terminal sessions.
 
-- [x] Add deletion confirmation before removing a project or session.
+Rules:
 
-- [x] Support project protection with `protect: true`.
+- project names are unique
+- a project owns its sessions
+- when a project is terminated, all sessions inside it are killed
+- the current project is visibly marked in the UI
+- the current project is not shown in the project-switch overlay
 
-### Features
-- [x] Make project configuration editable as YAML with `e`.
-  - Supported fields include `name`, `workdir`, `cluster`, `agent-binary`, and `protect`.
+### Session
 
-- [x] Persist projects on disk.
+A session is a terminal inside a project.
 
-- [x] Support `cluster.path` and `cluster.connection-cmd`.
+Rules:
 
-- [x] Change new-item creation to prefixed key sequences.
-  - [x] `np` creates a project.
-  - [x] `nt` creates a terminal session.
-  - [x] `nk` creates a `k9s` session.
-  - [x] `nc` creates an agent session.
+- a session can only exist inside a project
+- session names are unique only within their project
+- different projects may contain sessions with the same name
+- the current session and selected session should be visually distinguishable
 
-- [x] Add move mode with project-prefix targeting.
+## Sidebar Mode
 
-- [x] Improve the general design and styling.
+`Ctrl+F` toggles sidebar mode.
 
-- [x] Add `README.md` and move the logo into `docs/`.
+Sidebar mode shows the sessions of the current project and provides project/session actions.
 
-- [x] Replace the default startup session with a temporary `<animal>-temp` session.
+### Keybindings
 
-- [x] Keep temporary sessions out of the project list until they are assigned.
+| Key | Action |
+|---|---|
+| `R` | Rename the current project |
+| `r` | Rename the selected session |
+| `t` | Create a new terminal session |
+| `a` | Create a new agent session |
+| `P` | Open the project overlay |
+| `m` | Move the selected session to another project |
+| `Ctrl+Q` | Terminate the current project |
+| `Esc` | Close sidebar mode |
 
-- [x] Allow adding the current temp session to the selected project with `na`.
+### Project Termination
 
-- [x] Destroy unassigned temporary sessions when their terminal detaches.
+`Ctrl+Q` terminates the current project.
 
-- [x] Add an app config file with a configurable projects directory.
+This must require confirmation.
 
-- [x] Add theme and color configuration, defaulting to Catppuccin.
+The confirmation prompt must clearly show the project name.
 
-- [x] Start with no projects when the config is empty.
+Termination means:
 
-- [x] Add `flake.nix` packaging for `tflow`.
+- kill all sessions in the project
+- remove the project from runtime state
+- remove persisted project state if persistence is implemented
 
-- [x] Allow configuring the agent binary per project.
+## Project Overlay
 
-- [x] Add a Home Manager module with project configuration support.
+`P` opens the project overlay.
+
+The overlay shows all projects except the current project.
+
+Selecting a project switches into that project.
+
+If no other projects exist, the overlay should show an empty-state message instead of opening a broken selection view.
+
+Project selection uses hints mode.
+
+Example:
+
+Given projects:
+
+- `tiger`
+- `mouse`
+
+The overlay highlights selectable hints:
+
+- `t` for `tiger`
+- `m` for `mouse`
+
+Typing `Pt` selects and enters the `tiger` project.
+
+## Move Session
+
+`m` moves the selected session to another project.
+
+The target project is selected using hints mode.
+
+Open design decision:
+
+- define whether moving the last session out of a project is allowed
+- define whether empty projects are valid
+
+Recommended behavior:
+
+- empty projects are allowed
+- moving the last session out of a project keeps the source project alive
+- terminating a project is only done explicitly via `Ctrl+Q`
+
+## Hints Mode
+
+Hints mode is inspired by Alacritty hints.
+
+When an action enters hints mode, the TUI highlights characters for selectable resources.
+
+The typed hint selects the matching resource.
+
+Hints mode must support multi-character hints to avoid collisions.
+
+Example:
+
+Given projects:
+
+- `tiger`
+- `table`
+- `mouse`
+
+Possible hints:
+
+- `ti` for `tiger`
+- `ta` for `table`
+- `m` for `mouse`
+
+Hints should be deterministic and stable while the overlay is open.
+
+## Acceptance Criteria
+
+- On first start, create a project with a random animal name and one session named `code`.
+- `Ctrl+F` toggles sidebar mode.
+- Sidebar mode shows sessions of the current project.
+- The current project is visibly marked.
+- The current session and selected session are visually distinguishable.
+- `R` renames the current project.
+- `r` renames the selected session.
+- `t` creates a new terminal session using the user shell.
+- `a` creates a new agent session using the configured agent command.
+- `Ctrl+Q` asks for confirmation before terminating the current project.
+- Project termination kills all project sessions and removes the project state.
+- `P` opens a project overlay excluding the current project.
+- `m` moves the selected session to another project using hints mode.
+- Hints mode supports multi-character hints when prefixes collide.
