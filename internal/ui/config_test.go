@@ -80,46 +80,33 @@ func TestLoadAppStateDefaultsToNoProjects(t *testing.T) {
 	if len(state.Projects) != 0 {
 		t.Fatalf("projects = %#v, want none", state.Projects)
 	}
-	if len(state.ExpandedProjects) != 0 {
-		t.Fatalf("expandedProjects = %#v, want none", state.ExpandedProjects)
+	if state.CurrentProject != "" {
+		t.Fatalf("currentProject = %q, want empty", state.CurrentProject)
 	}
 }
 
-func TestEnsureStartupStatePreservesEmptyProjectList(t *testing.T) {
-	configHome := t.TempDir()
-	statePath := filepath.Join(configHome, "tflow", "state.json")
-	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll returned error: %v", err)
-	}
-	data, err := json.Marshal(appState{
-		Projects:         []string{},
-		SessionProjects:  map[string]string{},
-		SessionTypes:     map[string]string{},
-		ProjectDirs:      map[string]string{},
-		ExpandedProjects: map[string]bool{},
+func TestLoadAppStateMigratesLegacyFormat(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	data, err := json.Marshal(legacyAppState{
+		Projects:        []string{"alpha"},
+		SessionProjects: map[string]string{"alpha_code": "alpha"},
+		SessionTypes:    map[string]string{"alpha_code": "terminal"},
 	})
 	if err != nil {
 		t.Fatalf("Marshal returned error: %v", err)
 	}
-	if err := os.WriteFile(statePath, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
 
-	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
-	t.Cleanup(func() {
-		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
-	})
-	_ = os.Setenv("XDG_CONFIG_HOME", configHome)
-
-	if err := ensureStartupState(); err != nil {
-		t.Fatalf("ensureStartupState returned error: %v", err)
-	}
-
-	state, err := loadAppState(statePath)
+	state, err := loadAppState(path)
 	if err != nil {
 		t.Fatalf("loadAppState returned error: %v", err)
 	}
-	if len(state.Projects) != 0 {
-		t.Fatalf("projects = %#v, want none", state.Projects)
+	if state.CurrentProject != "alpha" {
+		t.Fatalf("currentProject = %q, want alpha", state.CurrentProject)
+	}
+	if len(state.Projects) != 1 || len(state.Projects[0].Sessions) != 1 {
+		t.Fatalf("unexpected migrated state: %#v", state)
 	}
 }

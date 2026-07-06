@@ -70,11 +70,14 @@ func TestLoadProjectConfigsUsesConfiguredProjectsDir(t *testing.T) {
 	}
 
 	statePath := filepath.Join(baseDir, "state.json")
-	cfgs, err := loadProjectConfigs(statePath, appState{Projects: []string{defaultProjectName}})
+	cfgs, err := loadProjectConfigs(statePath, appState{Projects: []projectState{{Name: "garden"}}})
 	if err != nil {
 		t.Fatalf("loadProjectConfigs returned error: %v", err)
 	}
 	if _, ok := cfgs["small"]; !ok {
 		t.Fatalf("expected configured project to load from %s", projectsDir)
+	}
+	if _, ok := cfgs["garden"]; !ok {
+		t.Fatalf("expected state project to be present")
 	}
 }
