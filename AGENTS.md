@@ -1,6 +1,8 @@
 ## Rules
 - Keep edits small, reviewable, and testable.
-- Create or use the codex-agent branch for your work.
+- Create or use the `codex-agent` branch for your work.
+- Treat `main` as read-only. Never commit to it, merge into it, rebase it, or move it forward locally.
+- Do all work on `codex-agent`, and push completed work to `origin/codex-agent` automatically.
 - Verify always to work cleanly, finished work should always end with a cleanup and a merge into the `codex-agent` branch.
 - Use a worktree, verify the work is done, and merge it everytime on that branch.
 - The `TODO.md` contains all open & finished tasks for features, bugs, changes or issues.
@@ -9,11 +11,13 @@
 ## Workflow
 
 1. Inspect the current branch and worktree state before editing.
-2. Create or reuse a dedicated worktree for the change.
-3. Make the code change in that worktree.
-4. Run focused tests first.
-5. Merge all of the work into your branch `codex-agent`
-6. Cleanup any other branch or worktree
+2. Ensure `main` stays untouched and switch to `codex-agent` or a worktree based on it.
+3. Create or reuse a dedicated worktree for the change.
+4. Make the code change in that worktree.
+5. Run focused tests first.
+6. Merge all of the work into your branch `codex-agent`.
+7. Push `codex-agent`.
+8. Cleanup any other branch or worktree.
 
 ## Commands
 
