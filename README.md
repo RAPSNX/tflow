@@ -4,39 +4,33 @@
 
 # tflow
 
-`tflow` is a focused tmux session switcher for project-scoped terminal, `k9s`, and agent sessions.
+`tflow` is a focused tmux-backed session manager for project-scoped terminal and agent sessions.
 
-It boots into a fresh temporary session on the dedicated `tflow` tmux socket, keeps the project tree close at hand, and lets you promote ad-hoc work into a persisted project only when it deserves to stick around.
+It keeps sessions grouped by project, starts with a bootstrap project and `code` session on first run, and opens a sidebar with `Ctrl+F` for project and session actions.
 
 ## Behavior
 
-- startup attaches to a fresh temporary session like `otter-temp`
-- each tflow session is backed by a tmux session
-- the menu is a tree of projects and sessions
-- `tflow` reads `config.yaml` from its config directory for the projects folder and theme
-- project configs are persisted as YAML files alongside the app state
-- projects can be expanded, collapsed, edited, and protected from deletion
-- sessions can be selected, created, moved, or killed
-- temporary sessions stay out of project lists until you add the current temp session to a project
-- unassigned temporary sessions are marked to die when their terminal detaches
-- `Ctrl+F` toggles the menu pane in the current tmux window
+- startup creates a random project and a `code` session on first run
+- each logical session maps to an internal tmux session name like `garden_code`
+- the UI only shows the logical session name, not the internal tmux name
+- the sidebar shows sessions for the current project only
+- projects and sessions are persisted in `state.json`
+- project config is stored as YAML in the configured projects directory
+- `Ctrl+F` toggles the sidebar pane in the current tmux window
 
 ## Keys
 
-- `j` / `k`: move through the tree
-- `h` / `l`: collapse or expand the current project
+- `j` / `k`: move through sessions in the current project
 - `Enter`: switch to the selected session
-- `n` then `p`: create a new project
-- `n` then `t`: create a new terminal session
-- `n` then `k`: create a new `k9s` session
-- `n` then `c`: create a new agent session
-- `n` then `a`: add the current temporary session to the selected project
-- `c`: set the default directory for the current project
-- `e`: edit the current project YAML
-- `m`: move the selected session to another project by prefix
-- `r`: rename the selected project or session
-- `d`: confirm-delete the selected project or session
-- `q`, `Esc`, `Ctrl+C`: close the menu
+- `t`: create a new terminal session in the current project
+- `a`: create a new agent session in the current project
+- `r`: rename the selected session
+- `R`: rename the current project
+- `P`: open the project overlay
+- `n` in the project overlay: create a new project
+- `m`: move the selected session to another project using hints
+- `Ctrl+Q`: terminate the current project after confirmation
+- `Esc`, `Ctrl+C`: close the sidebar
 
 ## Project Config
 
@@ -45,17 +39,10 @@ Project configs are stored as YAML in the configured projects directory.
 ```yaml
 name: "small"
 workdir: "/tmp/project-small"
-protect: true
-cluster:
-  path: "/tmp/kubeconfig"
-```
-
-`cluster.connection-cmd` is also supported for `k9s` sessions.
-Projects can also select the agent binary:
-
-```yaml
 agent-binary: "codex"
 ```
+
+Additional legacy fields such as `protect` and `cluster` are still parsed, but the current sidebar workflow is centered on terminal and agent sessions.
 
 ## App Config
 
@@ -79,14 +66,11 @@ Built-in themes:
 go run ./cmd/tflow
 ```
 
-Open the switcher directly with:
+Open the sidebar directly with:
 
 ```sh
 go run ./cmd/tflow menu
 ```
-
-When `tflow` starts or attaches a tmux session, it provisions a `Ctrl+F` binding that toggles the
-menu pane.
 
 ## Nix
 
@@ -96,21 +80,4 @@ Build the package with:
 nix build .#tflow
 ```
 
-The flake also exports a Home Manager module:
-
-```nix
-{
-  imports = [ inputs.tflow.homeManagerModules.default ];
-
-  programs.tflow = {
-    enable = true;
-    package = inputs.tflow.packages.${pkgs.system}.default;
-    settings.projects = {
-      small = {
-        workdir = "~/src/small";
-        agentBinary = "codex";
-      };
-    };
-  };
-}
-```
+The flake also exports a Home Manager module.

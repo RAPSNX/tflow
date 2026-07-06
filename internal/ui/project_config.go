@@ -24,10 +24,6 @@ type projectConfig struct {
 	Protect     bool
 }
 
-func defaultProjectConfig() projectConfig {
-	return projectConfig{Name: defaultProjectName}
-}
-
 func normalizeProjectConfig(cfg projectConfig) projectConfig {
 	cfg.Name = normalizeProjectName(cfg.Name)
 	cfg.Workdir = strings.TrimSpace(cfg.Workdir)
@@ -71,16 +67,13 @@ func loadProjectConfigs(statePath string, state appState) (map[string]projectCon
 	configs := map[string]projectConfig{}
 
 	for _, project := range state.Projects {
-		project = normalizeProjectName(project)
-		if project == "" {
+		project.Name = normalizeProjectName(project.Name)
+		if project.Name == "" {
 			continue
 		}
-		cfg := configs[project]
-		cfg.Name = project
-		if dir := strings.TrimSpace(state.ProjectDirs[project]); dir != "" {
-			cfg.Workdir = normalizeCWD(dir)
-		}
-		configs[project] = normalizeProjectConfig(cfg)
+		cfg := configs[project.Name]
+		cfg.Name = project.Name
+		configs[project.Name] = normalizeProjectConfig(cfg)
 	}
 
 	dir := projectConfigDir(statePath)

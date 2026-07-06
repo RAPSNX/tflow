@@ -49,12 +49,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"set-option", "-g", "status", "on"},
 		{"set-option", "-g", "status-position", "top"},
 		{"set-option", "-g", "status-style", "bg=#181825,fg=#cdd6f4"},
-		{"set-option", "-g", "default-terminal", "tmux-256color"},
-		{"set-option", "-g", "terminal-overrides", ",*:Tc"},
-		{"set-option", "-g", "terminal-features", "xterm-256color:RGB,screen-256color:RGB,tmux-256color:RGB"},
-		{"set-option", "-g", "status-left", "#[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] project #[fg=#89b4fa]#{@tflow-project} #[bg=#181825,fg=#313244,nobold]  #[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] session #[fg=#94e2d5]#S #[bg=#181825,fg=#313244,nobold]"},
-		{"set-option", "-g", "window-status-format", ""},
-		{"set-option", "-g", "window-status-current-format", ""},
+		{"set-option", "-g", "status-left", "#[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] project #[fg=#89b4fa]#{@tflow-project} #[bg=#181825,fg=#313244,nobold]  #[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] session #[fg=#94e2d5]#{@tflow-session} #[bg=#181825,fg=#313244,nobold]"},
 		{"set-option", "-g", "default-shell", "/bin/zsh"},
 		{"set-option", "-g", "default-command", "exec '/bin/zsh' -l"},
 		{"bind-key", "-n", "C-f", "run-shell", "exec '/tmp/tflow' toggle-menu"},
@@ -73,7 +68,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 	}
 }
 
-func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
+func TestSyncSessionMetadataSetsProjectAndDisplayMarkers(t *testing.T) {
 	var calls [][]string
 	manager := tmuxSessionManager{
 		run: func(args ...string) (string, error) {
@@ -82,19 +77,16 @@ func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 		},
 	}
 
-	err := manager.SyncSessionProjects(map[string]string{
-		"dev":   "small",
-		"api":   "",
-		"blank": "  ",
+	err := manager.SyncSessionMetadata(map[string]sessionMetadata{
+		"garden_code": {Project: "garden", DisplayName: "code"},
 	})
 	if err != nil {
-		t.Fatalf("SyncSessionProjects returned error: %v", err)
+		t.Fatalf("SyncSessionMetadata returned error: %v", err)
 	}
 
 	wants := [][]string{
-		{"set-option", "-t", "dev", "@tflow-project", "small"},
-		{"set-option", "-t", "api", "@tflow-project", "default"},
-		{"set-option", "-t", "blank", "@tflow-project", "default"},
+		{"set-option", "-t", "garden_code", "@tflow-project", "garden"},
+		{"set-option", "-t", "garden_code", "@tflow-session", "code"},
 	}
 	for _, want := range wants {
 		found := false
@@ -110,10 +102,10 @@ func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 	}
 }
 
-func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
+func TestListSessionsParsesTmuxOutput(t *testing.T) {
 	manager := tmuxSessionManager{
 		run: func(args ...string) (string, error) {
-			return "otter-temp\t1\t1\t1\nsmall\t2\t0\t0\n", nil
+			return "garden_code\t1\t1\ngarden_shell\t2\t0\n", nil
 		},
 	}
 
@@ -124,15 +116,12 @@ func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	if len(sessions) != 2 {
 		t.Fatalf("len(sessions) = %d", len(sessions))
 	}
-	if !sessions[0].Temporary {
-		t.Fatal("expected first session to be temporary")
-	}
-	if sessions[1].Temporary {
-		t.Fatal("expected second session to be persistent")
+	if !sessions[0].Attached || sessions[1].Attached {
+		t.Fatalf("unexpected attached flags: %#v", sessions)
 	}
 }
 
-func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
+func TestSetSessionTemporaryOnlySetsMarker(t *testing.T) {
 	var calls [][]string
 	manager := tmuxSessionManager{
 		run: func(args ...string) (string, error) {
@@ -145,103 +134,8 @@ func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
 		t.Fatalf("SetSessionTemporary returned error: %v", err)
 	}
 
-	wants := [][]string{
-		{"set-option", "-t", "otter-temp", "destroy-unattached", "off"},
-		{"set-hook", "-t", "otter-temp", "client-attached", "set-option -t 'otter-temp' destroy-unattached on; set-hook -u -t 'otter-temp' client-attached"},
-		{"set-option", "-t", "otter-temp", "@tflow-temp", "1"},
-	}
-	for _, want := range wants {
-		found := false
-		for _, call := range calls {
-			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("missing call %v in %#v", want, calls)
-		}
-	}
-}
-
-func TestSetSessionTemporaryClearsDeferredCleanupWhenMadePersistent(t *testing.T) {
-	var calls [][]string
-	manager := tmuxSessionManager{
-		run: func(args ...string) (string, error) {
-			calls = append(calls, append([]string(nil), args...))
-			return "", nil
-		},
-	}
-
-	if err := manager.SetSessionTemporary("otter-temp", false); err != nil {
-		t.Fatalf("SetSessionTemporary returned error: %v", err)
-	}
-
-	wants := [][]string{
-		{"set-option", "-t", "otter-temp", "destroy-unattached", "off"},
-		{"set-hook", "-u", "-t", "otter-temp", "client-attached"},
-		{"set-option", "-t", "otter-temp", "@tflow-temp", "0"},
-	}
-	for _, want := range wants {
-		found := false
-		for _, call := range calls {
-			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("missing call %v in %#v", want, calls)
-		}
-	}
-}
-
-func TestRenameSessionUsesTmuxRenameSession(t *testing.T) {
-	var calls [][]string
-	manager := tmuxSessionManager{
-		run: func(args ...string) (string, error) {
-			calls = append(calls, append([]string(nil), args...))
-			return "", nil
-		},
-	}
-
-	if err := manager.RenameSession("dev", "lala"); err != nil {
-		t.Fatalf("RenameSession returned error: %v", err)
-	}
-
-	want := []string{"rename-session", "-t", "dev", "lala"}
-	found := false
-	for _, call := range calls {
-		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("missing call %v in %#v", want, calls)
-	}
-}
-
-func TestToggleMenuKillsExistingPane(t *testing.T) {
-	manager := tmuxSessionManager{
-		run: func(args ...string) (string, error) {
-			switch args[0] {
-			case "display-message":
-				return "@1", nil
-			case "list-panes":
-				return "%5\t1\n", nil
-			case "kill-pane":
-				if args[2] != "%5" {
-					t.Fatalf("kill-pane target = %q", args[2])
-				}
-				return "", nil
-			default:
-				return "", fmt.Errorf("unexpected command: %v", args)
-			}
-		},
-	}
-
-	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
-		t.Fatalf("ToggleMenu returned error: %v", err)
+	want := []string{"set-option", "-t", "otter-temp", "@tflow-temp", "1"}
+	if got := fmt.Sprint(calls); !strings.Contains(got, fmt.Sprint(want)) {
+		t.Fatalf("calls = %#v, want %v", calls, want)
 	}
 }

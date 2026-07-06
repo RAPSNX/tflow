@@ -37,6 +37,7 @@ Rules:
 - session names are unique only within their project
 - different projects may contain sessions with the same name
 - the current session and selected session should be visually distinguishable
+- tmux session names are internal implementation details and must stay hidden from the UI
 
 ## Sidebar Mode
 
@@ -83,19 +84,7 @@ If no other projects exist, the overlay should show an empty-state message inste
 
 Project selection uses hints mode.
 
-Example:
-
-Given projects:
-
-- `tiger`
-- `mouse`
-
-The overlay highlights selectable hints:
-
-- `t` for `tiger`
-- `m` for `mouse`
-
-Typing `Pt` selects and enters the `tiger` project.
+Creating a project from the overlay uses `n` and prompts for the project name.
 
 ## Move Session
 
@@ -103,12 +92,7 @@ Typing `Pt` selects and enters the `tiger` project.
 
 The target project is selected using hints mode.
 
-Open design decision:
-
-- define whether moving the last session out of a project is allowed
-- define whether empty projects are valid
-
-Recommended behavior:
+Behavior:
 
 - empty projects are allowed
 - moving the last session out of a project keeps the source project alive
@@ -156,90 +140,31 @@ Hints should be deterministic and stable while the overlay is open.
 - `P` opens a project overlay excluding the current project.
 - `m` moves the selected session to another project using hints mode.
 - Hints mode supports multi-character hints when prefixes collide.
+- `n` inside the project overlay creates a project after prompting for its name.
+- Internal tmux session names use a unique `project_session` style while the UI only shows the logical session name.
 
-## Current State Assessment
+## Resolved Decisions
 
-The current implementation does not match this target architecture yet.
-
-What already exists:
-
-- tmux-backed session lifecycle management
-- Bubble Tea / Lip Gloss TUI framework and rendering styles
-- persisted app config and project config files
-- session creation for terminal and agent sessions
-- session rename and move behavior
-- menu toggling via `Ctrl+F` inside tmux
-- tests covering startup, menu actions, state normalization, config parsing, and tmux integration
-
-What exists but follows the old design:
-
-- startup creates a temporary tmux session instead of a project with a `code` session
-- the main UI is a tree of projects and sessions instead of a sidebar for the current project
-- project creation, editing, directory config, protection, delete flows, and `:` command mode are built around the old model
-- move-to-project uses typed prefix matching, not a reusable hints system
-- project deletion reassigns sessions to `default` instead of terminating project-owned sessions
-- `k9s` session support exists although it is not part of the current target design
-- the runtime model still assumes a synthetic `default` project
-
-What is missing for the target design:
-
-- a project-centric runtime model where sessions only exist inside projects
-- first-start bootstrap for random animal project creation plus a `code` session
-- dedicated sidebar mode with the target keymap (`R`, `r`, `t`, `a`, `P`, `m`, `Ctrl+Q`, `Esc`)
-- separate project overlay that excludes the current project
-- reusable hints mode with deterministic multi-character hints
-- project termination confirmation that kills all sessions in the project
-- distinct visual treatment for current session versus selected session within the new sidebar model
-
-## Open Questions
-
-- Empty projects: keep the recommended behavior from above and allow them, or require at least one session per project?
-- First-start attach behavior: after creating the initial `code` session, should `tflow` attach directly into that session, or still open a dedicated control session and switch into `code` from there?
-- New project creation: the target keymap does not define a project creation action after first start. Should creating a project happen implicitly from move/switch flows, or is an explicit action still required?
-- Agent command source: should `a` always use a global configured agent command, or should per-project overrides remain supported from the current config model?
-- Legacy data migration: should existing `default`/temporary sessions and old persisted state be migrated automatically, or can incompatible state be reset once?
-- Session naming scope: the target says names are unique within a project. tmux session names are currently global, so either tmux naming must be namespaced internally or the app must continue enforcing global uniqueness.
+- Empty projects are valid and can remain after moving their last session away.
+- On first start, `tflow` attaches directly to the bootstrap `code` session it creates.
+- New projects are created from the project overlay with `n`.
+- The configured agent command continues to come from project config via `agent-binary`.
+- Legacy persisted state is migrated on read into the new project/session model.
+- tmux session names are internal and namespaced as `project_session`.
 
 ## Implementation Task List
 
-- [ ] Task 1: Define the target runtime data model.
-  Replace `default`/temporary-session assumptions with explicit current-project/current-session state, project-owned sessions, and a clear representation for sidebar mode, overlay mode, and hints mode.
-
-- [ ] Task 2: Define the tmux naming and ownership strategy.
-  Decide how project-scoped session names map onto globally unique tmux session names and document the persistence/migration approach before changing behavior.
-
-- [ ] Task 3: Bootstrap first-start behavior.
-  Replace `prepareStartup` startup flow so first start creates a random animal project plus a `code` session, persists it, and attaches consistently to the intended initial runtime state.
-
-- [ ] Task 4: Simplify persisted state around the new architecture.
-  Refactor `appState`, load/save logic, and project config handling so persisted data reflects the new project/session ownership model and drops obsolete tree-specific state where possible.
-
-- [ ] Task 5: Introduce reusable hints-mode primitives.
-  Extract deterministic hint generation and typed-selection handling into focused logic with tests, independent of project switching and session moving.
-
-- [ ] Task 6: Rework the main TUI into sidebar mode.
-  Replace the tree menu interaction model with a current-project sidebar that shows only that project's sessions and preserves clear selection/current-session styling.
-
-- [ ] Task 7: Implement the target sidebar keymap.
-  Add `R`, `r`, `t`, `a`, `P`, `m`, `Ctrl+Q`, and `Esc`; remove or retire old-tree actions that are no longer part of the target workflow.
-
-- [ ] Task 8: Implement the project overlay.
-  Add a dedicated overlay for project switching that excludes the current project and shows a deliberate empty state when there are no alternatives.
-
-- [ ] Task 9: Implement move-session via hints mode.
-  Replace prefix matching with hints-based project selection and preserve the agreed empty-project behavior when moving the last session out.
-
-- [ ] Task 10: Implement project termination.
-  Add explicit confirmation, show the project name, kill all project sessions, remove project runtime state, and remove persisted project state.
-
-- [ ] Task 11: Align session creation flows with the target design.
-  Keep terminal and agent creation, remove or isolate `k9s` from the main UI path, and ensure new sessions are always created inside the current project.
-
-- [ ] Task 12: Remove or isolate obsolete features.
-  Retire command mode, project YAML editing from the main flow, protection semantics, collapse/expand tree behavior, and other interactions that no longer belong in the target UX.
-
-- [ ] Task 13: Update tests around the new behavior.
-  Replace old tree/menu expectations with focused tests for bootstrap, sidebar toggling, overlay selection, hints generation, move semantics, and project termination.
-
-- [ ] Task 14: Refresh docs after behavior convergence.
-  Update `README.md` and any user-facing docs only after the implementation matches this target design.
+- [x] Task 1: Define the target runtime data model.
+- [x] Task 2: Define the tmux naming and ownership strategy.
+- [x] Task 3: Bootstrap first-start behavior.
+- [x] Task 4: Simplify persisted state around the new architecture.
+- [x] Task 5: Introduce reusable hints-mode primitives.
+- [x] Task 6: Rework the main TUI into sidebar mode.
+- [x] Task 7: Implement the target sidebar keymap.
+- [x] Task 8: Implement the project overlay.
+- [x] Task 9: Implement move-session via hints mode.
+- [x] Task 10: Implement project termination.
+- [x] Task 11: Align session creation flows with the target design.
+- [x] Task 12: Remove or isolate obsolete features.
+- [x] Task 13: Update tests around the new behavior.
+- [x] Task 14: Refresh docs after behavior convergence.
