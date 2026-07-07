@@ -241,12 +241,12 @@ func TestHelpHiddenUntilQuestionMark(t *testing.T) {
 	m.state = appState{CurrentProject: "otter", Projects: []projectState{{Name: "otter", Sessions: []sessionState{{Name: "code", TmuxName: "otter_code"}}}}}
 	m.syncSelection()
 
-	if strings.Contains(m.View(), "t new terminal") {
+	if strings.Contains(m.View(), "t ▶️ new terminal") {
 		t.Fatal("help action visible before ?")
 	}
 	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
 	m = updated.(model)
-	if !strings.Contains(m.View(), "t new terminal") || !strings.Contains(m.View(), "P persist project") {
+	if !strings.Contains(m.View(), "t ▶️ new terminal") || !strings.Contains(m.View(), "P ▶️ persist project") {
 		t.Fatalf("help not rendered after ?: %q", m.View())
 	}
 }

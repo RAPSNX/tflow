@@ -1580,7 +1580,15 @@ func (m model) renderHintProjectName(project string) string {
 func (m model) renderFooter(width int) string {
 	lines := []string{}
 	if m.showHelp {
-		lines = append(lines, hintStyle.Render("t new terminal"), hintStyle.Render("a new agent"), hintStyle.Render("r rename session"), hintStyle.Render("m move session"), hintStyle.Render("p switch project"), hintStyle.Render("P persist project"), hintStyle.Render("Ctrl+Q quit tflow"))
+		lines = append(lines,
+			hintStyle.Render("t ▶️ new terminal"),
+			hintStyle.Render("a ▶️ new agent"),
+			hintStyle.Render("r ▶️ rename session"),
+			hintStyle.Render("m ▶️ move session"),
+			hintStyle.Render("p ▶️ switch project"),
+			hintStyle.Render("P ▶️ persist project"),
+			hintStyle.Render("Ctrl+Q ▶️ quit tflow"),
+		)
 	}
 	if m.mode == inputCreateSession || m.mode == inputRenameSession {
 		label := titleForSessionType(m.createSessionType)
@@ -2157,13 +2165,21 @@ func nextBootstrapProjectName(state appState) string {
 	for _, project := range state.Projects {
 		used[project.Name] = struct{}{}
 	}
-	for _, animal := range bootstrapProjectAnimals {
+	start := 0
+	if len(bootstrapProjectAnimals) > 0 {
+		if n, err := rand.Int(rand.Reader, big.NewInt(int64(len(bootstrapProjectAnimals)))); err == nil {
+			start = int(n.Int64())
+		}
+	}
+	for offset := 0; offset < len(bootstrapProjectAnimals); offset++ {
+		animal := bootstrapProjectAnimals[(start+offset)%len(bootstrapProjectAnimals)]
 		if _, ok := used[animal]; !ok {
 			return animal
 		}
 	}
 	for i := 2; ; i++ {
-		for _, animal := range bootstrapProjectAnimals {
+		for offset := 0; offset < len(bootstrapProjectAnimals); offset++ {
+			animal := bootstrapProjectAnimals[(start+offset)%len(bootstrapProjectAnimals)]
 			name := fmt.Sprintf("%s-%d", animal, i)
 			if _, ok := used[name]; !ok {
 				return name
