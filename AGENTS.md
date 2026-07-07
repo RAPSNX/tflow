@@ -5,6 +5,8 @@
 - Do all work on `codex-agent`, and push completed work to `origin/codex-agent` automatically.
 - Verify always to work cleanly, finished work should always end with a cleanup and a merge into the `codex-agent` branch.
 - Use a worktree, verify the work is done, and merge it everytime on that branch.
+- always cleanup your worktrees and secondary branches after finishing a task.
+- after task is done there is never any worktree or branch that was by agent created in the repository.
 - The `TASK.md` contains all open & finished tasks for features, bugs, changes or issues.
     - When working on these, always mark them as done acrodingly.
 
@@ -27,8 +29,6 @@
 
 ## Coding guidance
 
-- Prefer small, direct changes.
-- Keep TUI state transitions explicit and easy to review.
 - Handle API errors visibly and predictably.
 - Do not introduce new dependencies unless necessary.
 - Add or update tests for behavior changes.
@@ -41,7 +41,6 @@ Use subagents selectively. Do not invoke them for trivial changes or when the ma
 
 - `explorer`: Use before larger or unfamiliar changes to identify relevant files, code paths, dependencies, and existing patterns.
 - `worker`: Use to delegate clearly scoped work that can be done in parallel, such as an isolated feature, bug fix, refactor, or investigation.
-- `reviewer`: Use after implementation to review the diff, check for regressions, and identify missed edge cases.
 
 ### Usage Guidelines
 

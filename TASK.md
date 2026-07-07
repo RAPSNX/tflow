@@ -8,11 +8,18 @@ It keeps the UI focused on one sidebar, hides tmux internals, and treats a proje
 
 - Sessions always belong to exactly one project.
 - Terminating a project terminates all sessions inside it.
+- Terminate the terminal in which `tflow` runs, will terminate also the project and all sessions in it.
 - `tflow` bootstraps a random project and a `code` session on first start.
 - The UI should expose logical names only; tmux session names stay internal.
 - The sidebar is the main control surface. Project and session actions should happen there.
+- The only way to persist a project, is to create it in the `tflow` configuration yaml `~/.config/tflow/config.yaml`
 - Empty projects are valid.
 - Help stays hidden until `?` is pressed.
+
+## config.yaml
+This file describes persistent projects, this file is only written by a human user.
+If this file is not existing, there are no persistent projects
+
 
 ## Target Sidebar
 
