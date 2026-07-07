@@ -1533,7 +1533,12 @@ func (m model) renderSessionRow(width int, project string, session sessionState)
 
 func (m model) renderSessionBadge(label string, selected bool) string {
 	if selected {
-		return label
+		if label == "live" {
+			// A beautiful mixture of Catppuccin: yellow background with dark text for contrast
+			return currentBadgeStyle.Render(label)
+		}
+		// agent badge when selected: surface0 background, styled beautifully
+		return countBadgeStyle.Render(label)
 	}
 	if label == "live" {
 		return currentBadgeStyle.Render(label)
