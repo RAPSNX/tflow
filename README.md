@@ -16,15 +16,15 @@ It keeps sessions grouped by project, starts every run with a volatile random-an
 - persistent projects and their sessions survive terminal exit unchanged
 - each logical session maps to an internal tmux session name; the UI shows only logical names
 - the sidebar shows Sessions for the current project and Projects for persistent projects
-- persistent session restore state, including last known cwd, is stored in `state.json`
+- persistent session restore state, including last known cwd and selected session, is stored in `state.json`
 - `Ctrl+F` toggles the sidebar pane in the current tmux window
 
 ## Keys
 
-- `j` / `k`: move through sessions in the current project
-- `Enter`: switch to the selected session
-- `t`: create a new terminal session in the current project
-- `a`: create a new agent session in the current project
+- `j` / `k`: move through sessions and persistent projects
+- `Enter`: switch to the selected session or persistent project
+- `t`: create and switch to a new terminal session in the current project
+- `a`: create and switch to a new agent session in the current project
 - `r`: rename the selected session
 - `p`: switch to another persistent project using hints
 - `P`: persist the current volatile project

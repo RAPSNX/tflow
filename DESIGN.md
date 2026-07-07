@@ -428,9 +428,13 @@ Rules:
 ## Open Questions
 
 - If multiple terminals attach to the same persistent project, should their selected sessions be tracked independently or globally?
+  - They should be tracked globally
 - Should moving a session into a persistent project immediately write restore state, or only on sidebar close/session switch?
+  - sidear close / open would be enough i guess
 - Should `P` require all fields, or allow empty `workdir` / `agent-cmd`?
+  - empty is allows
 - Should a persistent project with no restore state always start with `code`, or stay empty until the user creates a session?
+  - empty projects should always have the code seesion
 
 ## Non-Goals
 

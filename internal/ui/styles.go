@@ -181,8 +181,9 @@ func applyTheme(p themePalette) {
 
 	currentBadgeStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(yellowColor).
-		Padding(0, 0)
+		Foreground(badgeTextColor).
+		Background(yellowColor).
+		Padding(0, 1)
 
 	countBadgeStyle = lipgloss.NewStyle().
 		Foreground(textColor).

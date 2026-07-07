@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -308,6 +309,180 @@ func TestSwitchProjectClosesPaneForNonEmptyTarget(t *testing.T) {
 	}
 	if got := fmt.Sprint(closed); got != fmt.Sprint([]string{"%3"}) {
 		t.Fatalf("closed = %s", got)
+	}
+}
+
+func TestCreatedSessionSwitchesClientAndClosesSidebar(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	var switched []string
+	var closed []string
+	m := model{
+		tmux: fakeTmuxController{
+			switchClient: func(name string) error {
+				switched = append(switched, name)
+				return nil
+			},
+			closePane: func(paneID string) error {
+				closed = append(closed, paneID)
+				return nil
+			},
+		},
+		paneID:             "%7",
+		statePath:          statePath,
+		projectCfg:         map[string]projectConfig{},
+		currentTmuxSession: "garden_code",
+		state: appState{CurrentProject: "garden", Projects: []projectState{{
+			Name:     "garden",
+			Sessions: []sessionState{{Name: "code", TmuxName: "garden_code"}},
+		}}},
+	}
+
+	updated, cmd := m.Update(sessionCreatedMsg{session: sessionState{Name: "shell", TmuxName: "garden_shell", Type: sessionTypeTerminal}})
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("switch command returned error: %v", msg.err)
+	}
+	got := updated.(model)
+	if got.currentTmuxSession != "garden_shell" || got.selectedSession != "shell" || got.selection != selectionSessions {
+		t.Fatalf("unexpected model after create: %#v", got)
+	}
+	if fmt.Sprint(switched) != fmt.Sprint([]string{"garden_shell"}) || fmt.Sprint(closed) != fmt.Sprint([]string{"%7"}) {
+		t.Fatalf("switched=%v closed=%v", switched, closed)
+	}
+}
+
+func TestProjectRowsAreSelectableAndEnterSwitchesProject(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	var switched []string
+	var closed []string
+	m := model{
+		tmux: fakeTmuxController{
+			switchClient: func(name string) error {
+				switched = append(switched, name)
+				return nil
+			},
+			closePane: func(paneID string) error {
+				closed = append(closed, paneID)
+				return nil
+			},
+		},
+		paneID:             "%8",
+		statePath:          statePath,
+		projectCfg:         map[string]projectConfig{"alpha": {Name: "alpha"}},
+		currentTmuxSession: "garden_code",
+		state: appState{CurrentProject: "garden", Projects: []projectState{
+			{Name: "garden", Sessions: []sessionState{{Name: "code", TmuxName: "garden_code"}}},
+			{Name: "alpha", Persistent: true, Sessions: []sessionState{{Name: "code", TmuxName: "alpha_code"}}},
+		}},
+	}
+	m.syncSelection()
+
+	m.shiftSelection(1)
+	if m.selection != selectionProjects || m.selectedProject != "alpha" {
+		t.Fatalf("selection = %v project = %q, want alpha project row", m.selection, m.selectedProject)
+	}
+	_, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyEnter})
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("switch returned error: %v", msg.err)
+	}
+	if fmt.Sprint(switched) != fmt.Sprint([]string{"alpha_code"}) || fmt.Sprint(closed) != fmt.Sprint([]string{"%8"}) {
+		t.Fatalf("switched=%v closed=%v", switched, closed)
+	}
+}
+
+func TestSwitchProjectUsesGloballyTrackedCurrentSession(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	var switched []string
+	m := model{
+		tmux: fakeTmuxController{switchClient: func(name string) error {
+			switched = append(switched, name)
+			return nil
+		}},
+		statePath:  statePath,
+		projectCfg: map[string]projectConfig{"alpha": {Name: "alpha", AgentBinary: "codex"}},
+		state: appState{
+			CurrentProject:  "garden",
+			CurrentSessions: map[string]string{"alpha": "agent"},
+			Projects: []projectState{
+				{Name: "garden", Sessions: []sessionState{{Name: "code", TmuxName: "garden_code"}}},
+				{Name: "alpha", Persistent: true, Sessions: []sessionState{
+					{Name: "code", TmuxName: "alpha_code"},
+					{Name: "agent", TmuxName: "alpha_agent", Type: sessionTypeAgent},
+				}},
+			},
+		},
+	}
+
+	_, cmd := m.switchProject("alpha")
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("switch returned error: %v", msg.err)
+	}
+	if fmt.Sprint(switched) != fmt.Sprint([]string{"alpha_agent"}) {
+		t.Fatalf("switched = %v, want alpha_agent", switched)
+	}
+}
+
+func TestCtrlCClosesSidebarFromModalState(t *testing.T) {
+	var closed []string
+	m := model{
+		tmux: fakeTmuxController{closePane: func(paneID string) error {
+			closed = append(closed, paneID)
+			return nil
+		}},
+		paneID: "%9",
+		mode:   inputCreateSession,
+		state:  appState{CurrentProject: "garden", Projects: []projectState{{Name: "garden", Sessions: []sessionState{{Name: "code", TmuxName: "garden_code"}}}}},
+	}
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("close returned error: %v", msg.err)
+	}
+	if fmt.Sprint(closed) != fmt.Sprint([]string{"%9"}) {
+		t.Fatalf("closed = %v, want %%9", closed)
+	}
+}
+
+func TestPersistProjectAllowsEmptyWorkdirAndAgentCommand(t *testing.T) {
+	var renames [][2]string
+	input := textinput.New()
+	m := model{
+		tmux: fakeTmuxController{renameSession: func(oldName, newName string) error {
+			renames = append(renames, [2]string{oldName, newName})
+			return nil
+		}},
+		cwd:                "/tmp/current",
+		currentTmuxSession: "otter_code",
+		state: appState{CurrentProject: "otter", Projects: []projectState{{
+			Name:     "otter",
+			Sessions: []sessionState{{Name: "code", TmuxName: "otter_code"}},
+		}}},
+		projectCfg: map[string]projectConfig{},
+		input:      input,
+	}
+
+	updated, _ := m.startPersistProject()
+	m = updated.(model)
+	m.input.SetValue("work")
+	updated, _ = m.updatePersistProject(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	m.input.SetValue("")
+	updated, _ = m.updatePersistProject(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	m.input.SetValue("")
+	_, cmd := m.updatePersistProject(tea.KeyMsg{Type: tea.KeyEnter})
+	msg := cmd().(projectPersistedMsg)
+	if msg.err != nil {
+		t.Fatalf("persist returned error: %v", msg.err)
+	}
+	if msg.config.Name != "work" || msg.config.Workdir != "" || msg.config.AgentBinary != "" {
+		t.Fatalf("unexpected config: %#v", msg.config)
+	}
+	if fmt.Sprint(renames) != fmt.Sprint([][2]string{{"otter_code", "work_code"}}) {
+		t.Fatalf("renames = %v", renames)
 	}
 }
 

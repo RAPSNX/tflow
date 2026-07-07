@@ -43,6 +43,13 @@ const (
 	inputPersistProject
 )
 
+type selectionScope int
+
+const (
+	selectionSessions selectionScope = iota
+	selectionProjects
+)
+
 type overlayAction int
 
 const (
@@ -58,8 +65,9 @@ const (
 )
 
 type appState struct {
-	CurrentProject string         `json:"current_project"`
-	Projects       []projectState `json:"projects"`
+	CurrentProject  string            `json:"current_project"`
+	CurrentSessions map[string]string `json:"current_sessions,omitempty"`
+	Projects        []projectState    `json:"projects"`
 }
 
 type projectState struct {
@@ -146,6 +154,8 @@ type model struct {
 
 	currentTmuxSession string
 	selectedSession    string
+	selectedProject    string
+	selection          selectionScope
 	tmuxSessions       map[string]session
 
 	mode    inputMode
@@ -433,7 +443,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		project := m.currentProjectName()
 		m.addSession(project, msg.session)
+		m.setCurrentSession(project, msg.session.Name)
 		m.selectedSession = msg.session.Name
+		m.selection = selectionSessions
+		m.currentTmuxSession = msg.session.TmuxName
 		m.status = ""
 		m.err = nil
 		if err := m.saveState(); err != nil {
@@ -441,7 +454,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = err.Error()
 			return m, nil
 		}
-		return m, m.loadSessionsCmd()
+		return m, m.switchToSessionCmd(msg.session.TmuxName)
 	case sessionRenamedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -449,6 +462,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.renameSelectedSessionState(msg.oldName, msg.newName)
+		m.setCurrentSession(m.currentProjectName(), msg.newName)
 		m.selectedSession = msg.newName
 		if m.currentStateSession() != nil && m.currentStateSession().Name == msg.oldName {
 			m.currentTmuxSession = tmuxSessionName(m.currentProjectName(), msg.newName)
@@ -531,6 +545,9 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.shiftSelection(-1)
 		return m, nil
 	case "enter":
+		if m.selection == selectionProjects {
+			return m.switchSelectedProject()
+		}
 		return m.switchSelectedSession()
 	case "t":
 		return m.startSessionCreate(sessionTypeTerminal)
@@ -569,6 +586,14 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.Type == tea.KeyCtrlC {
+		if err := m.updateCurrentSessionCWD(); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
+		return m, m.closeMenuCmd()
+	}
 	switch m.mode {
 	case inputCreateSession:
 		return m.updateCreateSession(msg)
@@ -687,18 +712,6 @@ func (m model) updatePersistProject(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.loadPersistField()
 			return m, nil
 		}
-		if cfg.Workdir == "" {
-			m.status = "Workdir is empty."
-			m.persist.Field = 1
-			m.loadPersistField()
-			return m, nil
-		}
-		if cfg.AgentBinary == "" {
-			m.status = "Agent command is empty."
-			m.persist.Field = 2
-			m.loadPersistField()
-			return m, nil
-		}
 		oldName := m.currentProjectName()
 		if oldName == "" {
 			m.status = "No project selected."
@@ -791,6 +804,14 @@ func (m *model) openProjectOverlay(action overlayAction) {
 	}
 }
 
+func (m model) switchSelectedProject() (tea.Model, tea.Cmd) {
+	if m.selectedProject == "" {
+		m.status = "No project selected."
+		return m, nil
+	}
+	return m.switchProject(m.selectedProject)
+}
+
 func (m model) switchSelectedSession() (tea.Model, tea.Cmd) {
 	session := m.selectedSessionState()
 	if session == nil {
@@ -802,7 +823,14 @@ func (m model) switchSelectedSession() (tea.Model, tea.Cmd) {
 		m.status = err.Error()
 		return m, nil
 	}
-	cfg := m.projectConfig(m.currentProjectName())
+	project := m.currentProjectName()
+	m.setCurrentSession(project, session.Name)
+	if err := m.saveState(); err != nil {
+		m.err = err
+		m.status = err.Error()
+		return m, nil
+	}
+	cfg := m.projectConfig(project)
 	return m, func() tea.Msg {
 		err := ensureTmuxSession(m.tmux, cfg, *session)
 		if err == nil {
@@ -854,18 +882,19 @@ func (m model) switchProject(project string) (tea.Model, tea.Cmd) {
 	m.state.CurrentProject = project
 	m.selectedSession = ""
 	m.syncSelection()
-	if err := m.saveState(); err != nil {
-		m.err = err
-		m.status = err.Error()
-		return m, nil
-	}
 	if len(projectState.Sessions) == 0 {
 		m.mode = inputNone
 		m.overlay = overlayState{}
 		m.status = "Switched to empty project."
 		return m, nil
 	}
-	target := projectState.Sessions[0]
+	target := m.projectCurrentSession(*projectState)
+	m.setCurrentSession(project, target.Name)
+	if err := m.saveState(); err != nil {
+		m.err = err
+		m.status = err.Error()
+		return m, nil
+	}
 	cfg := m.projectConfig(project)
 	return m, func() tea.Msg {
 		err := ensureTmuxSession(m.tmux, cfg, target)
@@ -916,6 +945,10 @@ func (m *model) applyMoveSelectedSession(targetProject string) {
 	moved.TmuxName = tmuxSessionName(targetProject, session.Name)
 	m.removeSession(sourceProject, session.Name)
 	m.addSession(targetProject, moved)
+	if m.currentSessionName(sourceProject) == session.Name {
+		m.clearCurrentSession(sourceProject)
+	}
+	m.setCurrentSession(targetProject, moved.Name)
 	m.selectedSession = ""
 	if strings.TrimSpace(m.currentTmuxSession) == strings.TrimSpace(session.TmuxName) {
 		m.currentTmuxSession = moved.TmuxName
@@ -938,6 +971,10 @@ func (m *model) applyPersistProject(oldName string, cfg projectConfig) {
 		if strings.TrimSpace(m.currentTmuxSession) == strings.TrimSpace(oldTmuxName) {
 			m.currentTmuxSession = project.Sessions[i].TmuxName
 		}
+	}
+	if currentSession := m.currentSessionName(oldName); currentSession != "" {
+		m.clearCurrentSession(oldName)
+		m.setCurrentSession(cfg.Name, currentSession)
 	}
 	project.Name = cfg.Name
 	project.Persistent = true
@@ -1061,45 +1098,97 @@ func (m *model) removeSession(project, name string) {
 
 func (m *model) shiftSelection(delta int) {
 	sessions := m.projectSessions(m.currentProjectName())
-	if len(sessions) == 0 {
+	projects := m.persistentProjectNames()
+	total := len(sessions) + len(projects)
+	if total == 0 {
 		m.selectedSession = ""
+		m.selectedProject = ""
+		m.selection = selectionSessions
 		return
 	}
+
 	index := 0
-	for i, session := range sessions {
-		if session.Name == m.selectedSession {
-			index = i
-			break
+	if m.selection == selectionProjects {
+		index = len(sessions)
+		for i, project := range projects {
+			if project == m.selectedProject {
+				index = len(sessions) + i
+				break
+			}
+		}
+	} else {
+		for i, session := range sessions {
+			if session.Name == m.selectedSession {
+				index = i
+				break
+			}
 		}
 	}
-	index = (index + delta + len(sessions)) % len(sessions)
-	m.selectedSession = sessions[index].Name
+
+	index = (index + delta + total) % total
+	if index < len(sessions) {
+		m.selection = selectionSessions
+		m.selectedSession = sessions[index].Name
+		return
+	}
+	m.selection = selectionProjects
+	m.selectedProject = projects[index-len(sessions)]
 }
 
 func (m *model) syncSelection() {
 	m.state = normalizeAppState(m.state)
 	current := m.currentProjectName()
-	if current == "" {
-		m.selectedSession = ""
-		return
-	}
 	sessions := m.projectSessions(current)
-	if len(sessions) == 0 {
-		m.selectedSession = ""
-		return
-	}
-	if m.selectedSession != "" {
-		for _, session := range sessions {
-			if session.Name == m.selectedSession {
-				return
-			}
+	projects := m.persistentProjectNames()
+
+	if len(projects) == 0 {
+		m.selectedProject = ""
+	} else if !containsString(projects, m.selectedProject) {
+		m.selectedProject = projects[0]
+		if containsString(projects, current) {
+			m.selectedProject = current
 		}
 	}
-	if live := m.currentStateSession(); live != nil && liveProjectName(m.state, m.currentTmuxSession) == current {
-		m.selectedSession = live.Name
+
+	if current == "" || len(sessions) == 0 {
+		m.selectedSession = ""
+		if len(projects) > 0 {
+			m.selection = selectionProjects
+		}
 		return
 	}
-	m.selectedSession = sessions[0].Name
+
+	if !containsSessionName(sessions, m.selectedSession) {
+		if currentSession := m.currentSessionName(current); containsSessionName(sessions, currentSession) {
+			m.selectedSession = currentSession
+		} else if live := m.currentStateSession(); live != nil && liveProjectName(m.state, m.currentTmuxSession) == current {
+			m.selectedSession = live.Name
+		} else {
+			m.selectedSession = sessions[0].Name
+		}
+	}
+
+	if m.selection == selectionProjects && len(projects) == 0 {
+		m.selection = selectionSessions
+	}
+}
+
+func containsString(values []string, value string) bool {
+	for _, item := range values {
+		if item == value {
+			return true
+		}
+	}
+	return false
+}
+
+func containsSessionName(sessions []sessionState, name string) bool {
+	for _, session := range sessions {
+		if session.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *model) syncCurrentProjectFromSession() {
@@ -1126,7 +1215,7 @@ func liveProjectName(state appState, tmuxName string) string {
 }
 
 func (m model) selectedSessionState() *sessionState {
-	if m.selectedSession == "" {
+	if m.selection != selectionSessions || m.selectedSession == "" {
 		return nil
 	}
 	return m.findSession(m.currentProjectName(), m.selectedSession)
@@ -1197,6 +1286,47 @@ func (m model) projectSessions(project string) []sessionState {
 	return append([]sessionState(nil), projectState.Sessions...)
 }
 
+func (m model) currentSessionName(project string) string {
+	project = normalizeProjectName(project)
+	if project == "" || m.state.CurrentSessions == nil {
+		return ""
+	}
+	return sanitizeSessionName(m.state.CurrentSessions[project])
+}
+
+func (m *model) setCurrentSession(project, session string) {
+	project = normalizeProjectName(project)
+	session = sanitizeSessionName(session)
+	if project == "" || session == "" {
+		return
+	}
+	if m.state.CurrentSessions == nil {
+		m.state.CurrentSessions = map[string]string{}
+	}
+	m.state.CurrentSessions[project] = session
+}
+
+func (m *model) clearCurrentSession(project string) {
+	project = normalizeProjectName(project)
+	if project == "" || m.state.CurrentSessions == nil {
+		return
+	}
+	delete(m.state.CurrentSessions, project)
+}
+
+func (m model) projectCurrentSession(project projectState) sessionState {
+	if len(project.Sessions) == 0 {
+		return sessionState{}
+	}
+	current := m.currentSessionName(project.Name)
+	for _, session := range project.Sessions {
+		if session.Name == current {
+			return session
+		}
+	}
+	return project.Sessions[0]
+}
+
 func (m *model) pruneMissingSessions() bool {
 	changed := false
 	for i := range m.state.Projects {
@@ -1229,6 +1359,16 @@ func (m model) closeMenuCmd() tea.Cmd {
 	}
 }
 
+func (m model) switchToSessionCmd(tmuxName string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.tmux.SwitchClient(tmuxName)
+		if err == nil {
+			err = m.tmux.ClosePane(m.paneID)
+		}
+		return menuActionMsg{err: err}
+	}
+}
+
 func (m model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
@@ -1249,14 +1389,12 @@ func (m model) renderSidebar() string {
 }
 
 func (m model) renderHeader(width int) string {
-	left := brandBadgeStyle.Render("TFLOW")
-	right := mutedStyle.Render(fallbackText(m.currentProjectName(), "none"))
-	gap := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
-	return headerStyle.Width(width).Render(left + strings.Repeat(" ", gap) + right)
+	return headerStyle.Width(width).Align(lipgloss.Center).Render(brandBadgeStyle.Render("TFLOW"))
 }
 
 func (m model) renderBody(width int) string {
-	lines := []string{sectionTitleStyle.Render("Sessions"), ""}
+	sectionWidth := max(16, width-6)
+	lines := []string{sectionTitleStyle.Width(sectionWidth).Align(lipgloss.Center).Render("Sessions"), ""}
 	sessions := m.projectSessions(m.currentProjectName())
 	if m.currentProjectName() == "" {
 		lines = append(lines, mutedStyle.Render("No project selected."))
@@ -1273,7 +1411,7 @@ func (m model) renderBody(width int) string {
 			lines = append(lines, "")
 		}
 	}
-	lines = append(lines, "", mutedStyle.Render(strings.Repeat("-", max(8, width-6))), "", sectionTitleStyle.Render("Projects"), "")
+	lines = append(lines, "", mutedStyle.Render(strings.Repeat("-", max(8, width-6))), "", sectionTitleStyle.Width(sectionWidth).Align(lipgloss.Center).Render("Projects"), "")
 	projects := m.persistentProjectNames()
 	if len(projects) == 0 {
 		lines = append(lines, mutedStyle.Render("No persistent projects."))
@@ -1286,7 +1424,7 @@ func (m model) renderBody(width int) string {
 }
 
 func (m model) renderSessionRow(width int, session sessionState) string {
-	selected := session.Name == m.selectedSession
+	selected := m.selection == selectionSessions && session.Name == m.selectedSession
 	parts := []string{}
 	if session.Type == sessionTypeAgent {
 		parts = append(parts, countBadgeStyle.Render("[agent]"))
@@ -1304,6 +1442,7 @@ func (m model) renderSessionRow(width int, session sessionState) string {
 }
 
 func (m model) renderProjectRow(width int, project string) string {
+	selected := m.selection == selectionProjects && project == m.selectedProject
 	parts := []string{}
 	if m.currentProjectName() == project {
 		parts = append(parts, currentBadgeStyle.Render("[live]"))
@@ -1311,13 +1450,24 @@ func (m model) renderProjectRow(width int, project string) string {
 	if m.mode == inputProjectHints || m.mode == inputMoveSession {
 		for _, target := range m.overlay.Targets {
 			if target.Project == project {
-				parts = append(parts, countBadgeStyle.Render("["+target.Hint+"]"))
+				parts = append(parts, m.renderHintBadge(target.Hint))
 				break
 			}
 		}
 	}
 	parts = append(parts, project)
-	return projectStyle.Width(max(16, width-6)).Render(strings.Join(parts, " "))
+	style := projectStyle
+	if selected {
+		style = selectedProjectStyle
+	}
+	return style.Width(max(16, width-6)).Render(strings.Join(parts, " "))
+}
+
+func (m model) renderHintBadge(hint string) string {
+	if m.overlay.Query != "" && strings.HasPrefix(hint, m.overlay.Query) {
+		return currentBadgeStyle.Render("[" + hint + "]")
+	}
+	return countBadgeStyle.Render("[" + hint + "]")
 }
 
 func (m model) renderFooter(width int) string {
@@ -1788,7 +1938,36 @@ func normalizeAppState(state appState) appState {
 			}
 		}
 	}
+	state.CurrentSessions = normalizeCurrentSessions(state.Projects, state.CurrentSessions)
 	return state
+}
+
+func normalizeCurrentSessions(projects []projectState, current map[string]string) map[string]string {
+	if len(current) == 0 {
+		return nil
+	}
+	projectSessions := map[string][]sessionState{}
+	for _, project := range projects {
+		projectSessions[normalizeProjectName(project.Name)] = project.Sessions
+	}
+	normalized := map[string]string{}
+	for projectName, sessionName := range current {
+		projectName = normalizeProjectName(projectName)
+		sessionName = sanitizeSessionName(sessionName)
+		if projectName == "" || sessionName == "" {
+			continue
+		}
+		for _, candidate := range projectSessions[projectName] {
+			if candidate.Name == sessionName {
+				normalized[projectName] = sessionName
+				break
+			}
+		}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 func normalizeProjectSessions(sessions []sessionState) []sessionState {
