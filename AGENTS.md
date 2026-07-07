@@ -5,7 +5,7 @@
 - Do all work on `codex-agent`, and push completed work to `origin/codex-agent` automatically.
 - Verify always to work cleanly, finished work should always end with a cleanup and a merge into the `codex-agent` branch.
 - Use a worktree, verify the work is done, and merge it everytime on that branch.
-- The `TODO.md` contains all open & finished tasks for features, bugs, changes or issues.
+- The `TASK.md` contains all open & finished tasks for features, bugs, changes or issues.
     - When working on these, always mark them as done acrodingly.
 
 ## Workflow
