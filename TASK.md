@@ -86,6 +86,8 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 - [x] Show only current-project sessions in `Sessions`.
 - [x] Show only persistent projects in `Projects`.
 - [x] Keep volatile projects out of `Projects`.
+- [ ] The Session and the Project sections are distinct of each. So they are two seperate lists with boarders.
+- [ ] The switch between project section and sessions section is via <TAB>.
 - [x] Mark the current session and current persistent project with `[live]`.
 - [x] Support selecting project rows inside the sidebar.
 - [x] Allow `Enter` to activate the selected project row as well as the selected session row.
@@ -144,6 +146,13 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 - [x] Track selected sessions globally when multiple terminals attach to the same persistent project.
 - [x] Write moved-session restore state no later than sidebar close/open or session switch.
 - [x] Allow `P` to persist a project with empty `workdir` or `agent-cmd`.
+
+## !Bugs
+- [ ] The highlighting when session has a badge is broken or looks odd.
+- [ ] after implementation of `?` the legacy docs still displayed
+- [ ] hint mode should Highlight or change the color of the hint character, rather then prefix it.
+- [ ] Not all badges have the same type of style, all badges should look like the `TFLOW` badge at the top. Exceppt for color.
+      Color should match in a pretty way.
 
 ### Tests and Cleanup
 
