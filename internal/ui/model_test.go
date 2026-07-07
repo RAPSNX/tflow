@@ -447,6 +447,49 @@ func TestCtrlCClosesSidebarFromModalState(t *testing.T) {
 	}
 }
 
+func TestCtrlQQuitsTflowFromNormalState(t *testing.T) {
+	var quit []string
+	m := model{
+		tmux: fakeTmuxController{quitAll: func(paneID string) error {
+			quit = append(quit, paneID)
+			return nil
+		}},
+		paneID: "%10",
+		state:  appState{CurrentProject: "garden", Projects: []projectState{{Name: "garden", Sessions: []sessionState{{Name: "code", TmuxName: "garden_code"}}}}},
+	}
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("quit returned error: %v", msg.err)
+	}
+	if fmt.Sprint(quit) != fmt.Sprint([]string{"%10"}) {
+		t.Fatalf("quit = %v, want %%10", quit)
+	}
+}
+
+func TestCtrlQQuitsTflowFromModalState(t *testing.T) {
+	var quit []string
+	m := model{
+		tmux: fakeTmuxController{quitAll: func(paneID string) error {
+			quit = append(quit, paneID)
+			return nil
+		}},
+		paneID: "%11",
+		mode:   inputCreateSession,
+		state:  appState{CurrentProject: "garden", Projects: []projectState{{Name: "garden", Sessions: []sessionState{{Name: "code", TmuxName: "garden_code"}}}}},
+	}
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("quit returned error: %v", msg.err)
+	}
+	if fmt.Sprint(quit) != fmt.Sprint([]string{"%11"}) {
+		t.Fatalf("quit = %v, want %%11", quit)
+	}
+}
+
 func TestTabSwitchesBetweenSidebarSections(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "garden_code", "").(model)
 	m.state = appState{CurrentProject: "garden", Projects: []projectState{
@@ -493,6 +536,50 @@ func TestSidebarRendersSeparatePanelsAndHidesLegacyLegend(t *testing.T) {
 	}
 	if !strings.Contains(view, "agent") || !strings.Contains(view, "live") {
 		t.Fatalf("session badges not rendered: %q", view)
+	}
+	lines := strings.Split(view, "\n")
+	firstPanel := -1
+	firstPanelEnd := -1
+	secondPanel := -1
+	for i, line := range lines {
+		if strings.Contains(line, "╭") {
+			if firstPanel == -1 {
+				firstPanel = i
+			} else {
+				secondPanel = i
+				break
+			}
+		}
+		if firstPanel != -1 && firstPanelEnd == -1 && strings.Contains(line, "╰") {
+			firstPanelEnd = i
+		}
+	}
+	if firstPanel < 3 || firstPanelEnd == -1 || secondPanel-firstPanelEnd < 3 {
+		t.Fatalf("sidebar spacing did not keep the larger header gap and panel gap rhythm: %q", view)
+	}
+}
+
+func TestSelectedSessionBadgeUsesRowHighlight(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "garden_agent", "").(model)
+	m.state = appState{CurrentProject: "garden", Projects: []projectState{{
+		Name: "garden",
+		Sessions: []sessionState{{
+			Name:     "agent",
+			TmuxName: "garden_agent",
+			Type:     sessionTypeAgent,
+		}},
+	}}}
+	m.syncSelection()
+
+	row := m.renderSessionRow(48, "garden", m.state.Projects[0].Sessions[0])
+	if !strings.Contains(row, "agent live agent") {
+		t.Fatalf("selected badge text is not highlighted as one row: %q", row)
+	}
+	if badge := countBadgeStyle.Render("agent"); badge != "agent" && strings.Contains(row, badge) {
+		t.Fatalf("selected row contains unselected agent badge style: %q", row)
+	}
+	if badge := currentBadgeStyle.Render("live"); badge != "live" && strings.Contains(row, badge) {
+		t.Fatalf("selected row contains unselected live badge style: %q", row)
 	}
 }
 

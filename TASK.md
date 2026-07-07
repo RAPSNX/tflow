@@ -103,7 +103,7 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 
 - [x] Remove `n`-prefixed command mode.
 - [x] Remove `R` project rename behavior.
-- [x] Remove explicit project termination keybindings such as `Ctrl+Q`.
+- [x] Implement `Ctrl+Q` to exit tflow using terminal-exit cleanup semantics.
 - [x] Implement direct `t` key.
 - [x] Implement direct `a` key.
 - [x] Implement direct `r` key.
@@ -111,8 +111,9 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 - [x] Implement direct `m` key.
 - [x] Implement direct `P` key.
 - [x] Implement `?` help toggle.
-- [x] Keep killing the owning terminal as the cleanup mechanism for volatile projects.
+- [x] Keep killing the owning terminal as the cleanup mechanism for volatile projects, while `Ctrl+Q` triggers the same cleanup path.
 - [x] Ensure `Ctrl+C` closes the sidebar from normal, inline-input, hints, and persist-overlay states.
+- [ ] Display the help with `▶️` as seperator betwen (key ▶️action).
 
 ### Interaction Flow
 
@@ -150,9 +151,11 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 ## !Bugs
 - [x] The highlighting when session has a badge is broken or looks odd.
 - [x] after implementation of `?` the legacy docs still displayed
-- [x] hint mode should Highlight or change the color of the hint character, rather then prefix it.
 - [x] Not all badges have the same type of style, all badges should look like the `TFLOW` badge at the top. Exceppt for color.
       Color should match in a pretty way.
+- [x] hint mode should Highlight or change the color of the hint character, rather then prefix it.
+- [ ] Badges should not be highlited the same as the row, switch here to a beautifull mixture of colors of catppuccin.
+- [ ] Every new start of `tflow`, should generate a new random animal session, currently this attaches always to the same.
 
 ### Tests and Cleanup
 

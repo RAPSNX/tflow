@@ -538,6 +538,13 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
+	case "ctrl+q":
+		if err := m.updateCurrentSessionCWD(); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
+		return m, m.quitAllCmd()
 	case "tab":
 		m.toggleSelectionScope()
 		return m, nil
@@ -589,6 +596,14 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "ctrl+q" {
+		if err := m.updateCurrentSessionCWD(); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
+		return m, m.quitAllCmd()
+	}
 	if msg.Type == tea.KeyCtrlC {
 		if err := m.updateCurrentSessionCWD(); err != nil {
 			m.err = err
@@ -1388,6 +1403,12 @@ func (m model) closeMenuCmd() tea.Cmd {
 	}
 }
 
+func (m model) quitAllCmd() tea.Cmd {
+	return func() tea.Msg {
+		return menuActionMsg{err: m.tmux.QuitAll(m.paneID)}
+	}
+}
+
 func (m model) switchToSessionCmd(tmuxName string) tea.Cmd {
 	return func() tea.Msg {
 		err := m.tmux.SwitchClient(tmuxName)
@@ -1414,7 +1435,9 @@ func (m model) renderSidebar() string {
 	header := m.renderHeader(innerWidth)
 	body := m.renderBody(innerWidth)
 	footer := m.renderFooter(innerWidth)
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
+	headerGap := strings.Repeat("\n", 2)
+	footerGap := "\n"
+	return lipgloss.JoinVertical(lipgloss.Left, header, headerGap, body, footerGap, footer)
 }
 
 func (m model) renderHeader(width int) string {
@@ -1474,10 +1497,11 @@ func (m model) renderBody(width int) string {
 		}
 	}
 
+	sectionGap := strings.Repeat("\n", 1)
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		m.renderSectionPanel(width, "Sessions", sessionLines),
-		"",
+		sectionGap,
 		m.renderSectionPanel(width, "Projects", projectLines),
 	)
 }
@@ -1493,10 +1517,10 @@ func (m model) renderSessionRow(width int, project string, session sessionState)
 	selected := project == m.currentProjectName() && m.selection == selectionSessions && session.Name == m.selectedSession
 	parts := []string{}
 	if session.Type == sessionTypeAgent {
-		parts = append(parts, countBadgeStyle.Render("agent"))
+		parts = append(parts, m.renderSessionBadge("agent", selected))
 	}
 	if session.TmuxName == m.currentTmuxSession {
-		parts = append(parts, currentBadgeStyle.Render("live"))
+		parts = append(parts, m.renderSessionBadge("live", selected))
 	}
 	parts = append(parts, session.Name)
 	content := strings.Join(parts, " ")
@@ -1505,6 +1529,16 @@ func (m model) renderSessionRow(width int, project string, session sessionState)
 		style = selectedSessionStyle
 	}
 	return style.Width(max(16, width-6)).Render(content)
+}
+
+func (m model) renderSessionBadge(label string, selected bool) string {
+	if selected {
+		return label
+	}
+	if label == "live" {
+		return currentBadgeStyle.Render(label)
+	}
+	return countBadgeStyle.Render(label)
 }
 
 func (m model) renderProjectRow(width int, project string) string {
@@ -1546,7 +1580,7 @@ func (m model) renderHintProjectName(project string) string {
 func (m model) renderFooter(width int) string {
 	lines := []string{}
 	if m.showHelp {
-		lines = append(lines, hintStyle.Render("t new terminal"), hintStyle.Render("a new agent"), hintStyle.Render("r rename session"), hintStyle.Render("m move session"), hintStyle.Render("p switch project"), hintStyle.Render("P persist project"))
+		lines = append(lines, hintStyle.Render("t new terminal"), hintStyle.Render("a new agent"), hintStyle.Render("r rename session"), hintStyle.Render("m move session"), hintStyle.Render("p switch project"), hintStyle.Render("P persist project"), hintStyle.Render("Ctrl+Q quit tflow"))
 	}
 	if m.mode == inputCreateSession || m.mode == inputRenameSession {
 		label := titleForSessionType(m.createSessionType)

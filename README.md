@@ -31,6 +31,7 @@ It keeps sessions grouped by project, starts every run with a volatile random-an
 - `P`: persist the current volatile project
 - `m`: move the selected session to another persistent project using hints
 - `?`: toggle help
+- `Ctrl+Q`: quit tflow using the same cleanup path as terminal exit
 - `Esc`, `Ctrl+C`: cancel inline input or close the sidebar
 
 ## Config

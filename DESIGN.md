@@ -225,6 +225,7 @@ P        persist current project
 ?        toggle help
 Esc      cancel/close
 Ctrl+C   close sidebar
+Ctrl+Q   quit tflow
 ```
 
 Rules:
@@ -232,8 +233,9 @@ Rules:
 - actions use direct keybindings
 - there is no `n`-prefixed command mode
 - there is no `R` key
-- there is no explicit project termination key
-- killing the owning terminal is the project cleanup mechanism for volatile projects
+- `Ctrl+Q` exits tflow using the same cleanup semantics as terminal termination
+- there is no separate project-kill keybinding
+- killing the owning terminal remains the cleanup mechanism for volatile projects
 
 ## Help Layout
 
