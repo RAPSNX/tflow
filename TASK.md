@@ -113,7 +113,7 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 - [x] Implement `?` help toggle.
 - [x] Keep killing the owning terminal as the cleanup mechanism for volatile projects, while `Ctrl+Q` triggers the same cleanup path.
 - [x] Ensure `Ctrl+C` closes the sidebar from normal, inline-input, hints, and persist-overlay states.
-- [ ] Display the help with `▶️` as seperator betwen (key ▶️action).
+- [x] Display the help with `▶️` as separator betwen (key ▶️action).
 
 ### Interaction Flow
 
@@ -155,7 +155,7 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
       Color should match in a pretty way.
 - [x] hint mode should Highlight or change the color of the hint character, rather then prefix it.
 - [ ] Badges should not be highlited the same as the row, switch here to a beautifull mixture of colors of catppuccin.
-- [ ] Every new start of `tflow`, should generate a new random animal session, currently this attaches always to the same.
+- [x] Every new start of `tflow`, should generate a new random animal session, currently this attaches always to the same.
 
 ### Tests and Cleanup
 
