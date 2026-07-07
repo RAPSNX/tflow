@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -65,33 +66,26 @@ func TestBuildHintsUsesShortestUniquePrefixes(t *testing.T) {
 	}
 }
 
-func TestProjectOverlayExcludesCurrentProject(t *testing.T) {
+func TestProjectOverlayTargetsPersistentProjectsOnly(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "garden_code", "").(model)
 	m.state = appState{
 		CurrentProject: "garden",
-		Projects:       []projectState{{Name: "garden"}, {Name: "alpha"}, {Name: "mouse"}},
+		Projects: []projectState{
+			{Name: "garden", Persistent: false},
+			{Name: "alpha", Persistent: true},
+			{Name: "mouse", Persistent: false},
+		},
 	}
 
 	m.openProjectOverlay(overlaySwitchProject)
-	if len(m.overlay.Targets) != 2 {
-		t.Fatalf("targets = %#v, want two", m.overlay.Targets)
+	if len(m.overlay.Targets) != 1 || m.overlay.Targets[0].Project != "alpha" {
+		t.Fatalf("targets = %#v, want alpha only", m.overlay.Targets)
 	}
-	for _, target := range m.overlay.Targets {
-		if target.Project == "garden" {
-			t.Fatalf("current project leaked into overlay: %#v", m.overlay.Targets)
-		}
-	}
-}
-
-func TestProjectOverlayNStartsProjectCreation(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "garden_code", "").(model)
-	m.state = appState{CurrentProject: "garden", Projects: []projectState{{Name: "garden"}}}
-	m.openProjectOverlay(overlaySwitchProject)
 
 	updated, _ := m.updateOverlay(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 	got := updated.(model)
-	if got.mode != inputCreateProject {
-		t.Fatalf("mode = %v, want inputCreateProject", got.mode)
+	if got.mode != inputProjectHints {
+		t.Fatalf("mode = %v, want inputProjectHints", got.mode)
 	}
 }
 
@@ -107,7 +101,7 @@ func TestMoveSelectedSessionRenamesTmuxAndUpdatesState(t *testing.T) {
 		CurrentProject: "garden",
 		Projects: []projectState{
 			{Name: "garden", Sessions: []sessionState{{Name: "code", TmuxName: "garden_code", Type: sessionTypeTerminal}}},
-			{Name: "mouse"},
+			{Name: "mouse", Persistent: true},
 		},
 	}
 	m.selectedSession = "code"
@@ -121,37 +115,165 @@ func TestMoveSelectedSessionRenamesTmuxAndUpdatesState(t *testing.T) {
 	if got := fmt.Sprint(renames); got != fmt.Sprint([][2]string{{"garden_code", "mouse_code"}}) {
 		t.Fatalf("renames = %s", got)
 	}
-	if m.currentProjectName() != "mouse" {
-		t.Fatalf("currentProject = %q, want mouse", m.currentProjectName())
+	if m.currentProjectName() != "garden" {
+		t.Fatalf("currentProject = %q, want garden", m.currentProjectName())
 	}
 	if session := m.findSession("mouse", "code"); session == nil || session.TmuxName != "mouse_code" {
 		t.Fatalf("moved session not found: %#v", m.state)
 	}
 }
 
-func TestTerminateCurrentProjectKillsAllSessions(t *testing.T) {
+func TestCleanupOwnedVolatileProjectKillsOnlyVolatileSessions(t *testing.T) {
+	configHome := t.TempDir()
+	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+	})
+	_ = os.Setenv("XDG_CONFIG_HOME", configHome)
+
+	statePath := filepath.Join(configHome, "tflow", "state.json")
+	state := appState{Projects: []projectState{
+		{Name: "otter", Sessions: []sessionState{{Name: "code", TmuxName: "otter_code"}}},
+		{Name: "work", Persistent: true, Sessions: []sessionState{{Name: "code", TmuxName: "work_code"}}},
+	}}
+	if err := saveAppState(statePath, state, map[string]projectConfig{"work": {Name: "work"}}); err != nil {
+		t.Fatalf("saveAppState returned error: %v", err)
+	}
+
 	var killed []string
-	m := newModel(fakeTmuxController{
+	manager := fakeTmuxController{
 		killSession: func(name string) error {
 			killed = append(killed, name)
 			return nil
 		},
-	}, "garden_code", "").(model)
-	m.state = appState{
-		CurrentProject: "garden",
+		sessionCWD: func(name string) (string, error) {
+			if name == "work_code" {
+				return "/tmp/work-current", nil
+			}
+			return "", fmt.Errorf("can't find session: %s", name)
+		},
+	}
+	if err := cleanupOwnedVolatileProject(manager, "otter_code"); err != nil {
+		t.Fatalf("cleanupOwnedVolatileProject returned error: %v", err)
+	}
+	if got := fmt.Sprint(killed); got != fmt.Sprint([]string{"otter_code"}) {
+		t.Fatalf("killed = %s", got)
+	}
+	state, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatalf("loadAppState returned error: %v", err)
+	}
+	work := projectForTmuxSession(state, "work_code")
+	if work == nil || projectForTmuxSession(state, "otter_code") != nil {
+		t.Fatalf("unexpected state after cleanup: %#v", state)
+	}
+	if got := work.Sessions[0].CWD; got != "/tmp/work-current" {
+		t.Fatalf("persistent cwd = %q, want /tmp/work-current", got)
+	}
+}
+
+func TestNewModelTracksPersistentCWDOnSidebarOpen(t *testing.T) {
+	configHome := t.TempDir()
+	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+	})
+	_ = os.Setenv("XDG_CONFIG_HOME", configHome)
+
+	statePath := filepath.Join(configHome, "tflow", "state.json")
+	cfgs := map[string]projectConfig{"work": {Name: "work", Workdir: "/tmp/work", AgentBinary: "codex"}}
+	state := appState{
+		CurrentProject: "work",
 		Projects: []projectState{{
-			Name:     "garden",
-			Sessions: []sessionState{{Name: "code", TmuxName: "garden_code"}, {Name: "shell", TmuxName: "garden_shell"}},
+			Name:       "work",
+			Persistent: true,
+			Sessions:   []sessionState{{Name: "code", TmuxName: "work_code", Type: sessionTypeTerminal, CWD: "/tmp/old"}},
 		}},
 	}
-
-	_, cmd := m.terminateCurrentProject()
-	msg := cmd().(projectTerminatedMsg)
-	if msg.err != nil {
-		t.Fatalf("terminate returned error: %v", msg.err)
+	if err := saveAppState(statePath, state, cfgs); err != nil {
+		t.Fatalf("saveAppState returned error: %v", err)
 	}
-	if got := fmt.Sprint(killed); got != fmt.Sprint([]string{"garden_code", "garden_shell"}) {
-		t.Fatalf("killed = %s", got)
+
+	_ = newModel(fakeTmuxController{sessionCWD: func(name string) (string, error) {
+		if name != "work_code" {
+			t.Fatalf("SessionCWD called for %q, want work_code", name)
+		}
+		return "/tmp/current", nil
+	}}, "work_code", "")
+
+	state, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatalf("loadAppState returned error: %v", err)
+	}
+	if got := state.Projects[0].Sessions[0].CWD; got != "/tmp/current" {
+		t.Fatalf("cwd = %q, want /tmp/current", got)
+	}
+}
+
+func TestStateFromPersistentConfigRestoresSessionsAndIgnoresVolatileProjects(t *testing.T) {
+	previous := appState{Projects: []projectState{
+		{Name: "work", Persistent: true, Sessions: []sessionState{{Name: "agent", TmuxName: "work_agent", Type: sessionTypeAgent, CWD: "/tmp/service"}}},
+		{Name: "otter", Persistent: false, Sessions: []sessionState{{Name: "code", TmuxName: "otter_code"}}},
+		{Name: "removed", Persistent: true, Sessions: []sessionState{{Name: "code", TmuxName: "removed_code"}}},
+	}}
+	cfgs := map[string]projectConfig{
+		"work": {Name: "work", Workdir: "/tmp/work", AgentBinary: "codex"},
+		"new":  {Name: "new", Workdir: "/tmp/new", AgentBinary: "codex"},
+	}
+
+	state := stateFromPersistentConfig(previous, cfgs, "/tmp/fallback")
+	if projectForTmuxSession(state, "otter_code") != nil || projectForTmuxSession(state, "removed_code") != nil {
+		t.Fatalf("unexpected volatile or removed project restored: %#v", state)
+	}
+	if session := findProjectState(state, "work").Sessions[0]; session.Name != "agent" || session.CWD != "/tmp/service" {
+		t.Fatalf("persistent session not restored: %#v", state)
+	}
+	if session := findProjectState(state, "new").Sessions[0]; session.Name != defaultSessionName || session.CWD != "/tmp/new" {
+		t.Fatalf("default code session not created for new persistent project: %#v", state)
+	}
+}
+
+func TestHelpHiddenUntilQuestionMark(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "otter_code", "").(model)
+	m.width = 48
+	m.height = 24
+	m.state = appState{CurrentProject: "otter", Projects: []projectState{{Name: "otter", Sessions: []sessionState{{Name: "code", TmuxName: "otter_code"}}}}}
+	m.syncSelection()
+
+	if strings.Contains(m.View(), "t new terminal") {
+		t.Fatal("help action visible before ?")
+	}
+	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	m = updated.(model)
+	if !strings.Contains(m.View(), "t new terminal") || !strings.Contains(m.View(), "P persist project") {
+		t.Fatalf("help not rendered after ?: %q", m.View())
+	}
+}
+
+func TestCreateSessionInputRendersInlineInSidebar(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "otter_code", "").(model)
+	m.width = 48
+	m.height = 24
+	m.state = appState{CurrentProject: "otter", Projects: []projectState{{Name: "otter", Sessions: []sessionState{{Name: "code", TmuxName: "otter_code"}}}}}
+	m.syncSelection()
+
+	updated, _ := m.startSessionCreate(sessionTypeTerminal)
+	m = *updated.(*model)
+	view := m.View()
+	if !strings.Contains(view, "Sessions") || !strings.Contains(view, "New Terminal Session") || !strings.Contains(view, "Enter saves. Esc cancels.") {
+		t.Fatalf("create session input not rendered inline: %q", view)
+	}
+}
+
+func TestRKeyDoesNotStartProjectRename(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "otter_code", "").(model)
+	m.state = appState{CurrentProject: "otter", Projects: []projectState{{Name: "otter", Sessions: []sessionState{{Name: "code", TmuxName: "otter_code"}}}}}
+	m.syncSelection()
+
+	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
+	got := updated.(model)
+	if got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone", got.mode)
 	}
 }
 
@@ -172,7 +294,7 @@ func TestSwitchProjectClosesPaneForNonEmptyTarget(t *testing.T) {
 		CurrentProject: "garden",
 		Projects: []projectState{
 			{Name: "garden", Sessions: []sessionState{{Name: "code", TmuxName: "garden_code"}}},
-			{Name: "mouse", Sessions: []sessionState{{Name: "code", TmuxName: "mouse_code"}}},
+			{Name: "mouse", Persistent: true, Sessions: []sessionState{{Name: "code", TmuxName: "mouse_code"}}},
 		},
 	}
 
@@ -197,6 +319,7 @@ type fakeTmuxController struct {
 	killSession         func(name string) error
 	renameSession       func(oldName, newName string) error
 	switchClient        func(name string) error
+	sessionCWD          func(name string) (string, error)
 	ensureControlMode   func(binaryPath string) error
 	syncSessionMetadata func(metadata map[string]sessionMetadata) error
 	toggleMenu          func(binaryPath string) error
@@ -251,6 +374,13 @@ func (f fakeTmuxController) SwitchClient(name string) error {
 		return f.switchClient(name)
 	}
 	return nil
+}
+
+func (f fakeTmuxController) SessionCWD(name string) (string, error) {
+	if f.sessionCWD != nil {
+		return f.sessionCWD(name)
+	}
+	return "/tmp", nil
 }
 
 func (f fakeTmuxController) EnsureControlMode(binaryPath string) error {

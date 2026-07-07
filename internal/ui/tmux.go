@@ -39,6 +39,7 @@ type tmuxController interface {
 	KillSession(name string) error
 	RenameSession(oldName, newName string) error
 	SwitchClient(name string) error
+	SessionCWD(name string) (string, error)
 	EnsureControlMode(binaryPath string) error
 	SyncSessionMetadata(metadata map[string]sessionMetadata) error
 	ToggleMenu(binaryPath string) error
@@ -170,6 +171,18 @@ func (m tmuxSessionManager) RenameSession(oldName, newName string) error {
 func (m tmuxSessionManager) SwitchClient(name string) error {
 	_, err := m.runner()("switch-client", "-t", name)
 	return err
+}
+
+func (m tmuxSessionManager) SessionCWD(name string) (string, error) {
+	name = sanitizeTmuxName(name)
+	if name == "" {
+		return "", fmt.Errorf("session name is empty")
+	}
+	out, err := m.runner()("display-message", "-p", "-t", name, "#{pane_current_path}")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
 }
 
 func (m tmuxSessionManager) EnsureControlMode(binaryPath string) error {
