@@ -39,10 +39,10 @@ Project configs are stored as YAML in the configured projects directory.
 ```yaml
 name: "small"
 workdir: "/tmp/project-small"
-agent-binary: "codex"
+agent-cmd: "codex"
 ```
 
-Additional legacy fields such as `protect` and `cluster` are still parsed, but the current sidebar workflow is centered on terminal and agent sessions.
+Additional legacy fields such as `agent-binary`, `protect`, and `cluster` are still parsed, but the current sidebar workflow is centered on terminal and agent sessions.
 
 ## App Config
 

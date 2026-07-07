@@ -10,7 +10,7 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 
 - [ ] Treat `config.yaml` as the only source of truth for persistent projects.
 - [ ] Store persistent projects directly under `projects`.
-- [ ] Use `agent-cmd` as the public config field.
+- [x] Use `agent-cmd` as the public config field.
 - [ ] Remove the target dependency on per-project YAML files.
 - [ ] Keep `state.json` for runtime and restore state only.
 - [ ] Store persistent session restore state in `state.json`.
@@ -80,7 +80,7 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 ### Tests and Cleanup
 
 - [ ] Add/update tests for config parsing.
-- [ ] Add/update tests for `agent-cmd`.
+- [x] Add/update tests for `agent-cmd`.
 - [ ] Add/update tests for volatile vs persistent project behavior.
 - [ ] Add/update tests for terminal-exit cleanup rules.
 - [ ] Add/update tests for persistent session restore.

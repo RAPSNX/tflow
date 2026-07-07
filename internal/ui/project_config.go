@@ -157,7 +157,7 @@ func marshalProjectConfig(cfg projectConfig) []byte {
 		buf.WriteString("protect: true\n")
 	}
 	if cfg.AgentBinary != "" {
-		buf.WriteString("agent-binary: ")
+		buf.WriteString("agent-cmd: ")
 		buf.WriteString(yamlString(cfg.AgentBinary))
 		buf.WriteByte('\n')
 	}
@@ -222,7 +222,7 @@ func parseProjectConfig(data []byte) (projectConfig, error) {
 				return cfg, fmt.Errorf("line %d: invalid bool", i+1)
 			}
 			cfg.Protect = parsed
-		case "agent-binary":
+		case "agent-cmd", "agent-binary":
 			parsed, err := parseYAMLString(value)
 			if err != nil {
 				return cfg, fmt.Errorf("line %d: %w", i+1, err)

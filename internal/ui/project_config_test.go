@@ -18,7 +18,15 @@ func TestProjectConfigRoundTrip(t *testing.T) {
 		},
 	}
 
-	parsed, err := parseProjectConfig(marshalProjectConfig(original))
+	data := marshalProjectConfig(original)
+	if !strings.Contains(string(data), `agent-cmd: "aider"`) {
+		t.Fatalf("marshaled config = %q, want agent-cmd", string(data))
+	}
+	if strings.Contains(string(data), "agent-binary") {
+		t.Fatalf("marshaled config = %q, want no agent-binary", string(data))
+	}
+
+	parsed, err := parseProjectConfig(data)
 	if err != nil {
 		t.Fatalf("parseProjectConfig returned error: %v", err)
 	}
@@ -33,10 +41,23 @@ func TestProjectConfigRoundTrip(t *testing.T) {
 		t.Fatalf("connection-cmd = %q, want %q", parsed.Cluster.ConnectionCmd, original.Cluster.ConnectionCmd)
 	}
 	if parsed.AgentBinary != original.AgentBinary {
-		t.Fatalf("agent-binary = %q, want %q", parsed.AgentBinary, original.AgentBinary)
+		t.Fatalf("agent-cmd = %q, want %q", parsed.AgentBinary, original.AgentBinary)
 	}
 	if !parsed.Protect {
 		t.Fatal("expected protect to round-trip")
+	}
+}
+
+func TestParseProjectConfigAcceptsLegacyAgentBinary(t *testing.T) {
+	cfg, err := parseProjectConfig([]byte(strings.Join([]string{
+		`name: "small"`,
+		`agent-binary: "aider"`,
+	}, "\n")))
+	if err != nil {
+		t.Fatalf("parseProjectConfig returned error: %v", err)
+	}
+	if cfg.AgentBinary != "aider" {
+		t.Fatalf("agent-cmd = %q, want aider", cfg.AgentBinary)
 	}
 }
 
