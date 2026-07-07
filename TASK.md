@@ -1,80 +1,94 @@
-# tflow
+# tflow TASK
 
-`tflow` is a keyboard-first, tmux-backed session manager for project-scoped terminal and agent sessions.
+Implement the target model from `DESIGN.md`.
 
-It keeps the UI focused on one sidebar, hides tmux internals, and treats a project as the lifecycle boundary for its sessions.
+Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavior, lifecycle rules, and keybindings.
 
-## Design Decisions
+## Implementation Tasks
 
-- Sessions always belong to exactly one project.
-- Terminating a project terminates all sessions inside it.
-- Terminate the terminal in which `tflow` runs, will terminate also the project and all sessions in it.
-- `tflow` bootstraps a random project and a `code` session on first start.
-- The UI should expose logical names only; tmux session names stay internal.
-- The sidebar is the main control surface. Project and session actions should happen there.
-- The only way to persist a project, is to create it in the `tflow` configuration yaml `~/.config/tflow/config.yaml`
-- Empty projects are valid.
-- Help stays hidden until `?` is pressed.
+### Persistence
 
-## config.yaml
-This file describes persistent projects, this file is only written by a human user.
-If this file is not existing, there are no persistent projects
+- [ ] Treat `config.yaml` as the only source of truth for persistent projects.
+- [ ] Store persistent projects directly under `projects`.
+- [ ] Use `agent-cmd` as the public config field.
+- [ ] Remove the target dependency on per-project YAML files.
+- [ ] Keep `state.json` for runtime and restore state only.
+- [ ] Store persistent session restore state in `state.json`.
+- [ ] Store the last known cwd for persistent project sessions.
+- [ ] Restore persistent project sessions after logout, reboot, or tmux server loss.
+- [ ] Never restore volatile projects.
 
+### Project Lifecycle
 
-## Target Sidebar
+- [ ] Create a volatile random animal project on every new `tflow` start.
+- [ ] Create a default `code` session inside the volatile project.
+- [ ] Track whether a project is volatile or persistent.
+- [ ] Hide volatile projects from the project list.
+- [ ] Prevent switching into volatile projects.
+- [ ] Clean up volatile projects and sessions when the owning terminal exits.
+- [ ] Ensure persistent projects and sessions survive terminal exit unchanged.
+- [ ] Implement `P` to persist the current volatile project.
+- [ ] Rename the volatile project to the chosen persistent project name during persist.
+- [ ] Keep existing sessions when persisting.
 
-```text
-        [TFLOW]
+### Session Lifecycle
 
-       [Sessions]
--------------------
-  [live] code
-         ide
-         agent
--------------------
+- [ ] Ensure sessions always belong to exactly one project.
+- [ ] Ensure logical session names are unique only inside one project.
+- [ ] Allow the same logical session name in different projects.
+- [ ] Keep tmux session names internal and globally unique.
+- [ ] Implement `t` for new terminal session.
+- [ ] Implement `a` for new agent session.
+- [ ] Implement `r` for renaming the selected session.
+- [ ] Implement `m` for moving a session to a persistent project.
+- [ ] Track cwd with tmux `#{pane_current_path}`.
+- [ ] Restore persistent sessions in their last known cwd.
 
--------------------
-       [Projects]
+### Sidebar Layout
 
-  [live] tflow
-         pro1
-         pro2
-         pro3
--------------------
-```
+- [ ] Replace the project/session tree with separate `Sessions` and `Projects` sections.
+- [ ] Show only current-project sessions in `Sessions`.
+- [ ] Show only persistent projects in `Projects`.
+- [ ] Mark current session and current persistent project with `[live]`.
+- [ ] Fix selected-row highlighting when `[live]` or `[agent]` badges are present.
+- [ ] Keep the sessions section at minimum visible height of five rows unless fewer sessions exist.
+- [ ] Keep styling consistent with the existing TUI borders.
+- [ ] Keep help hidden until `?` is pressed.
 
-Notes:
+### Keybindings
 
-- `[]` indicates a badge-style label.
-- Section separators should match the bordered session list style already used in the TUI.
-- There should be no separate menu or overlay beyond the sidebar. Selection flows should use hints mode inside the existing UI.
+- [ ] Remove `n`-prefixed command mode.
+- [ ] Remove `R` project rename behavior.
+- [ ] Remove explicit project termination keybindings such as `Ctrl+Q`.
+- [ ] Implement direct `t` key.
+- [ ] Implement direct `a` key.
+- [ ] Implement direct `r` key.
+- [ ] Implement direct `p` key.
+- [ ] Implement direct `m` key.
+- [ ] Implement direct `P` key.
+- [ ] Implement `?` help toggle.
 
-## Open Tasks
+### Interaction Flow
 
-- [ ] Fix session highlighting when a badge is present.
-- [ ] Clean up the project and its sessions when the terminal running `tflow` exits unexpectedly.
-- [ ] Keep the sessions list at a minimum visible height of five rows, unless fewer sessions exist.
-- [ ] Add the project list to the sidebar so the layout matches the target design.
-- [ ] Remove separate project overlays or extra menus and keep project switching inside the sidebar and hints flow.
-- [ ] Show help only after `?` is pressed, one action per line, using this layout:
+- [ ] Remove extra menus from the target flow.
+- [ ] Replace normal interactions with inline sidebar states.
+- [ ] Keep only the minimal centered `P` persist-project overlay.
+- [ ] Implement hints mode inside the sidebar for `p` and `m`.
+- [ ] Ensure `Esc` cancels inline input, hints mode, or overlay.
+- [ ] Ensure `Ctrl+C` closes the sidebar.
 
-```text
-  t new terminal
-  a new agent
-  r rename session
-  R rename project
-  m move session
-  p switch project
-  P create static project
-```
+### Tests and Cleanup
 
-## Done
-
-- [x] Defined the project/session runtime model.
-- [x] Namespaced tmux session ownership behind logical UI names.
-- [x] Bootstrapped first-start behavior with a default `code` session.
-- [x] Simplified persisted state around the project/session model.
-- [x] Added reusable hints-mode primitives.
-- [x] Reworked the TUI around sidebar-driven session management.
-- [x] Implemented rename, create, move, and terminate session/project flows.
-- [x] Updated tests and supporting docs for the current behavior.
+- [ ] Add/update tests for config parsing.
+- [ ] Add/update tests for `agent-cmd`.
+- [ ] Add/update tests for volatile vs persistent project behavior.
+- [ ] Add/update tests for terminal-exit cleanup rules.
+- [ ] Add/update tests for persistent session restore.
+- [ ] Add/update tests for cwd tracking state.
+- [ ] Add/update tests for project/session uniqueness.
+- [ ] Add/update tests for sidebar rendering with badges.
+- [ ] Add/update tests for hints mode.
+- [ ] Add/update tests for keybindings.
+- [ ] Update `README.md` after implementation.
+- [ ] Run formatting.
+- [ ] Run the existing test suite.

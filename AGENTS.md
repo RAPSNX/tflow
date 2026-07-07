@@ -1,49 +1,55 @@
-## Rules
-- Keep edits small, reviewable, and testable.
-- Create or use the `codex-agent` branch for your work.
-- Treat `main` as read-only. Never commit to it, merge into it, rebase it, or move it forward locally.
-- Do all work on `codex-agent`, and push completed work to `origin/codex-agent` automatically.
-- Verify always to work cleanly, finished work should always end with a cleanup and a merge into the `codex-agent` branch.
-- Use a worktree, verify the work is done, and merge it everytime on that branch.
-- always cleanup your worktrees and secondary branches after finishing a task.
-- after task is done there is never any worktree or branch that was by agent created in the repository.
-- The `TASK.md` contains all open & finished tasks for features, bugs, changes or issues.
-    - When working on these, always mark them as done acrodingly.
+# AGENTS.md
 
-## Workflow
+## Scope
 
-1. Inspect the current branch and worktree state before editing.
-2. Ensure `main` stays untouched and switch to `codex-agent` or a worktree based on it.
-3. Create or reuse a dedicated worktree for the change.
-4. Make the code change in that worktree.
-5. Run focused tests first.
-6. Merge all of the work into your branch `codex-agent`.
-7. Push `codex-agent`.
-8. Cleanup any other branch or worktree.
+These instructions apply to the full repository.
 
-## Commands
+## Work Style
 
-- Format: `gofmt -w <changed .go files>`
-- Test all: `go test ./...`
+- Read `DESIGN.md` before changing behavior.
+- Use `TASK.md` as the implementation checklist.
+- Keep changes focused and reviewable.
+- Do not rewrite unrelated code.
+- Preserve the existing project style unless a task explicitly requires a refactor.
+- Prefer small, clear functions over broad abstractions.
+- Avoid changing public behavior that is not mentioned in `DESIGN.md` or `TASK.md`.
 
+## Source of Truth
 
-## Coding guidance
+- `DESIGN.md` defines the target architecture and behavior.
+- `TASK.md` defines the implementation order and checklist.
+- If `DESIGN.md` and `TASK.md` conflict, stop and document the contradiction.
+- If implementation requires a design decision not covered by `DESIGN.md`, stop and document the question.
 
-- Handle API errors visibly and predictably.
-- Do not introduce new dependencies unless necessary.
-- Add or update tests for behavior changes.
+## Go Code
 
-## Subagents
+- Write idiomatic Go.
+- Keep errors explicit and actionable.
+- Avoid package-level mutable state unless already part of the existing design.
+- Keep tmux-specific behavior behind internal abstractions.
+- Do not expose internal tmux session names in UI-facing code.
+- Add tests for new behavior where practical.
 
-Use subagents selectively. Do not invoke them for trivial changes or when the main agent can complete the task efficiently.
+## TUI Behavior
 
-### Available Subagents
+- The sidebar is the main control surface.
+- Avoid adding new full-screen menus.
+- Avoid centered overlays except for the `P` persist-project overlay.
+- Keep interaction keyboard-first.
+- Keep help hidden unless `?` is active.
+- Keep UI labels short and consistent.
 
-- `explorer`: Use before larger or unfamiliar changes to identify relevant files, code paths, dependencies, and existing patterns.
-- `worker`: Use to delegate clearly scoped work that can be done in parallel, such as an isolated feature, bug fix, refactor, or investigation.
+## Persistence
 
-### Usage Guidelines
+- `config.yaml` is the source of truth for persistent projects.
+- `state.json` is runtime and restore state only.
+- Volatile projects must not be restored after terminal exit, logout, reboot, or tmux server loss.
+- Persistent projects and sessions must survive terminal exit unchanged.
 
-Prefer subagents when they reduce risk, improve coverage, or allow meaningful parallelization.
+## Before Finishing
 
-Avoid subagents when the task is small, obvious, purely mechanical, or faster to complete directly.
+- Update `TASK.md` checkboxes for completed work.
+- Update `README.md` if user-facing behavior changed.
+- Run formatting.
+- Run relevant tests.
+- Summarize changed files, tests run, and remaining open items.
