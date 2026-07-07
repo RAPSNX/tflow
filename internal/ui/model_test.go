@@ -377,7 +377,8 @@ func TestProjectRowsAreSelectableAndEnterSwitchesProject(t *testing.T) {
 	}
 	m.syncSelection()
 
-	m.shiftSelection(1)
+	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(model)
 	if m.selection != selectionProjects || m.selectedProject != "alpha" {
 		t.Fatalf("selection = %v project = %q, want alpha project row", m.selection, m.selectedProject)
 	}
@@ -443,6 +444,126 @@ func TestCtrlCClosesSidebarFromModalState(t *testing.T) {
 	}
 	if fmt.Sprint(closed) != fmt.Sprint([]string{"%9"}) {
 		t.Fatalf("closed = %v, want %%9", closed)
+	}
+}
+
+func TestTabSwitchesBetweenSidebarSections(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "garden_code", "").(model)
+	m.state = appState{CurrentProject: "garden", Projects: []projectState{
+		{Name: "garden", Sessions: []sessionState{
+			{Name: "code", TmuxName: "garden_code"},
+			{Name: "shell", TmuxName: "garden_shell"},
+		}},
+		{Name: "alpha", Persistent: true, Sessions: []sessionState{{Name: "code", TmuxName: "alpha_code"}}},
+		{Name: "beta", Persistent: true, Sessions: []sessionState{{Name: "code", TmuxName: "beta_code"}}},
+	}}
+	m.syncSelection()
+
+	m.shiftSelection(1)
+	if m.selection != selectionSessions || m.selectedSession != "shell" {
+		t.Fatalf("selection = %v session = %q, want shell session", m.selection, m.selectedSession)
+	}
+	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(model)
+	if m.selection != selectionProjects || m.selectedProject != "alpha" {
+		t.Fatalf("selection = %v project = %q, want alpha project", m.selection, m.selectedProject)
+	}
+	m.shiftSelection(1)
+	if m.selection != selectionProjects || m.selectedProject != "beta" {
+		t.Fatalf("selection = %v project = %q, want beta project", m.selection, m.selectedProject)
+	}
+}
+
+func TestSidebarRendersSeparatePanelsAndHidesLegacyLegend(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "garden_agent", "").(model)
+	m.width = 54
+	m.height = 24
+	m.state = appState{CurrentProject: "garden", Projects: []projectState{
+		{Name: "garden", Sessions: []sessionState{{Name: "agent", TmuxName: "garden_agent", Type: sessionTypeAgent}}},
+		{Name: "alpha", Persistent: true, Sessions: []sessionState{{Name: "code", TmuxName: "alpha_code"}}},
+	}}
+	m.syncSelection()
+
+	view := m.View()
+	if strings.Count(view, "╭") < 2 || !strings.Contains(view, "Sessions") || !strings.Contains(view, "Projects") {
+		t.Fatalf("sidebar did not render distinct bordered sections: %q", view)
+	}
+	if strings.Contains(view, "j/k move") || strings.Contains(view, "Enter open") {
+		t.Fatalf("legacy key legend is visible while help is hidden: %q", view)
+	}
+	if !strings.Contains(view, "agent") || !strings.Contains(view, "live") {
+		t.Fatalf("session badges not rendered: %q", view)
+	}
+}
+
+func TestProjectHintsPreviewSelectedProjectSessionsAndInlineHint(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "garden_code", "").(model)
+	m.width = 54
+	m.height = 24
+	m.state = appState{CurrentProject: "garden", Projects: []projectState{
+		{Name: "garden", Sessions: []sessionState{{Name: "code", TmuxName: "garden_code"}}},
+		{Name: "alpha", Persistent: true, Sessions: []sessionState{{Name: "review", TmuxName: "alpha_review"}}},
+	}}
+	m.syncSelection()
+	m.openProjectOverlay(overlaySwitchProject)
+
+	view := m.View()
+	if !strings.Contains(view, "review") {
+		t.Fatalf("selected project sessions not previewed during hint flow: %q", view)
+	}
+	if strings.Contains(view, "[a]") || strings.Contains(view, "[alpha]") {
+		t.Fatalf("hint rendered as prefixed badge instead of inline highlight: %q", view)
+	}
+}
+
+func TestSessionUniquenessIsProjectScoped(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "garden_code", "").(model)
+	m.state = appState{CurrentProject: "garden", Projects: []projectState{
+		{Name: "garden", Sessions: []sessionState{{Name: "code", TmuxName: "garden_code"}}},
+		{Name: "alpha", Persistent: true, Sessions: []sessionState{{Name: "code", TmuxName: "alpha_code"}}},
+	}}
+	m.syncSelection()
+
+	updated, _ := m.startSessionCreate(sessionTypeTerminal)
+	m = *updated.(*model)
+	m.input.SetValue("code")
+	updated, _ = m.updateCreateSession(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if m.status != "Session already exists in this project." {
+		t.Fatalf("status = %q, want duplicate-session error", m.status)
+	}
+	m.input.SetValue("shell")
+	_, cmd := m.updateCreateSession(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("creating a unique session in the current project returned no command")
+	}
+}
+
+func TestPersistProjectRejectsDuplicateProjectName(t *testing.T) {
+	input := textinput.New()
+	m := model{
+		currentTmuxSession: "otter_code",
+		state: appState{CurrentProject: "otter", Projects: []projectState{
+			{Name: "otter", Sessions: []sessionState{{Name: "code", TmuxName: "otter_code"}}},
+			{Name: "work", Persistent: true, Sessions: []sessionState{{Name: "code", TmuxName: "work_code"}}},
+		}},
+		projectCfg: map[string]projectConfig{"work": {Name: "work"}},
+		input:      input,
+	}
+
+	updated, _ := m.startPersistProject()
+	m = updated.(model)
+	m.input.SetValue("work")
+	updated, _ = m.updatePersistProject(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	m.input.SetValue("")
+	updated, _ = m.updatePersistProject(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	m.input.SetValue("")
+	updated, _ = m.updatePersistProject(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if m.status != "Project already exists." {
+		t.Fatalf("status = %q, want duplicate-project error", m.status)
 	}
 }
 

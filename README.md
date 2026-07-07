@@ -21,7 +21,8 @@ It keeps sessions grouped by project, starts every run with a volatile random-an
 
 ## Keys
 
-- `j` / `k`: move through sessions and persistent projects
+- `Tab`: switch focus between the Sessions and Projects sections
+- `j` / `k`: move within the focused section
 - `Enter`: switch to the selected session or persistent project
 - `t`: create and switch to a new terminal session in the current project
 - `a`: create and switch to a new agent session in the current project

@@ -538,6 +538,9 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
+	case "tab":
+		m.toggleSelectionScope()
+		return m, nil
 	case "j", "down":
 		m.shiftSelection(1)
 		return m, nil
@@ -790,6 +793,9 @@ func (m *model) openProjectOverlay(action overlayAction) {
 	m.overlay = overlayState{
 		Action:  action,
 		Targets: buildOverlayTargets(m.overlayProjects(action)),
+	}
+	if len(m.overlay.Targets) > 0 {
+		m.selectedProject = m.overlay.Targets[0].Project
 	}
 	if action == overlayMoveSession {
 		m.mode = inputMoveSession
@@ -1099,40 +1105,63 @@ func (m *model) removeSession(project, name string) {
 func (m *model) shiftSelection(delta int) {
 	sessions := m.projectSessions(m.currentProjectName())
 	projects := m.persistentProjectNames()
-	total := len(sessions) + len(projects)
-	if total == 0 {
+	if len(sessions) == 0 && len(projects) == 0 {
 		m.selectedSession = ""
 		m.selectedProject = ""
 		m.selection = selectionSessions
 		return
 	}
 
-	index := 0
 	if m.selection == selectionProjects {
-		index = len(sessions)
+		if len(projects) == 0 {
+			m.selection = selectionSessions
+			m.shiftSelection(delta)
+			return
+		}
+		index := 0
 		for i, project := range projects {
 			if project == m.selectedProject {
-				index = len(sessions) + i
-				break
-			}
-		}
-	} else {
-		for i, session := range sessions {
-			if session.Name == m.selectedSession {
 				index = i
 				break
 			}
 		}
-	}
-
-	index = (index + delta + total) % total
-	if index < len(sessions) {
-		m.selection = selectionSessions
-		m.selectedSession = sessions[index].Name
+		index = (index + delta + len(projects)) % len(projects)
+		m.selectedProject = projects[index]
 		return
 	}
-	m.selection = selectionProjects
-	m.selectedProject = projects[index-len(sessions)]
+
+	if len(sessions) == 0 {
+		m.selection = selectionProjects
+		m.shiftSelection(delta)
+		return
+	}
+	index := 0
+	for i, session := range sessions {
+		if session.Name == m.selectedSession {
+			index = i
+			break
+		}
+	}
+	index = (index + delta + len(sessions)) % len(sessions)
+	m.selectedSession = sessions[index].Name
+}
+
+func (m *model) toggleSelectionScope() {
+	sessions := m.projectSessions(m.currentProjectName())
+	projects := m.persistentProjectNames()
+	if m.selection == selectionSessions && len(projects) > 0 {
+		m.selection = selectionProjects
+		if !containsString(projects, m.selectedProject) {
+			m.selectedProject = projects[0]
+		}
+		return
+	}
+	if len(sessions) > 0 {
+		m.selection = selectionSessions
+		if !containsSessionName(sessions, m.selectedSession) {
+			m.selectedSession = sessions[0].Name
+		}
+	}
 }
 
 func (m *model) syncSelection() {
@@ -1392,45 +1421,82 @@ func (m model) renderHeader(width int) string {
 	return headerStyle.Width(width).Align(lipgloss.Center).Render(brandBadgeStyle.Render("TFLOW"))
 }
 
+func (m model) sessionListProject() string {
+	if m.mode == inputProjectHints || m.mode == inputMoveSession {
+		if project := m.overlayPreviewProject(); project != "" {
+			return project
+		}
+	}
+	return m.currentProjectName()
+}
+
+func (m model) overlayPreviewProject() string {
+	for _, target := range m.overlay.Targets {
+		if target.Project == m.selectedProject {
+			return target.Project
+		}
+	}
+	for _, target := range m.overlay.Targets {
+		if m.overlay.Query == "" || strings.HasPrefix(target.Hint, m.overlay.Query) {
+			return target.Project
+		}
+	}
+	return ""
+}
+
 func (m model) renderBody(width int) string {
-	sectionWidth := max(16, width-6)
-	lines := []string{sectionTitleStyle.Width(sectionWidth).Align(lipgloss.Center).Render("Sessions"), ""}
-	sessions := m.projectSessions(m.currentProjectName())
-	if m.currentProjectName() == "" {
-		lines = append(lines, mutedStyle.Render("No project selected."))
+	sessionProject := m.sessionListProject()
+	sessionLines := []string{}
+	sessions := m.projectSessions(sessionProject)
+	if sessionProject == "" {
+		sessionLines = append(sessionLines, mutedStyle.Render("No project selected."))
 	} else if len(sessions) == 0 {
-		lines = append(lines, mutedStyle.Render("No sessions in this project."))
+		sessionLines = append(sessionLines, mutedStyle.Render("No sessions in this project."))
 	} else {
 		for _, session := range sessions {
-			lines = append(lines, m.renderSessionRow(width, session))
+			sessionLines = append(sessionLines, m.renderSessionRow(width, sessionProject, session))
 		}
 	}
 	minSessionRows := 5
 	if len(sessions) > 0 && len(sessions) < minSessionRows {
 		for i := len(sessions); i < minSessionRows; i++ {
-			lines = append(lines, "")
+			sessionLines = append(sessionLines, "")
 		}
 	}
-	lines = append(lines, "", mutedStyle.Render(strings.Repeat("-", max(8, width-6))), "", sectionTitleStyle.Width(sectionWidth).Align(lipgloss.Center).Render("Projects"), "")
+
+	projectLines := []string{}
 	projects := m.persistentProjectNames()
 	if len(projects) == 0 {
-		lines = append(lines, mutedStyle.Render("No persistent projects."))
+		projectLines = append(projectLines, mutedStyle.Render("No persistent projects."))
 	} else {
 		for _, project := range projects {
-			lines = append(lines, m.renderProjectRow(width, project))
+			projectLines = append(projectLines, m.renderProjectRow(width, project))
 		}
 	}
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		m.renderSectionPanel(width, "Sessions", sessionLines),
+		"",
+		m.renderSectionPanel(width, "Projects", projectLines),
+	)
+}
+
+func (m model) renderSectionPanel(width int, title string, rows []string) string {
+	sectionWidth := max(16, width-6)
+	lines := []string{sectionTitleStyle.Width(sectionWidth).Align(lipgloss.Center).Render(title), ""}
+	lines = append(lines, rows...)
 	return panelStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 
-func (m model) renderSessionRow(width int, session sessionState) string {
-	selected := m.selection == selectionSessions && session.Name == m.selectedSession
+func (m model) renderSessionRow(width int, project string, session sessionState) string {
+	selected := project == m.currentProjectName() && m.selection == selectionSessions && session.Name == m.selectedSession
 	parts := []string{}
 	if session.Type == sessionTypeAgent {
-		parts = append(parts, countBadgeStyle.Render("[agent]"))
+		parts = append(parts, countBadgeStyle.Render("agent"))
 	}
 	if session.TmuxName == m.currentTmuxSession {
-		parts = append(parts, currentBadgeStyle.Render("[live]"))
+		parts = append(parts, currentBadgeStyle.Render("live"))
 	}
 	parts = append(parts, session.Name)
 	content := strings.Join(parts, " ")
@@ -1445,17 +1511,9 @@ func (m model) renderProjectRow(width int, project string) string {
 	selected := m.selection == selectionProjects && project == m.selectedProject
 	parts := []string{}
 	if m.currentProjectName() == project {
-		parts = append(parts, currentBadgeStyle.Render("[live]"))
+		parts = append(parts, currentBadgeStyle.Render("live"))
 	}
-	if m.mode == inputProjectHints || m.mode == inputMoveSession {
-		for _, target := range m.overlay.Targets {
-			if target.Project == project {
-				parts = append(parts, m.renderHintBadge(target.Hint))
-				break
-			}
-		}
-	}
-	parts = append(parts, project)
+	parts = append(parts, m.renderHintProjectName(project))
 	style := projectStyle
 	if selected {
 		style = selectedProjectStyle
@@ -1463,17 +1521,32 @@ func (m model) renderProjectRow(width int, project string) string {
 	return style.Width(max(16, width-6)).Render(strings.Join(parts, " "))
 }
 
-func (m model) renderHintBadge(hint string) string {
-	if m.overlay.Query != "" && strings.HasPrefix(hint, m.overlay.Query) {
-		return currentBadgeStyle.Render("[" + hint + "]")
+func (m model) renderHintProjectName(project string) string {
+	if m.mode != inputProjectHints && m.mode != inputMoveSession {
+		return project
 	}
-	return countBadgeStyle.Render("[" + hint + "]")
+	for _, target := range m.overlay.Targets {
+		if target.Project != project || target.Hint == "" {
+			continue
+		}
+		projectRunes := []rune(project)
+		hintRunes := []rune(target.Hint)
+		if len(hintRunes) > len(projectRunes) {
+			return project
+		}
+		style := lipgloss.NewStyle().Bold(true).Foreground(yellowColor)
+		if m.overlay.Query != "" && strings.HasPrefix(target.Hint, m.overlay.Query) {
+			style = style.Foreground(tealColor)
+		}
+		return style.Render(string(projectRunes[:len(hintRunes)])) + string(projectRunes[len(hintRunes):])
+	}
+	return project
 }
 
 func (m model) renderFooter(width int) string {
-	lines := []string{hintStyle.Render("j/k move  Enter open  t terminal  a agent  r rename  p project  m move  P persist  ? help")}
+	lines := []string{}
 	if m.showHelp {
-		lines = append(lines, "", hintStyle.Render("t new terminal"), hintStyle.Render("a new agent"), hintStyle.Render("r rename session"), hintStyle.Render("m move session"), hintStyle.Render("p switch project"), hintStyle.Render("P persist project"))
+		lines = append(lines, hintStyle.Render("t new terminal"), hintStyle.Render("a new agent"), hintStyle.Render("r rename session"), hintStyle.Render("m move session"), hintStyle.Render("p switch project"), hintStyle.Render("P persist project"))
 	}
 	if m.mode == inputCreateSession || m.mode == inputRenameSession {
 		label := titleForSessionType(m.createSessionType)
@@ -1524,11 +1597,20 @@ func (m model) renderPersistProjectOverlay(base string) string {
 }
 
 func (m model) renderOverlayTarget(target overlayTarget) string {
-	hint := target.Hint
-	if strings.HasPrefix(target.Hint, m.overlay.Query) && m.overlay.Query != "" {
-		hint = lipgloss.NewStyle().Bold(true).Foreground(yellowColor).Render(target.Hint)
+	project := target.Project
+	if target.Hint == "" {
+		return project
 	}
-	return fmt.Sprintf("%s %s", countBadgeStyle.Render("["+hint+"]"), target.Project)
+	projectRunes := []rune(project)
+	hintRunes := []rune(target.Hint)
+	if len(hintRunes) > len(projectRunes) {
+		return project
+	}
+	style := lipgloss.NewStyle().Bold(true).Foreground(yellowColor)
+	if strings.HasPrefix(target.Hint, m.overlay.Query) && m.overlay.Query != "" {
+		style = style.Foreground(tealColor)
+	}
+	return style.Render(string(projectRunes[:len(hintRunes)])) + string(projectRunes[len(hintRunes):])
 }
 
 func (m model) statusView() string {
@@ -1692,6 +1774,7 @@ func (m model) overlayProjects(action overlayAction) []string {
 }
 
 func (m *model) updateOverlayStatus() {
+	m.syncOverlaySelection()
 	if m.overlay.Query == "" {
 		if m.mode == inputMoveSession {
 			m.status = "Move session: type a project hint."
@@ -1707,6 +1790,15 @@ func (m *model) updateOverlayStatus() {
 		}
 	}
 	m.status = "No matching hint."
+}
+
+func (m *model) syncOverlaySelection() {
+	for _, target := range m.overlay.Targets {
+		if m.overlay.Query == "" || strings.HasPrefix(target.Hint, m.overlay.Query) {
+			m.selectedProject = target.Project
+			return
+		}
+	}
 }
 
 func (m model) saveState() error {

@@ -86,12 +86,12 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 - [x] Show only current-project sessions in `Sessions`.
 - [x] Show only persistent projects in `Projects`.
 - [x] Keep volatile projects out of `Projects`.
-- [ ] The Session and the Project sections are distinct of each. So they are two seperate lists with boarders.
-- [ ] The switch between project section and sessions section is via <TAB>.
+- [x] The Session and the Project sections are distinct of each. So they are two seperate lists with boarders.
+- [x] The switch between project section and sessions section is via <TAB>.
 - [x] Mark the current session and current persistent project with `[live]`.
 - [x] Support selecting project rows inside the sidebar.
 - [x] Allow `Enter` to activate the selected project row as well as the selected session row.
-- [ ] Show sessions for the selected project during project-selection flows.
+- [x] Show sessions for the selected project during project-selection flows.
 - [x] Fix selected-row highlighting when `[live]` or `[agent]` badges are present.
 - [x] Render `[live]`, `[agent]`, and hint badges in a consistent badge style.
 - [x] Highlight selectable hint prefixes inside the sidebar.
@@ -148,10 +148,10 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 - [x] Allow `P` to persist a project with empty `workdir` or `agent-cmd`.
 
 ## !Bugs
-- [ ] The highlighting when session has a badge is broken or looks odd.
-- [ ] after implementation of `?` the legacy docs still displayed
-- [ ] hint mode should Highlight or change the color of the hint character, rather then prefix it.
-- [ ] Not all badges have the same type of style, all badges should look like the `TFLOW` badge at the top. Exceppt for color.
+- [x] The highlighting when session has a badge is broken or looks odd.
+- [x] after implementation of `?` the legacy docs still displayed
+- [x] hint mode should Highlight or change the color of the hint character, rather then prefix it.
+- [x] Not all badges have the same type of style, all badges should look like the `TFLOW` badge at the top. Exceppt for color.
       Color should match in a pretty way.
 
 ### Tests and Cleanup
@@ -162,8 +162,8 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 - [x] Add or update tests for terminal-exit cleanup rules.
 - [x] Add or update tests for persistent session restore.
 - [x] Add or update tests for cwd tracking state.
-- [ ] Add or update tests for project and session uniqueness constraints.
-- [ ] Add or update tests for sidebar rendering with badges, centered headers, and project-row selection.
+- [x] Add or update tests for project and session uniqueness constraints.
+- [x] Add or update tests for sidebar rendering with badges, centered headers, and project-row selection.
 - [x] Add or update tests for hints mode.
 - [x] Add or update tests for full keybinding behavior, including `Ctrl+C` in modal states and auto-switch after creating sessions.
 - [x] Update `README.md` after implementation.
