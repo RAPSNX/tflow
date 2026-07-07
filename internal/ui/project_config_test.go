@@ -74,31 +74,45 @@ func TestParseProjectConfigAcceptsClusterPathShorthand(t *testing.T) {
 	}
 }
 
-func TestLoadProjectConfigsUsesConfiguredProjectsDir(t *testing.T) {
+func TestLoadProjectConfigsUsesAppConfigProjects(t *testing.T) {
 	baseDir := t.TempDir()
-	projectsDir := filepath.Join(baseDir, "custom-projects")
-	if err := os.MkdirAll(projectsDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll returned error: %v", err)
-	}
 	if err := os.WriteFile(filepath.Join(baseDir, "config.yaml"), []byte(strings.Join([]string{
-		`projects-dir: ` + yamlString(projectsDir),
-		`theme: "catppuccin"`,
+		`projects:`,
+		`  - name: "small"`,
+		`    workdir: "/tmp/project"`,
+		`    agent-cmd: "aider"`,
 	}, "\n")), 0o644); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(projectsDir, "small.yaml"), marshalProjectConfig(projectConfig{Name: "small"}), 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
 
-	statePath := filepath.Join(baseDir, "state.json")
-	cfgs, err := loadProjectConfigs(statePath, appState{Projects: []projectState{{Name: "garden"}}})
+	cfgs, err := loadProjectConfigs(filepath.Join(baseDir, "state.json"), appState{Projects: []projectState{{Name: "garden"}}})
 	if err != nil {
 		t.Fatalf("loadProjectConfigs returned error: %v", err)
 	}
-	if _, ok := cfgs["small"]; !ok {
-		t.Fatalf("expected configured project to load from %s", projectsDir)
+	if _, ok := cfgs["garden"]; ok {
+		t.Fatalf("state project leaked into persistent config: %#v", cfgs)
 	}
-	if _, ok := cfgs["garden"]; !ok {
-		t.Fatalf("expected state project to be present")
+	cfg := cfgs["small"]
+	if cfg.Name != "small" || cfg.Workdir != "/tmp/project" || cfg.AgentBinary != "aider" {
+		t.Fatalf("unexpected config: %#v", cfg)
+	}
+}
+
+func TestSaveProjectConfigsWritesAppConfigProjects(t *testing.T) {
+	baseDir := t.TempDir()
+	statePath := filepath.Join(baseDir, "state.json")
+	configs := map[string]projectConfig{
+		"small": {Name: "small", Workdir: "/tmp/project", AgentBinary: "aider"},
+	}
+	if err := saveProjectConfigs(statePath, configs); err != nil {
+		t.Fatalf("saveProjectConfigs returned error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(baseDir, "config.yaml"))
+	if err != nil {
+		t.Fatalf("ReadFile returned error: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "projects:") || !strings.Contains(text, `agent-cmd: "aider"`) {
+		t.Fatalf("config.yaml = %q, want projects with agent-cmd", text)
 	}
 }

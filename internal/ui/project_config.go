@@ -45,73 +45,33 @@ func (cfg projectConfig) clusterConfigured() bool {
 }
 
 func (cfg projectConfig) agentBinary() string {
-	if strings.TrimSpace(cfg.AgentBinary) == "" {
-		return "codex"
-	}
-	return cfg.AgentBinary
-}
-
-func projectConfigDir(statePath string) string {
-	cfg, err := loadAppConfigForStatePath(statePath)
-	if err != nil {
-		return filepath.Join(filepath.Dir(statePath), "projects")
-	}
-	return cfg.ProjectsDir
-}
-
-func projectConfigPath(statePath, project string) string {
-	return filepath.Join(projectConfigDir(statePath), normalizeProjectName(project)+".yaml")
+	return strings.TrimSpace(cfg.AgentBinary)
 }
 
 func loadProjectConfigs(statePath string, state appState) (map[string]projectConfig, error) {
+	cfg, err := loadAppConfigForStatePath(statePath)
+	if err != nil {
+		return nil, err
+	}
 	configs := map[string]projectConfig{}
-
-	for _, project := range state.Projects {
-		project.Name = normalizeProjectName(project.Name)
+	for _, project := range cfg.Projects {
+		project = normalizeProjectConfig(project)
 		if project.Name == "" {
 			continue
 		}
-		cfg := configs[project.Name]
-		cfg.Name = project.Name
-		configs[project.Name] = normalizeProjectConfig(cfg)
+		configs[project.Name] = project
 	}
-
-	dir := projectConfigDir(statePath)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return configs, nil
-		}
-		return nil, err
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yaml" {
-			continue
-		}
-		path := filepath.Join(dir, entry.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-		cfg, err := parseProjectConfig(data)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", path, err)
-		}
-		cfg = normalizeProjectConfig(cfg)
-		if cfg.Name == "" {
-			return nil, fmt.Errorf("parse %s: missing project name", path)
-		}
-		configs[cfg.Name] = cfg
-	}
-
 	return configs, nil
 }
 
 func saveProjectConfigs(statePath string, configs map[string]projectConfig) error {
-	dir := projectConfigDir(statePath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+	baseDir := filepath.Dir(statePath)
+	cfg, err := loadAppConfigForStatePath(statePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		cfg = defaultAppConfig(baseDir)
 	}
 
 	names := make([]string, 0, len(configs))
@@ -120,25 +80,24 @@ func saveProjectConfigs(statePath string, configs map[string]projectConfig) erro
 	}
 	sort.Strings(names)
 
+	cfg.Projects = cfg.Projects[:0]
 	for _, name := range names {
-		cfg := normalizeProjectConfig(configs[name])
-		if cfg.Name == "" {
+		project := normalizeProjectConfig(configs[name])
+		if project.Name == "" {
 			continue
 		}
-		if err := os.WriteFile(projectConfigPath(statePath, cfg.Name), marshalProjectConfig(cfg), 0o644); err != nil {
-			return err
-		}
+		cfg.Projects = append(cfg.Projects, project)
 	}
-
-	return nil
+	return saveAppConfigForDir(baseDir, cfg)
 }
 
 func removeProjectConfigFile(statePath, project string) error {
-	err := os.Remove(projectConfigPath(statePath, project))
-	if err != nil && !os.IsNotExist(err) {
+	configs, err := loadProjectConfigs(statePath, appState{})
+	if err != nil {
 		return err
 	}
-	return nil
+	delete(configs, normalizeProjectName(project))
+	return saveProjectConfigs(statePath, configs)
 }
 
 func marshalProjectConfig(cfg projectConfig) []byte {

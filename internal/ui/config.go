@@ -11,6 +11,7 @@ import (
 )
 
 type appConfig struct {
+	Projects    []projectConfig
 	ProjectsDir string
 	Theme       string
 	Colors      themeOverrides
@@ -34,8 +35,7 @@ type themeOverrides struct {
 
 func defaultAppConfig(baseDir string) appConfig {
 	return appConfig{
-		ProjectsDir: filepath.Join(baseDir, "projects"),
-		Theme:       "catppuccin",
+		Theme: "catppuccin",
 	}
 }
 
@@ -45,11 +45,28 @@ func normalizeAppConfig(baseDir string, cfg appConfig) appConfig {
 		cfg.Theme = "catppuccin"
 	}
 	cfg.ProjectsDir = strings.TrimSpace(cfg.ProjectsDir)
-	if cfg.ProjectsDir == "" {
-		cfg.ProjectsDir = filepath.Join(baseDir, "projects")
+	if cfg.ProjectsDir != "" {
+		cfg.ProjectsDir = normalizeCWD(cfg.ProjectsDir)
 	}
-	cfg.ProjectsDir = normalizeCWD(cfg.ProjectsDir)
 	cfg.Colors = normalizeThemeOverrides(cfg.Colors)
+
+	seen := map[string]struct{}{}
+	projects := make([]projectConfig, 0, len(cfg.Projects))
+	for _, project := range cfg.Projects {
+		project = normalizeProjectConfig(project)
+		if project.Name == "" {
+			continue
+		}
+		if _, ok := seen[project.Name]; ok {
+			continue
+		}
+		seen[project.Name] = struct{}{}
+		projects = append(projects, project)
+	}
+	sort.Slice(projects, func(i, j int) bool {
+		return projects[i].Name < projects[j].Name
+	})
+	cfg.Projects = projects
 	return cfg
 }
 
@@ -115,6 +132,14 @@ func loadAppConfigForDir(baseDir string) (appConfig, error) {
 	return normalizeAppConfig(baseDir, cfg), nil
 }
 
+func saveAppConfigForDir(baseDir string, cfg appConfig) error {
+	cfg = normalizeAppConfig(baseDir, cfg)
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(baseDir, "config.yaml"), marshalAppConfigForDir(baseDir, cfg), 0o644)
+}
+
 func saveDefaultAppConfig() error {
 	baseDir := appConfigDir()
 	path := appConfigPath()
@@ -124,22 +149,44 @@ func saveDefaultAppConfig() error {
 		return err
 	}
 
-	cfg := defaultAppConfig(baseDir)
-	if err := os.MkdirAll(baseDir, 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, marshalAppConfig(cfg), 0o644)
+	return saveAppConfigForDir(baseDir, defaultAppConfig(baseDir))
 }
 
 func marshalAppConfig(cfg appConfig) []byte {
-	cfg = normalizeAppConfig(appConfigDir(), cfg)
+	return marshalAppConfigForDir(appConfigDir(), cfg)
+}
+
+func marshalAppConfigForDir(baseDir string, cfg appConfig) []byte {
+	cfg = normalizeAppConfig(baseDir, cfg)
 	var buf bytes.Buffer
-	buf.WriteString("projects-dir: ")
-	buf.WriteString(yamlString(cfg.ProjectsDir))
-	buf.WriteByte('\n')
-	buf.WriteString("theme: ")
-	buf.WriteString(yamlString(cfg.Theme))
-	buf.WriteByte('\n')
+	if len(cfg.Projects) > 0 {
+		buf.WriteString("projects:\n")
+		for _, project := range cfg.Projects {
+			buf.WriteString("  - name: ")
+			buf.WriteString(yamlString(project.Name))
+			buf.WriteByte('\n')
+			if project.Workdir != "" {
+				buf.WriteString("    workdir: ")
+				buf.WriteString(yamlString(project.Workdir))
+				buf.WriteByte('\n')
+			}
+			if project.AgentBinary != "" {
+				buf.WriteString("    agent-cmd: ")
+				buf.WriteString(yamlString(project.AgentBinary))
+				buf.WriteByte('\n')
+			}
+		}
+	}
+	if cfg.Theme != "" && cfg.Theme != "catppuccin" {
+		buf.WriteString("theme: ")
+		buf.WriteString(yamlString(cfg.Theme))
+		buf.WriteByte('\n')
+	}
+	if cfg.ProjectsDir != "" {
+		buf.WriteString("projects-dir: ")
+		buf.WriteString(yamlString(cfg.ProjectsDir))
+		buf.WriteByte('\n')
+	}
 
 	colorLines := map[string]string{
 		"base-bg":       cfg.Colors.BaseBG,
@@ -213,6 +260,16 @@ func parseAppConfig(data []byte) (appConfig, error) {
 				return cfg, fmt.Errorf("line %d: %w", i+1, err)
 			}
 			cfg.Theme = parsed
+		case "projects":
+			if strings.TrimSpace(value) != "" {
+				return cfg, fmt.Errorf("line %d: projects must be a list", i+1)
+			}
+			projects, next, err := parseAppConfigProjects(lines, i)
+			if err != nil {
+				return cfg, err
+			}
+			cfg.Projects = append(cfg.Projects, projects...)
+			i = next
 		case "colors":
 			if strings.TrimSpace(value) != "" {
 				return cfg, fmt.Errorf("line %d: colors must be a map", i+1)
@@ -273,4 +330,68 @@ func parseAppConfig(data []byte) (appConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+func parseAppConfigProjects(lines []string, index int) ([]projectConfig, int, error) {
+	projects := []projectConfig{}
+	for index+1 < len(lines) {
+		next := lines[index+1]
+		if shouldSkipYAMLLine(next) {
+			index++
+			continue
+		}
+		if !strings.HasPrefix(next, "  - ") {
+			break
+		}
+		index++
+		cfg := projectConfig{}
+		item := strings.TrimSpace(strings.TrimPrefix(lines[index], "  - "))
+		if item != "" {
+			if err := parseAppConfigProjectField(&cfg, item, index+1); err != nil {
+				return nil, index, err
+			}
+		}
+		for index+1 < len(lines) {
+			child := lines[index+1]
+			if shouldSkipYAMLLine(child) {
+				index++
+				continue
+			}
+			if strings.HasPrefix(child, "  - ") || !strings.HasPrefix(child, "    ") || strings.HasPrefix(child, "     ") {
+				break
+			}
+			index++
+			if err := parseAppConfigProjectField(&cfg, strings.TrimPrefix(lines[index], "    "), index+1); err != nil {
+				return nil, index, err
+			}
+		}
+		cfg = normalizeProjectConfig(cfg)
+		if cfg.Name == "" {
+			return nil, index, fmt.Errorf("line %d: missing project name", index+1)
+		}
+		projects = append(projects, cfg)
+	}
+	return projects, index, nil
+}
+
+func parseAppConfigProjectField(cfg *projectConfig, line string, lineNumber int) error {
+	key, value, ok := splitYAMLField(line)
+	if !ok {
+		return fmt.Errorf("invalid projects line %d", lineNumber)
+	}
+	parsed, err := parseYAMLString(value)
+	if err != nil {
+		return fmt.Errorf("line %d: %w", lineNumber, err)
+	}
+	switch key {
+	case "name":
+		cfg.Name = parsed
+	case "workdir":
+		cfg.Workdir = parsed
+	case "agent-cmd", "agent-binary":
+		cfg.AgentBinary = parsed
+	default:
+		return fmt.Errorf("line %d: unknown project field %q", lineNumber, key)
+	}
+	return nil
 }

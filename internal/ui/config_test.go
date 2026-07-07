@@ -36,15 +36,15 @@ func TestAppConfigRoundTrip(t *testing.T) {
 	}
 }
 
-func TestLoadAppConfigDefaultsProjectsDir(t *testing.T) {
+func TestLoadAppConfigDefaultsToNoProjects(t *testing.T) {
 	baseDir := t.TempDir()
 
 	cfg, err := loadAppConfigForDir(baseDir)
 	if err != nil {
 		t.Fatalf("loadAppConfigForDir returned error: %v", err)
 	}
-	if got, want := cfg.ProjectsDir, filepath.Join(baseDir, "projects"); got != want {
-		t.Fatalf("projects-dir = %q, want %q", got, want)
+	if len(cfg.Projects) != 0 {
+		t.Fatalf("projects = %#v, want none", cfg.Projects)
 	}
 	if cfg.Theme != "catppuccin" {
 		t.Fatalf("theme = %q, want catppuccin", cfg.Theme)
