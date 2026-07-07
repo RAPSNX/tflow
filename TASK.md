@@ -154,7 +154,7 @@ Use `DESIGN.md` as the source of truth for architecture, persistence, UI behavio
 - [x] Not all badges have the same type of style, all badges should look like the `TFLOW` badge at the top. Exceppt for color.
       Color should match in a pretty way.
 - [x] hint mode should Highlight or change the color of the hint character, rather then prefix it.
-- [ ] Badges should not be highlited the same as the row, switch here to a beautifull mixture of colors of catppuccin.
+- [x] Badges should not be highlited the same as the row, switch here to a beautifull mixture of colors of catppuccin.
 - [x] Every new start of `tflow`, should generate a new random animal session, currently this attaches always to the same.
 
 ### Tests and Cleanup
