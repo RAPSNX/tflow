@@ -1236,6 +1236,50 @@ func containsSessionName(sessions []sessionState, name string) bool {
 }
 
 func (m *model) syncCurrentProjectFromSession() {
+	// First, check if the currentTmuxSession actually exists in any of the sessions of the state.
+	// If it doesn't match any session, force it to fall back to the first available session's TmuxName
+	// in the active/current project (or any project if the active one is empty/missing),
+	// guaranteeing that one session is ALWAYS marked as [live].
+	found := false
+	m.currentTmuxSession = strings.TrimSpace(m.currentTmuxSession)
+	if m.currentTmuxSession != "" {
+		for _, project := range m.state.Projects {
+			for _, session := range project.Sessions {
+				if session.TmuxName == m.currentTmuxSession {
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+	}
+
+	if !found {
+		// Try current project first
+		currentProj := normalizeProjectName(m.state.CurrentProject)
+		fallbackSet := false
+		if currentProj != "" {
+			for _, project := range m.state.Projects {
+				if project.Name == currentProj && len(project.Sessions) > 0 {
+					m.currentTmuxSession = project.Sessions[0].TmuxName
+					fallbackSet = true
+					break
+				}
+			}
+		}
+		// If still not set, grab the first session of any project
+		if !fallbackSet {
+			for _, project := range m.state.Projects {
+				if len(project.Sessions) > 0 {
+					m.currentTmuxSession = project.Sessions[0].TmuxName
+					break
+				}
+			}
+		}
+	}
+
 	if project := liveProjectName(m.state, m.currentTmuxSession); project != "" {
 		m.state.CurrentProject = project
 		return
@@ -1522,13 +1566,26 @@ func (m model) renderSessionRow(width int, project string, session sessionState)
 	if session.TmuxName == m.currentTmuxSession {
 		parts = append(parts, m.renderSessionBadge("live", selected))
 	}
+	
+	if selected {
+		// When selected, badges are rendered with their own styling and should NOT be double-styled/highlighted
+		// with selectedSessionStyle (which has teal background).
+		// Instead, render the session.Name with selectedSessionStyle (teal background), and join them with spaces.
+		// Note: to fill the full width with the selected highlight background, we padd/Width the text style,
+		// or render badges as-is and pad/width the text part.
+		// The prompt says: the highlight of the session when a badge is there should be "[live]|session-name     |",
+		// where "[]" is for badge highlight and '||' is where the word/row highlight is.
+		// Therefore: "[live] " (unwrapped by teal) and "session-name     " (wrapped/padded with teal/selectedSessionStyle).
+		namePart := selectedSessionStyle.Width(max(16, width-6) - len(strings.Join(parts, " ")) - 1).Render(session.Name)
+		if len(parts) > 0 {
+			return strings.Join(parts, " ") + " " + namePart
+		}
+		return selectedSessionStyle.Width(max(16, width-6)).Render(session.Name)
+	}
+	
 	parts = append(parts, session.Name)
 	content := strings.Join(parts, " ")
-	style := sessionStyle
-	if selected {
-		style = selectedSessionStyle
-	}
-	return style.Width(max(16, width-6)).Render(content)
+	return sessionStyle.Width(max(16, width-6)).Render(content)
 }
 
 func (m model) renderSessionBadge(label string, selected bool) string {
@@ -1711,7 +1768,7 @@ func (m model) startPersistProject() (tea.Model, tea.Cmd) {
 	m.mode = inputPersistProject
 	m.persist = persistProjectInput{
 		Name:     project.Name,
-		Workdir:  m.cwd,
+		Workdir:  "~/",
 		AgentCmd: "codex",
 	}
 	m.persist.Field = 0

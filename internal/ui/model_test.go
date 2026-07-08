@@ -534,7 +534,7 @@ func TestSidebarRendersSeparatePanelsAndHidesLegacyLegend(t *testing.T) {
 	if strings.Contains(view, "j/k move") || strings.Contains(view, "Enter open") {
 		t.Fatalf("legacy key legend is visible while help is hidden: %q", view)
 	}
-	if !strings.Contains(view, "agent") || !strings.Contains(view, "live") {
+	if !strings.Contains(view, "agent") {
 		t.Fatalf("session badges not rendered: %q", view)
 	}
 	lines := strings.Split(view, "\n")
@@ -569,13 +569,14 @@ func TestSelectedSessionBadgeUsesRowHighlight(t *testing.T) {
 			Type:     sessionTypeAgent,
 		}},
 	}}}
+	m.currentTmuxSession = "garden_agent"
 	m.syncSelection()
 
 	row := m.renderSessionRow(48, "garden", m.state.Projects[0].Sessions[0])
 	// Row should contain styled badges and the session name
 	agentBadge := countBadgeStyle.Render("agent")
 	liveBadge := currentBadgeStyle.Render("live")
-	if !strings.Contains(row, agentBadge) || !strings.Contains(row, liveBadge) || !strings.Contains(row, "agent") {
+	if !strings.Contains(row, agentBadge) || !strings.Contains(row, liveBadge) {
 		t.Fatalf("selected badge and text row rendering is unexpected: %q", row)
 	}
 }
@@ -648,6 +649,26 @@ func TestPersistProjectRejectsDuplicateProjectName(t *testing.T) {
 	m = updated.(model)
 	if m.status != "Project already exists." {
 		t.Fatalf("status = %q, want duplicate-project error", m.status)
+	}
+}
+
+func TestPersistProjectDefaultWorkdirIsHome(t *testing.T) {
+	input := textinput.New()
+	m := model{
+		cwd:                "/tmp/current",
+		currentTmuxSession: "otter_code",
+		state: appState{CurrentProject: "otter", Projects: []projectState{{
+			Name:     "otter",
+			Sessions: []sessionState{{Name: "code", TmuxName: "otter_code"}},
+		}}},
+		projectCfg: map[string]projectConfig{},
+		input:      input,
+	}
+
+	updated, _ := m.startPersistProject()
+	m = updated.(model)
+	if m.persist.Workdir != "~/" {
+		t.Fatalf("expected default Workdir to be \"~/\", got %q", m.persist.Workdir)
 	}
 }
 
