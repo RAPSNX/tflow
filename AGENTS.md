@@ -1,46 +1,65 @@
-## Rules
-- Keep edits small, reviewable, and testable.
-- Create or use the codex-agent branch for your work.
-- Verify always to work cleanly, finished work should always end with a cleanup, a merge into the `codex-agent` branch, and removal of the dedicated worktree.
-- Use a worktree, verify the work is done, merge it everytime on that branch, and remove the worktree when finished.
-- The `TODO.md` contains all open & finished tasks for features, bugs, changes or issues.
-    - When working on these, always mark them as done acrodingly.
+# Repository Guidelines
 
-## Workflow
+## Project Structure
 
-1. Inspect the current branch and worktree state before editing.
-2. Create or reuse a dedicated worktree for the change.
-3. Make the code change in that worktree.
-4. Run focused tests first.
-5. Merge all of the work into your branch `codex-agent`
-6. Cleanup any other branch or worktree, including removing the dedicated worktree after merge
+This is a small Go module with the main entry point in `cmd/main.go`.
 
-## Commands
+- Put reusable application code under `internal/`.
+- Avoid `pkg/` unless the project intentionally exposes public reusable APIs.
+- Place tests next to the code they cover using `*_test.go`.
 
-- Format: `gofmt -w <changed .go files>`
-- Test all: `go test ./...`
+## Development Commands
 
+- `go run ./cmd`: run the application locally.
+- `go test ./...`: run all tests.
+- `go build ./...`: compile all packages.
+- `gofmt -w <files>`: format changed Go files.
 
-## Coding guidance
+## Go Style
 
-- Prefer small, direct changes.
-- Keep TUI state transitions explicit and easy to review.
-- Handle API errors visibly and predictably.
-- Do not introduce new dependencies unless necessary.
-- Add or update tests for behavior changes.
+- Use standard Go formatting and idioms.
+- Use short, lowercase package names.
+- Use `PascalCase` for exported identifiers.
+- Use `camelCase` for unexported identifiers.
+- Keep packages small and focused.
+- Split behavior into meaningful packages when it improves clarity or testability.
 
-## Subagents
+## Testing
 
-Use subagents selectively. Do not invoke them for trivial changes or when the main agent can complete the task efficiently.
+Use Go’s built-in `testing` package by default.
 
-### Available Subagents
+- Name tests clearly, e.g. `TestParserHandlesEmptyInput`.
+- Prefer table-driven tests for input/output behavior.
+- Add tests for new logic and bug fixes.
+- Run `go test ./...` before finishing work.
 
-- `explorer`: Use before larger or unfamiliar changes to identify relevant files, code paths, dependencies, and existing patterns.
-- `worker`: Use to delegate clearly scoped work that can be done in parallel, such as an isolated feature, bug fix, refactor, or investigation.
-- `reviewer`: Use after implementation to review the diff, check for regressions, and identify missed edge cases.
+- all changes should always end in in meaningfull commits
+- if the actual branch has changes stop your work imediatley
+- alwyas work in a git worktree
+- commit everything into a branch
 
-### Usage Guidelines
+## File Size and Refactoring
 
-Prefer subagents when they reduce risk, improve coverage, or allow meaningful parallelization.
+- Keep Go files small and focused.
+- Avoid large multi-purpose files.
+- Prefer files below 300 lines.
+- Files above 400 lines require a clear reason.
+- Files above 500 lines must be split before continuing.
+- Split by responsibility, not randomly.
+- Do not hide unrelated behavior in one package file.
 
-Avoid subagents when the task is small, obvious, purely mechanical, or faster to complete directly.
+## Agent Instructions
+
+- Read `AGENTS.md` before editing.
+- Read `.codex/ARCHITECTURE.md` before changing behavior.
+- Use `.codex/TASK.md` as the current implementation checklist.
+- `.codex/ARCHITECTURE.md` describes the target state and is the source of truth for intended behavior.
+- `.codex/TASK.md` must be derived from `.codex/ARCHITECTURE.md`.
+- If `.codex/TASK.md` conflicts with `.codex/ARCHITECTURE.md`, stop and ask.
+- If `.codex/TASK.md` adds implementation detail without conflict, complete it.
+- Do not implement features not listed in `.codex/TASK.md` unless explicitly asked.
+- Do not introduce a user-edited config file; persistent data belongs in `$XDG_STATE_HOME/tflow/store.json`.
+- If implementation requires behavior not defined in `.codex/ARCHITECTURE.md`, stop and ask.
+- Keep changes focused and avoid unrelated rewrites.
+- Always create new branch for your work from main
+- Never work on main, always commit your work !!
