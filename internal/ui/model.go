@@ -30,8 +30,6 @@ const (
 	inputCommand
 )
 
-const defaultProjectName = "default"
-
 var tempSessionAnimals = []string{
 	"otter",
 	"fox",
@@ -87,6 +85,11 @@ type projectRenamedMsg struct {
 type projectEditedMsg struct {
 	oldName string
 	config  projectConfig
+	err     error
+}
+
+type projectDeletedMsg struct {
+	project string
 	err     error
 }
 
@@ -409,9 +412,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		project := normalizeProjectName(m.sessionProjects[msg.oldName])
-		if project == "" {
-			project = defaultProjectName
-		}
 		delete(m.sessionProjects, msg.oldName)
 		m.sessionProjects[msg.newName] = project
 		if sessionType, ok := m.sessionTypes[msg.oldName]; ok {
@@ -438,11 +438,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.err = msg.err
 			m.status = msg.err.Error()
-			return m, nil
-		}
-		if msg.oldName == defaultProjectName {
-			m.err = fmt.Errorf("cannot rename default project")
-			m.status = "The default project cannot be renamed."
 			return m, nil
 		}
 		for name, project := range m.sessionProjects {
@@ -489,6 +484,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.applyProjectEdit(msg.oldName, msg.config)
+	case projectDeletedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.status = msg.err.Error()
+			return m, nil
+		}
+		return m.applyProjectDeletion(msg.project)
 	case menuActionMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -1098,10 +1100,6 @@ func (m *model) beginRename() (tea.Model, tea.Cmd) {
 		m.status = "Select a project or session to rename."
 		return m, nil
 	}
-	if row.kind == rowProject && normalizeProjectName(row.project) == defaultProjectName {
-		m.status = "The default project cannot be renamed."
-		return m, nil
-	}
 	m.mode = inputRename
 	m.renameRow = row
 	m.input.SetValue(m.renameValue(row))
@@ -1183,16 +1181,49 @@ func (m model) deleteSelectedProject() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	project := normalizeProjectName(row.project)
-
-	for _, s := range m.projectSessions(project) {
-		m.assignSessionProject(s.Name, defaultProjectName)
+	sessions := m.projectSessions(project)
+	return m, func() tea.Msg {
+		for _, s := range sessions {
+			if err := m.tmux.KillSession(s.Name); err != nil {
+				return projectDeletedMsg{project: project, err: err}
+			}
+		}
+		return projectDeletedMsg{project: project}
 	}
+}
+
+func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
+	project = normalizeProjectName(project)
+	if project == "" {
+		m.err = fmt.Errorf("project name is empty")
+		m.status = "Project name is empty."
+		return m, nil
+	}
+
+	deletedSessions := m.projectSessions(project)
+	for _, s := range deletedSessions {
+		delete(m.sessionProjects, s.Name)
+		delete(m.sessionTypes, s.Name)
+		if m.selectedSession == s.Name {
+			m.selectedSession = ""
+		}
+		if m.currentSession == s.Name {
+			m.currentSession = ""
+		}
+	}
+	m.sessions = filterSessions(m.sessions, func(s session) bool {
+		for _, deleted := range deletedSessions {
+			if deleted.Name == s.Name {
+				return false
+			}
+		}
+		return true
+	})
 	m.projects = removeProject(m.projects, project)
 	delete(m.projectConfigs, project)
 	delete(m.expandedProjects, project)
 	if m.selectedProject == project {
-		m.selectedProject = defaultProjectName
-		m.selectedSession = ""
+		m.selectedProject = ""
 	}
 	if err := removeProjectConfigFile(m.statePath, project); err != nil {
 		m.err = err
@@ -1427,7 +1458,7 @@ func (m model) contextProject() string {
 	if m.selectedSession != "" {
 		return normalizeProjectName(m.sessionProjects[m.selectedSession])
 	}
-	return defaultProjectName
+	return ""
 }
 
 func (m *model) syncSelection() {
@@ -1481,9 +1512,6 @@ func (m *model) ensureSessionProjects() bool {
 			continue
 		}
 		project := normalizeProjectName(m.sessionProjects[s.Name])
-		if project == "" {
-			project = defaultProjectName
-		}
 		if m.sessionProjects[s.Name] != project {
 			m.sessionProjects[s.Name] = project
 			changed = true
@@ -1507,15 +1535,14 @@ func (m *model) ensureSessionProjects() bool {
 
 func (m *model) assignSessionProject(name, project string) {
 	project = normalizeProjectName(project)
-	if project == "" {
-		project = defaultProjectName
-	}
 	if m.sessionProjects == nil {
 		m.sessionProjects = map[string]string{}
 	}
 	m.sessionProjects[name] = project
-	m.addProject(project)
-	if _, ok := m.projectConfigs[project]; !ok {
+	if project != "" {
+		m.addProject(project)
+	}
+	if project != "" {
 		m.setProjectConfig(projectConfig{Name: project})
 	}
 }
@@ -1539,9 +1566,6 @@ func (m *model) addProject(name string) {
 
 func (m model) projectSessions(project string) []session {
 	project = normalizeProjectName(project)
-	if project == "" {
-		project = defaultProjectName
-	}
 	result := make([]session, 0, len(m.sessions))
 	for _, s := range m.sessions {
 		if normalizeProjectName(m.sessionProjects[s.Name]) == project {
@@ -1702,9 +1726,6 @@ func normalizeAppState(state appState) appState {
 	}
 	for name, project := range state.SessionProjects {
 		normalized := normalizeProjectName(project)
-		if normalized == "" {
-			normalized = defaultProjectName
-		}
 		state.SessionProjects[name] = normalized
 		if !containsString(state.Projects, normalized) {
 			state.Projects = append(state.Projects, normalized)
@@ -1791,9 +1812,6 @@ func projectAccentColor(project string) string {
 		"#a6e3a1",
 	}
 	project = normalizeProjectName(project)
-	if project == "" {
-		project = defaultProjectName
-	}
 	hasher := fnv.New32a()
 	_, _ = hasher.Write([]byte(project))
 	return palette[hasher.Sum32()%uint32(len(palette))]
@@ -1828,6 +1846,16 @@ func removeProject(projects []string, target string) []string {
 		result = append(result, project)
 	}
 	return normalizeProjectList(result)
+}
+
+func filterSessions(sessions []session, keep func(session) bool) []session {
+	result := make([]session, 0, len(sessions))
+	for _, s := range sessions {
+		if keep(s) {
+			result = append(result, s)
+		}
+	}
+	return result
 }
 
 func replaceProject(projects []string, oldName, newName string) []string {
@@ -1882,9 +1910,6 @@ func (m model) syncTmuxSessionProjects() error {
 	sessionProjects := make(map[string]string, len(m.sessions))
 	for _, s := range m.sessions {
 		project := normalizeProjectName(m.sessionProjects[s.Name])
-		if project == "" {
-			project = defaultProjectName
-		}
 		sessionProjects[s.Name] = project
 	}
 	return m.tmux.SyncSessionProjects(sessionProjects)
@@ -1950,9 +1975,6 @@ func (m model) sessionTypeBadge(value sessionType) string {
 
 func (m model) projectConfig(project string) projectConfig {
 	project = normalizeProjectName(project)
-	if project == "" {
-		project = defaultProjectName
-	}
 	if cfg, ok := m.projectConfigs[project]; ok {
 		return normalizeProjectConfig(cfg)
 	}
@@ -2117,11 +2139,6 @@ func (m model) applyProjectEdit(oldName string, cfg projectConfig) (tea.Model, t
 	if cfg.Name == "" {
 		m.err = fmt.Errorf("project name is empty")
 		m.status = "Project name is empty."
-		return m, nil
-	}
-	if oldName == defaultProjectName && cfg.Name != defaultProjectName {
-		m.err = fmt.Errorf("cannot rename default project")
-		m.status = "The default project cannot be renamed."
 		return m, nil
 	}
 	if oldName != cfg.Name && containsString(m.projects, cfg.Name) {

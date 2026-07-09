@@ -30,6 +30,27 @@ func TestAttachCommandUsesTflowSocket(t *testing.T) {
 	}
 }
 
+func TestSwitchClientUsesExplicitClientWhenAvailable(t *testing.T) {
+	t.Setenv(menuClientEnv, "@1")
+
+	var got []string
+	manager := tmuxSessionManager{
+		run: func(args ...string) (string, error) {
+			got = append([]string(nil), args...)
+			return "", nil
+		},
+	}
+
+	if err := manager.SwitchClient("dev"); err != nil {
+		t.Fatalf("SwitchClient returned error: %v", err)
+	}
+
+	want := []string{"switch-client", "-c", "@1", "-t", "dev"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("switch-client args = %#v, want %#v", got, want)
+	}
+}
+
 func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 	t.Setenv("SHELL", "/bin/zsh")
 
@@ -93,8 +114,8 @@ func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 
 	wants := [][]string{
 		{"set-option", "-t", "dev", "@tflow-project", "small"},
-		{"set-option", "-t", "api", "@tflow-project", "default"},
-		{"set-option", "-t", "blank", "@tflow-project", "default"},
+		{"set-option", "-t", "api", "@tflow-project", ""},
+		{"set-option", "-t", "blank", "@tflow-project", ""},
 	}
 	for _, want := range wants {
 		found := false
@@ -227,7 +248,17 @@ func TestToggleMenuKillsExistingPane(t *testing.T) {
 		run: func(args ...string) (string, error) {
 			switch args[0] {
 			case "display-message":
-				return "@1", nil
+				switch args[2] {
+				case "#{window_id}":
+					return "@1", nil
+				case "#{session_name}":
+					return "otter-temp", nil
+				case "#{client_id}":
+					return "@2", nil
+				default:
+					t.Fatalf("unexpected display-message format: %v", args)
+					return "", fmt.Errorf("unexpected display-message format: %v", args)
+				}
 			case "list-panes":
 				return "%5\t1\n", nil
 			case "kill-pane":
@@ -243,5 +274,68 @@ func TestToggleMenuKillsExistingPane(t *testing.T) {
 
 	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
 		t.Fatalf("ToggleMenu returned error: %v", err)
+	}
+}
+
+func TestToggleMenuPassesCurrentClientToMenuProcess(t *testing.T) {
+	var splitWindow []string
+	manager := tmuxSessionManager{
+		run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "display-message":
+				switch args[2] {
+				case "#{window_id}":
+					return "@1", nil
+				case "#{session_name}":
+					return "otter-temp", nil
+				case "#{client_id}":
+					return "@2", nil
+				default:
+					t.Fatalf("unexpected display-message format: %v", args)
+				}
+			case "list-panes":
+				return "", nil
+			case "split-window":
+				splitWindow = append([]string(nil), args...)
+				return "%7", nil
+			case "set-option":
+				return "", nil
+			default:
+				t.Fatalf("unexpected command: %v", args)
+			}
+			return "", nil
+		},
+	}
+
+	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
+		t.Fatalf("ToggleMenu returned error: %v", err)
+	}
+
+	got := strings.Join(splitWindow, " ")
+	if !strings.Contains(got, "TFLOW_CURRENT_CLIENT='@2'") {
+		t.Fatalf("split-window command = %q, want current client env", got)
+	}
+}
+
+func TestQuitAllDetachesExplicitClientWhenAvailable(t *testing.T) {
+	t.Setenv(menuClientEnv, "@2")
+
+	var got []string
+	manager := tmuxSessionManager{
+		run: func(args ...string) (string, error) {
+			got = append([]string(nil), args...)
+			return "", nil
+		},
+	}
+
+	if err := manager.QuitAll("%7"); err != nil {
+		t.Fatalf("QuitAll returned error: %v", err)
+	}
+
+	if len(got) != 2 || got[0] != "run-shell" {
+		t.Fatalf("run command = %#v, want run-shell", got)
+	}
+	if !strings.Contains(got[1], "detach-client -t '@2'") {
+		t.Fatalf("run-shell script = %q, want explicit client detach", got[1])
 	}
 }

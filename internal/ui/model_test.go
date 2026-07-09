@@ -11,6 +11,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+const defaultProjectName = "default"
+
 func TestMenuStartsWithCurrentSessionSelected(t *testing.T) {
 	m := NewMenu().(model)
 	m.currentSession = "dev"
@@ -589,46 +591,94 @@ func TestMoveProjectUsesIncrementalPrefix(t *testing.T) {
 	}
 }
 
-func TestDeleteProjectMovesSessionsToDefault(t *testing.T) {
+func TestDeleteProjectDeletesSessions(t *testing.T) {
 	tmp := t.TempDir()
-	m := newModel(fakeTmuxController{}, "", "").(model)
+	var killed []string
+	m := newModel(fakeTmuxController{
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+	}, "", "").(model)
 	m.statePath = tmp + "/state.json"
-	m.projects = []string{defaultProjectName, "small"}
-	m.sessions = []session{{Name: "dev"}}
-	m.sessionProjects = map[string]string{"dev": "small"}
-	m.expandedProjects = map[string]bool{defaultProjectName: true, "small": true}
+	m.projects = []string{"small", "storage"}
+	m.sessions = []session{{Name: "dev"}, {Name: "api"}, {Name: "keep"}}
+	m.sessionProjects = map[string]string{
+		"dev":  "small",
+		"api":  "small",
+		"keep": "storage",
+	}
+	m.sessionTypes = map[string]sessionType{
+		"dev":  sessionTypeAgent,
+		"api":  sessionTypeK9s,
+		"keep": sessionTypeTerminal,
+	}
+	m.expandedProjects = map[string]bool{"small": true, "storage": true}
 	m.selectedProject = "small"
 
 	updated, cmd := m.deleteSelectedProject()
+	pending := updated.(model)
+	if cmd == nil {
+		t.Fatal("expected delete command")
+	}
+	msg := cmd().(projectDeletedMsg)
+	if msg.err != nil {
+		t.Fatalf("delete returned error: %v", msg.err)
+	}
+	if fmt.Sprint(killed) != fmt.Sprint([]string{"dev", "api"}) {
+		t.Fatalf("killed = %#v", killed)
+	}
+	updated, followUp := pending.Update(msg)
 	got := updated.(model)
-	if cmd != nil {
-		t.Fatal("expected no command")
+	if followUp != nil {
+		t.Fatal("expected no follow-up command")
 	}
 	if containsString(got.projects, "small") {
 		t.Fatalf("projects still contain deleted project: %#v", got.projects)
 	}
-	if got.sessionProjects["dev"] != defaultProjectName {
-		t.Fatalf("sessionProjects[dev] = %q, want %q", got.sessionProjects["dev"], defaultProjectName)
+	if _, ok := got.sessionProjects["dev"]; ok {
+		t.Fatalf("sessionProjects still contains deleted session: %#v", got.sessionProjects)
 	}
-	if got.selectedProject != defaultProjectName {
-		t.Fatalf("selectedProject = %q, want %q", got.selectedProject, defaultProjectName)
+	if _, ok := got.sessionProjects["api"]; ok {
+		t.Fatalf("sessionProjects still contains deleted session: %#v", got.sessionProjects)
+	}
+	if !containsString(got.projects, "storage") {
+		t.Fatalf("remaining project missing: %#v", got.projects)
+	}
+	if got.selectedProject != "storage" {
+		t.Fatalf("selectedProject = %q, want storage", got.selectedProject)
+	}
+	if len(got.sessions) != 1 || got.sessions[0].Name != "keep" {
+		t.Fatalf("sessions = %#v, want only keep", got.sessions)
 	}
 }
 
-func TestDeleteProjectAllowsDefault(t *testing.T) {
+func TestDeleteProjectHandlesProjectWithoutSessions(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "", "").(model)
 	m.statePath = t.TempDir() + "/state.json"
-	m.projects = []string{defaultProjectName}
-	m.expandedProjects = map[string]bool{defaultProjectName: true}
-	m.selectedProject = defaultProjectName
+	m.projects = []string{"small"}
+	m.expandedProjects = map[string]bool{"small": true}
+	m.selectedProject = "small"
 
 	updated, cmd := m.deleteSelectedProject()
-	got := updated.(model)
-	if cmd != nil {
-		t.Fatal("expected no command")
+	pending := updated.(model)
+	if cmd == nil {
+		t.Fatal("expected delete command")
 	}
-	if containsString(got.projects, defaultProjectName) {
-		t.Fatalf("default project still present: %#v", got.projects)
+	msg := cmd().(projectDeletedMsg)
+	if msg.err != nil {
+		t.Fatalf("delete returned error: %v", msg.err)
+	}
+	updated, followUp := pending.Update(msg)
+	got := updated.(model)
+	if followUp != nil {
+		t.Fatal("expected no follow-up command")
+	}
+	if containsString(got.projects, "small") {
+		t.Fatalf("deleted project still present: %#v", got.projects)
+	}
+	if got.selectedProject != "" {
+		t.Fatalf("selectedProject = %q, want empty", got.selectedProject)
 	}
 }
 

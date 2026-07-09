@@ -24,10 +24,6 @@ type projectConfig struct {
 	Protect     bool
 }
 
-func defaultProjectConfig() projectConfig {
-	return projectConfig{Name: defaultProjectName}
-}
-
 func normalizeProjectConfig(cfg projectConfig) projectConfig {
 	cfg.Name = normalizeProjectName(cfg.Name)
 	cfg.Workdir = strings.TrimSpace(cfg.Workdir)

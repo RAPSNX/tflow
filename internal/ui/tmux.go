@@ -19,6 +19,7 @@ const (
 	menuWidth      = "36"
 	menuToggleKey  = "C-f"
 	menuCurrentEnv = "TFLOW_CURRENT_SESSION"
+	menuClientEnv  = "TFLOW_CURRENT_CLIENT"
 )
 
 type session struct {
@@ -183,7 +184,12 @@ func (m tmuxSessionManager) RenameSession(oldName, newName string) error {
 }
 
 func (m tmuxSessionManager) SwitchClient(name string) error {
-	_, err := m.runner()("switch-client", "-t", name)
+	args := []string{"switch-client"}
+	if clientID := strings.TrimSpace(os.Getenv(menuClientEnv)); clientID != "" {
+		args = append(args, "-c", clientID)
+	}
+	args = append(args, "-t", name)
+	_, err := m.runner()(args...)
 	return err
 }
 
@@ -239,9 +245,6 @@ func (m tmuxSessionManager) SyncSessionProjects(sessionProjects map[string]strin
 			continue
 		}
 		project = normalizeProjectName(project)
-		if project == "" {
-			project = defaultProjectName
-		}
 		if _, err := m.runner()("set-option", "-t", name, projectMarker, project); err != nil {
 			if isNoTmuxSession(err) || isNoTmuxServer(err) {
 				continue
@@ -272,8 +275,12 @@ func (m tmuxSessionManager) ToggleMenu(binaryPath string) error {
 	if err != nil {
 		return err
 	}
+	currentClient, err := m.currentValue("#{client_id}")
+	if err != nil {
+		return err
+	}
 
-	menuCommand := fmt.Sprintf("%s=%s exec %s menu", menuCurrentEnv, shellQuote(currentSession), shellQuote(binaryPath))
+	menuCommand := fmt.Sprintf("%s=%s %s=%s exec %s menu", menuCurrentEnv, shellQuote(currentSession), menuClientEnv, shellQuote(currentClient), shellQuote(binaryPath))
 	paneID, err := m.runner()("split-window", "-t", windowID, "-h", "-b", "-l", menuWidth, "-P", "-F", "#{pane_id}", menuCommand)
 	if err != nil {
 		return err
@@ -301,7 +308,11 @@ func (m tmuxSessionManager) QuitAll(paneID string) error {
 	if trimmed := strings.TrimSpace(paneID); trimmed != "" {
 		script = append(script, "tmux -L "+shellQuote(tmuxSocket)+" kill-pane -t "+shellQuote(trimmed)+" >/dev/null 2>&1")
 	}
-	script = append(script, "tmux -L "+shellQuote(tmuxSocket)+" detach-client >/dev/null 2>&1")
+	if clientID := strings.TrimSpace(os.Getenv(menuClientEnv)); clientID != "" {
+		script = append(script, "tmux -L "+shellQuote(tmuxSocket)+" detach-client -t "+shellQuote(clientID)+" >/dev/null 2>&1")
+	} else {
+		script = append(script, "tmux -L "+shellQuote(tmuxSocket)+" detach-client >/dev/null 2>&1")
+	}
 	_, err := m.runner()("run-shell", strings.Join(script, "; "))
 	return err
 }
