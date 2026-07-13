@@ -1,7 +1,6 @@
-package ui
+package store
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"os"
@@ -10,13 +9,13 @@ import (
 	"strings"
 )
 
-type appConfig struct {
+type AppConfig struct {
 	ProjectsDir string
 	Theme       string
-	Colors      themeOverrides
+	Colors      ThemeOverrides
 }
 
-type themeOverrides struct {
+type ThemeOverrides struct {
 	BaseBG       string
 	Surface0     string
 	Surface1     string
@@ -32,14 +31,14 @@ type themeOverrides struct {
 	SelectedText string
 }
 
-func defaultAppConfig(baseDir string) appConfig {
-	return appConfig{
+func DefaultAppConfig(baseDir string) AppConfig {
+	return AppConfig{
 		ProjectsDir: filepath.Join(baseDir, "projects"),
 		Theme:       "catppuccin",
 	}
 }
 
-func normalizeAppConfig(baseDir string, cfg appConfig) appConfig {
+func NormalizeAppConfig(baseDir string, cfg AppConfig) AppConfig {
 	cfg.Theme = strings.TrimSpace(strings.ToLower(cfg.Theme))
 	if cfg.Theme == "" {
 		cfg.Theme = "catppuccin"
@@ -53,31 +52,7 @@ func normalizeAppConfig(baseDir string, cfg appConfig) appConfig {
 	return cfg
 }
 
-func normalizeThemeOverrides(overrides themeOverrides) themeOverrides {
-	normalize := func(value string) string {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return ""
-		}
-		return strings.ToLower(value)
-	}
-	overrides.BaseBG = normalize(overrides.BaseBG)
-	overrides.Surface0 = normalize(overrides.Surface0)
-	overrides.Surface1 = normalize(overrides.Surface1)
-	overrides.Text = normalize(overrides.Text)
-	overrides.Subtext = normalize(overrides.Subtext)
-	overrides.Blue = normalize(overrides.Blue)
-	overrides.Teal = normalize(overrides.Teal)
-	overrides.Yellow = normalize(overrides.Yellow)
-	overrides.Red = normalize(overrides.Red)
-	overrides.Mantle = normalize(overrides.Mantle)
-	overrides.Crust = normalize(overrides.Crust)
-	overrides.BadgeText = normalize(overrides.BadgeText)
-	overrides.SelectedText = normalize(overrides.SelectedText)
-	return overrides
-}
-
-func appConfigDir() string {
+func ConfigDir() string {
 	if dir, err := os.UserConfigDir(); err == nil && strings.TrimSpace(dir) != "" {
 		return filepath.Join(dir, "tflow")
 	}
@@ -87,58 +62,58 @@ func appConfigDir() string {
 	return filepath.Join(".", ".tflow")
 }
 
-func appConfigPath() string {
-	return filepath.Join(appConfigDir(), "config.yaml")
+func ConfigPath() string {
+	return filepath.Join(ConfigDir(), "config.yaml")
 }
 
-func loadAppConfig() (appConfig, error) {
-	return loadAppConfigForDir(appConfigDir())
+func LoadAppConfig() (AppConfig, error) {
+	return LoadAppConfigForDir(ConfigDir())
 }
 
-func loadAppConfigForStatePath(statePath string) (appConfig, error) {
-	return loadAppConfigForDir(filepath.Dir(statePath))
+func LoadAppConfigForStatePath(statePath string) (AppConfig, error) {
+	return LoadAppConfigForDir(filepath.Dir(statePath))
 }
 
-func loadAppConfigForDir(baseDir string) (appConfig, error) {
+func LoadAppConfigForDir(baseDir string) (AppConfig, error) {
 	path := filepath.Join(baseDir, "config.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return defaultAppConfig(baseDir), nil
+			return DefaultAppConfig(baseDir), nil
 		}
-		return appConfig{}, err
+		return AppConfig{}, err
 	}
-	cfg, err := parseAppConfig(data)
+	cfg, err := ParseAppConfig(data)
 	if err != nil {
-		return appConfig{}, fmt.Errorf("parse %s: %w", path, err)
+		return AppConfig{}, fmt.Errorf("parse %s: %w", path, err)
 	}
-	return normalizeAppConfig(baseDir, cfg), nil
+	return NormalizeAppConfig(baseDir, cfg), nil
 }
 
-func saveDefaultAppConfig() error {
-	baseDir := appConfigDir()
-	path := appConfigPath()
+func SaveDefaultAppConfig() error {
+	baseDir := ConfigDir()
+	path := ConfigPath()
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	} else if !os.IsNotExist(err) {
 		return err
 	}
 
-	cfg := defaultAppConfig(baseDir)
+	cfg := DefaultAppConfig(baseDir)
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, marshalAppConfig(cfg), 0o644)
+	return os.WriteFile(path, MarshalAppConfig(cfg), 0o644)
 }
 
-func marshalAppConfig(cfg appConfig) []byte {
-	cfg = normalizeAppConfig(appConfigDir(), cfg)
+func MarshalAppConfig(cfg AppConfig) []byte {
+	cfg = NormalizeAppConfig(ConfigDir(), cfg)
 	var buf bytes.Buffer
 	buf.WriteString("projects-dir: ")
-	buf.WriteString(yamlString(cfg.ProjectsDir))
+	buf.WriteString(YAMLString(cfg.ProjectsDir))
 	buf.WriteByte('\n')
 	buf.WriteString("theme: ")
-	buf.WriteString(yamlString(cfg.Theme))
+	buf.WriteString(YAMLString(cfg.Theme))
 	buf.WriteByte('\n')
 
 	colorLines := map[string]string{
@@ -169,21 +144,17 @@ func marshalAppConfig(cfg appConfig) []byte {
 			buf.WriteString("  ")
 			buf.WriteString(key)
 			buf.WriteString(": ")
-			buf.WriteString(yamlString(colorLines[key]))
+			buf.WriteString(YAMLString(colorLines[key]))
 			buf.WriteByte('\n')
 		}
 	}
 	return buf.Bytes()
 }
 
-func parseAppConfig(data []byte) (appConfig, error) {
-	var cfg appConfig
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	var lines []string
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
+func ParseAppConfig(data []byte) (AppConfig, error) {
+	var cfg AppConfig
+	lines, err := yamlLines(data)
+	if err != nil {
 		return cfg, err
 	}
 
@@ -202,13 +173,13 @@ func parseAppConfig(data []byte) (appConfig, error) {
 
 		switch key {
 		case "projects-dir":
-			parsed, err := parseYAMLString(value)
+			parsed, err := ParseYAMLString(value)
 			if err != nil {
 				return cfg, fmt.Errorf("line %d: %w", i+1, err)
 			}
 			cfg.ProjectsDir = parsed
 		case "theme":
-			parsed, err := parseYAMLString(value)
+			parsed, err := ParseYAMLString(value)
 			if err != nil {
 				return cfg, fmt.Errorf("line %d: %w", i+1, err)
 			}
@@ -232,7 +203,7 @@ func parseAppConfig(data []byte) (appConfig, error) {
 				if !ok {
 					return cfg, fmt.Errorf("invalid colors line %d", i+1)
 				}
-				parsed, err := parseYAMLString(childValue)
+				parsed, err := ParseYAMLString(childValue)
 				if err != nil {
 					return cfg, fmt.Errorf("line %d: %w", i+1, err)
 				}
@@ -273,4 +244,28 @@ func parseAppConfig(data []byte) (appConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+func normalizeThemeOverrides(overrides ThemeOverrides) ThemeOverrides {
+	normalize := func(value string) string {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return ""
+		}
+		return strings.ToLower(value)
+	}
+	overrides.BaseBG = normalize(overrides.BaseBG)
+	overrides.Surface0 = normalize(overrides.Surface0)
+	overrides.Surface1 = normalize(overrides.Surface1)
+	overrides.Text = normalize(overrides.Text)
+	overrides.Subtext = normalize(overrides.Subtext)
+	overrides.Blue = normalize(overrides.Blue)
+	overrides.Teal = normalize(overrides.Teal)
+	overrides.Yellow = normalize(overrides.Yellow)
+	overrides.Red = normalize(overrides.Red)
+	overrides.Mantle = normalize(overrides.Mantle)
+	overrides.Crust = normalize(overrides.Crust)
+	overrides.BadgeText = normalize(overrides.BadgeText)
+	overrides.SelectedText = normalize(overrides.SelectedText)
+	return overrides
 }

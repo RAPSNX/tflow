@@ -1,7 +1,6 @@
-package ui
+package store
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"os"
@@ -11,20 +10,20 @@ import (
 	"strings"
 )
 
-type clusterConfig struct {
+type ClusterConfig struct {
 	Path          string
 	ConnectionCmd string
 }
 
-type projectConfig struct {
+type ProjectConfig struct {
 	Name        string
 	Workdir     string
-	Cluster     clusterConfig
+	Cluster     ClusterConfig
 	AgentBinary string
 	Protect     bool
 }
 
-func normalizeProjectConfig(cfg projectConfig) projectConfig {
+func NormalizeProjectConfig(cfg ProjectConfig) ProjectConfig {
 	cfg.Name = normalizeProjectName(cfg.Name)
 	cfg.Workdir = strings.TrimSpace(cfg.Workdir)
 	if cfg.Workdir != "" {
@@ -36,35 +35,27 @@ func normalizeProjectConfig(cfg projectConfig) projectConfig {
 	return cfg
 }
 
-func (cfg projectConfig) isZero() bool {
-	return cfg.Name == "" && cfg.Workdir == "" && cfg.Cluster.Path == "" && cfg.Cluster.ConnectionCmd == "" && cfg.AgentBinary == "" && !cfg.Protect
-}
-
-func (cfg projectConfig) clusterConfigured() bool {
-	return cfg.Cluster.Path != "" || cfg.Cluster.ConnectionCmd != ""
-}
-
-func (cfg projectConfig) agentBinary() string {
+func (cfg ProjectConfig) AgentBinaryValue() string {
 	if strings.TrimSpace(cfg.AgentBinary) == "" {
 		return "codex"
 	}
 	return cfg.AgentBinary
 }
 
-func projectConfigDir(statePath string) string {
-	cfg, err := loadAppConfigForStatePath(statePath)
+func ProjectConfigDir(statePath string) string {
+	cfg, err := LoadAppConfigForStatePath(statePath)
 	if err != nil {
 		return filepath.Join(filepath.Dir(statePath), "projects")
 	}
 	return cfg.ProjectsDir
 }
 
-func projectConfigPath(statePath, project string) string {
-	return filepath.Join(projectConfigDir(statePath), normalizeProjectName(project)+".yaml")
+func ProjectConfigPath(statePath, project string) string {
+	return filepath.Join(ProjectConfigDir(statePath), normalizeProjectName(project)+".yaml")
 }
 
-func loadProjectConfigs(statePath string, state appState) (map[string]projectConfig, error) {
-	configs := map[string]projectConfig{}
+func LoadProjectConfigs(statePath string, state AppState) (map[string]ProjectConfig, error) {
+	configs := map[string]ProjectConfig{}
 
 	for _, project := range state.Projects {
 		project = normalizeProjectName(project)
@@ -76,10 +67,10 @@ func loadProjectConfigs(statePath string, state appState) (map[string]projectCon
 		if dir := strings.TrimSpace(state.ProjectDirs[project]); dir != "" {
 			cfg.Workdir = normalizeCWD(dir)
 		}
-		configs[project] = normalizeProjectConfig(cfg)
+		configs[project] = NormalizeProjectConfig(cfg)
 	}
 
-	dir := projectConfigDir(statePath)
+	dir := ProjectConfigDir(statePath)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -97,11 +88,11 @@ func loadProjectConfigs(statePath string, state appState) (map[string]projectCon
 		if err != nil {
 			return nil, err
 		}
-		cfg, err := parseProjectConfig(data)
+		cfg, err := ParseProjectConfig(data)
 		if err != nil {
 			return nil, fmt.Errorf("parse %s: %w", path, err)
 		}
-		cfg = normalizeProjectConfig(cfg)
+		cfg = NormalizeProjectConfig(cfg)
 		if cfg.Name == "" {
 			return nil, fmt.Errorf("parse %s: missing project name", path)
 		}
@@ -111,8 +102,8 @@ func loadProjectConfigs(statePath string, state appState) (map[string]projectCon
 	return configs, nil
 }
 
-func saveProjectConfigs(statePath string, configs map[string]projectConfig) error {
-	dir := projectConfigDir(statePath)
+func SaveProjectConfigs(statePath string, configs map[string]ProjectConfig) error {
+	dir := ProjectConfigDir(statePath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -124,11 +115,11 @@ func saveProjectConfigs(statePath string, configs map[string]projectConfig) erro
 	sort.Strings(names)
 
 	for _, name := range names {
-		cfg := normalizeProjectConfig(configs[name])
+		cfg := NormalizeProjectConfig(configs[name])
 		if cfg.Name == "" {
 			continue
 		}
-		if err := os.WriteFile(projectConfigPath(statePath, cfg.Name), marshalProjectConfig(cfg), 0o644); err != nil {
+		if err := os.WriteFile(ProjectConfigPath(statePath, cfg.Name), MarshalProjectConfig(cfg), 0o644); err != nil {
 			return err
 		}
 	}
@@ -136,24 +127,24 @@ func saveProjectConfigs(statePath string, configs map[string]projectConfig) erro
 	return nil
 }
 
-func removeProjectConfigFile(statePath, project string) error {
-	err := os.Remove(projectConfigPath(statePath, project))
+func RemoveProjectConfigFile(statePath, project string) error {
+	err := os.Remove(ProjectConfigPath(statePath, project))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	return nil
 }
 
-func marshalProjectConfig(cfg projectConfig) []byte {
-	cfg = normalizeProjectConfig(cfg)
+func MarshalProjectConfig(cfg ProjectConfig) []byte {
+	cfg = NormalizeProjectConfig(cfg)
 
 	var buf bytes.Buffer
 	buf.WriteString("name: ")
-	buf.WriteString(yamlString(cfg.Name))
+	buf.WriteString(YAMLString(cfg.Name))
 	buf.WriteByte('\n')
 	if cfg.Workdir != "" {
 		buf.WriteString("workdir: ")
-		buf.WriteString(yamlString(cfg.Workdir))
+		buf.WriteString(YAMLString(cfg.Workdir))
 		buf.WriteByte('\n')
 	}
 	if cfg.Protect {
@@ -161,34 +152,29 @@ func marshalProjectConfig(cfg projectConfig) []byte {
 	}
 	if cfg.AgentBinary != "" {
 		buf.WriteString("agent-binary: ")
-		buf.WriteString(yamlString(cfg.AgentBinary))
+		buf.WriteString(YAMLString(cfg.AgentBinary))
 		buf.WriteByte('\n')
 	}
 	if cfg.Cluster.Path != "" || cfg.Cluster.ConnectionCmd != "" {
 		buf.WriteString("cluster:\n")
 		if cfg.Cluster.Path != "" {
 			buf.WriteString("  path: ")
-			buf.WriteString(yamlString(cfg.Cluster.Path))
+			buf.WriteString(YAMLString(cfg.Cluster.Path))
 			buf.WriteByte('\n')
 		}
 		if cfg.Cluster.ConnectionCmd != "" {
 			buf.WriteString("  connection-cmd: ")
-			buf.WriteString(yamlString(cfg.Cluster.ConnectionCmd))
+			buf.WriteString(YAMLString(cfg.Cluster.ConnectionCmd))
 			buf.WriteByte('\n')
 		}
 	}
 	return buf.Bytes()
 }
 
-func parseProjectConfig(data []byte) (projectConfig, error) {
-	var cfg projectConfig
-
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	var lines []string
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
+func ParseProjectConfig(data []byte) (ProjectConfig, error) {
+	var cfg ProjectConfig
+	lines, err := yamlLines(data)
+	if err != nil {
 		return cfg, err
 	}
 
@@ -208,13 +194,13 @@ func parseProjectConfig(data []byte) (projectConfig, error) {
 
 		switch key {
 		case "name":
-			parsed, err := parseYAMLString(value)
+			parsed, err := ParseYAMLString(value)
 			if err != nil {
 				return cfg, fmt.Errorf("line %d: %w", i+1, err)
 			}
 			cfg.Name = parsed
 		case "workdir":
-			parsed, err := parseYAMLString(value)
+			parsed, err := ParseYAMLString(value)
 			if err != nil {
 				return cfg, fmt.Errorf("line %d: %w", i+1, err)
 			}
@@ -226,7 +212,7 @@ func parseProjectConfig(data []byte) (projectConfig, error) {
 			}
 			cfg.Protect = parsed
 		case "agent-binary":
-			parsed, err := parseYAMLString(value)
+			parsed, err := ParseYAMLString(value)
 			if err != nil {
 				return cfg, fmt.Errorf("line %d: %w", i+1, err)
 			}
@@ -234,7 +220,7 @@ func parseProjectConfig(data []byte) (projectConfig, error) {
 		case "cluster":
 			value = strings.TrimSpace(value)
 			if value != "" {
-				parsed, err := parseYAMLString(value)
+				parsed, err := ParseYAMLString(value)
 				if err != nil {
 					return cfg, fmt.Errorf("line %d: %w", i+1, err)
 				}
@@ -256,7 +242,7 @@ func parseProjectConfig(data []byte) (projectConfig, error) {
 				if !ok {
 					return cfg, fmt.Errorf("invalid cluster line %d", i+1)
 				}
-				parsed, err := parseYAMLString(childValue)
+				parsed, err := ParseYAMLString(childValue)
 				if err != nil {
 					return cfg, fmt.Errorf("line %d: %w", i+1, err)
 				}
@@ -274,40 +260,5 @@ func parseProjectConfig(data []byte) (projectConfig, error) {
 		}
 	}
 
-	return normalizeProjectConfig(cfg), nil
-}
-
-func yamlString(value string) string {
-	return strconv.Quote(value)
-}
-
-func parseYAMLString(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", nil
-	}
-	if strings.HasPrefix(value, "\"") {
-		parsed, err := strconv.Unquote(value)
-		if err != nil {
-			return "", fmt.Errorf("invalid quoted string")
-		}
-		return parsed, nil
-	}
-	if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") && len(value) >= 2 {
-		return strings.ReplaceAll(value[1:len(value)-1], "''", "'"), nil
-	}
-	return value, nil
-}
-
-func splitYAMLField(line string) (string, string, bool) {
-	index := strings.IndexByte(line, ':')
-	if index < 0 {
-		return "", "", false
-	}
-	return strings.TrimSpace(line[:index]), line[index+1:], true
-}
-
-func shouldSkipYAMLLine(line string) bool {
-	trimmed := strings.TrimSpace(line)
-	return trimmed == "" || strings.HasPrefix(trimmed, "#")
+	return NormalizeProjectConfig(cfg), nil
 }
