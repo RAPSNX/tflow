@@ -43,15 +43,15 @@ In volatile mode, the project badge value is empty.
 The sidebar is shown on the left and contains:
 
 - a `TFLOW` header
-- a session and project browser
+- a session list
 - an inline command and status area
 
 The sidebar handles the core management actions:
 
 - create project or session
 - rename project or session
-- move a session to another project
 - delete project or session
+- switch to another project
 - update project settings
 - quit the current `tflow` instance
 
@@ -66,12 +66,24 @@ A project contains:
 
 A session belongs to at most one project.
 
-Adding the current volatile session to a project makes it persistent.
-
 When a new session is created:
 
 - inside a project, it starts in that project `workdir` when one is set
 - outside a project, it starts in the current working directory
+
+Switching to another project is always supported.
+
+Switching to a project uses the command line and shows all existing projects in a readable newline-separated list.
+
+Typing enough characters to uniquely match a project and pressing `Enter` switches to that project.
+
+For example, if `gardener` and `gate` exist, `pgar` switches to `gardener` and `pgat` switches to `gate`.
+
+Switching to a project selects that project's first session and closes the sidebar.
+
+Switching from a volatile session to a project requires confirmation.
+
+Switching from one project to another is direct.
 
 Deleting the last session of a project requires confirmation.
 
@@ -103,7 +115,7 @@ If the state file is invalid, startup should fail with a clear error.
 - `Enter` on a session: switch to that session and close the sidebar
 - `n`: create a new session
 - `N`: create a new project
-- `m`: move the selected session
+- `p`: switch to another project
 - `r`: rename the selected item
 - `d`: delete the selected item with confirmation
 - `e`: edit project settings
