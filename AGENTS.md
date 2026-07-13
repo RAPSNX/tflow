@@ -61,3 +61,4 @@ Use Go’s built-in `testing` package by default.
 - Keep changes focused and avoid unrelated rewrites.
 - Always create new branch for your work from main
 - Never work on main, always commit your work !!
+- Always !! Commit the refactor, push the branch, and open a published PR. !!!
