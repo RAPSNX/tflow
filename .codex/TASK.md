@@ -2,19 +2,19 @@
 
 ## Package split and file-size baseline
 
-- [ ] Move tmux process and session responsibilities into a focused package with small files.
-- [ ] Move persistent state loading and saving into a focused store package with small files.
-- [ ] Split `internal/ui/model.go` into smaller UI files grouped by responsibility.
-- [ ] Split oversized UI tests so they live next to the behavior they cover.
-- [ ] Remove package responsibilities that do not belong in `internal/ui`.
+- [x] Move tmux process and session responsibilities into a focused package with small files.
+- [x] Move persistent state loading and saving into a focused store package with small files.
+- [x] Split `internal/ui/model.go` into smaller UI files grouped by responsibility.
+- [x] Split oversized UI tests so they live next to the behavior they cover.
+- [x] Remove package responsibilities that do not belong in `internal/ui`.
 
 ## Remove obsolete config and project YAML
 
-- [ ] Remove editable app config support.
-- [ ] Remove per-project YAML config support.
-- [ ] Remove code paths that read or write `config.yaml`.
-- [ ] Remove code paths that read or write project config files.
-- [ ] Remove tests that only cover the deleted config behavior.
+- [x] Remove editable app config support.
+- [x] Remove per-project YAML config support.
+- [x] Remove code paths that read or write `config.yaml`.
+- [x] Remove code paths that read or write project config files.
+- [x] Remove tests that only cover the deleted config behavior.
 
 ## Remove obsolete UI and interaction behavior
 
