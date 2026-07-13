@@ -1,0 +1,112 @@
+package ui
+
+import "os/exec"
+
+const defaultProjectName = "default"
+
+type fakeTmuxController struct {
+	listSessions        func() ([]session, error)
+	createSession       func(name, cwd, command string) (session, error)
+	setSessionTemporary func(name string, temporary bool) error
+	attachCommand       func(name string) (*exec.Cmd, error)
+	killSession         func(name string) error
+	renameSession       func(oldName, newName string) error
+	switchClient        func(name string) error
+	ensureControlMode   func(binaryPath string) error
+	toggleMenu          func(binaryPath string) error
+	closePane           func(paneID string) error
+	quitAll             func(paneID string) error
+	syncSessionProjects func(sessionProjects map[string]string) error
+}
+
+func (f fakeTmuxController) ListSessions() ([]session, error) {
+	if f.listSessions != nil {
+		return f.listSessions()
+	}
+	return nil, nil
+}
+
+func (f fakeTmuxController) CreateSession(name, cwd, command string) (session, error) {
+	if f.createSession != nil {
+		return f.createSession(name, cwd, command)
+	}
+	return session{Name: name, Windows: 1}, nil
+}
+
+func (f fakeTmuxController) SetSessionTemporary(name string, temporary bool) error {
+	if f.setSessionTemporary != nil {
+		return f.setSessionTemporary(name, temporary)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) AttachCommand(name string) (*exec.Cmd, error) {
+	if f.attachCommand != nil {
+		return f.attachCommand(name)
+	}
+	return exec.Command("sh", "-lc", ":"), nil
+}
+
+func (f fakeTmuxController) KillSession(name string) error {
+	if f.killSession != nil {
+		return f.killSession(name)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) RenameSession(oldName, newName string) error {
+	if f.renameSession != nil {
+		return f.renameSession(oldName, newName)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) SwitchClient(name string) error {
+	if f.switchClient != nil {
+		return f.switchClient(name)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) EnsureControlMode(binaryPath string) error {
+	if f.ensureControlMode != nil {
+		return f.ensureControlMode(binaryPath)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) ToggleMenu(binaryPath string) error {
+	if f.toggleMenu != nil {
+		return f.toggleMenu(binaryPath)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) ClosePane(paneID string) error {
+	if f.closePane != nil {
+		return f.closePane(paneID)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) QuitAll(paneID string) error {
+	if f.quitAll != nil {
+		return f.quitAll(paneID)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) SyncSessionProjects(sessionProjects map[string]string) error {
+	if f.syncSessionProjects != nil {
+		return f.syncSessionProjects(sessionProjects)
+	}
+	return nil
+}
+
+func cloneStringMap(src map[string]string) map[string]string {
+	dst := make(map[string]string, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
