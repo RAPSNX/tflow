@@ -1,300 +1,162 @@
 # tflow
 
-`tflow` is a terminal session manager using `tmux` as its backend.
+`tflow` is a terminal session manager built on top of `tmux`.
 
-`tflow` starts with one volatile session named `code`.
+The architecture should follow the interaction model that already works on `main`:
 
-Volatile sessions are not attached to a project. In volatile mode, the project badge is still shown, but its value is empty.
+- the active terminal stays a real `tmux` terminal
+- the sidebar is opened as a real `tmux` pane
+- the top badges are shown through `tmux`
+- `tflow` tracks project and session metadata in one state file
 
-If the terminal running `tflow` exits or `Ctrl+Q` is confirmed, all volatile sessions owned by that instance are terminated. Persistent project sessions are left untouched.
+The goal is a practical design that matches the current UI and session handling, without extra persistence or restore complexity.
 
-Each `tflow` instance is runtime-isolated. It owns its own volatile sessions and must not interfere with the runtime sessions or behavior of any other `tflow` instance.
+## Runtime Model
 
-Persistent projects are shared globally through the store.
+`tflow` owns a dedicated `tmux` socket.
+
+Each session managed by `tflow` is an ordinary `tmux` session.
+
+`tflow` starts by creating one volatile session with a generated temporary name and attaching the user to it.
+
+Volatile sessions belong only to the current `tflow` instance. They are used for scratch work and are removed when that instance exits normally or `Ctrl+Q` is confirmed.
+
+Persistent sessions are just non-volatile `tmux` sessions that are grouped into projects by `tflow` metadata. They are not recreated from a complex runtime snapshot. If they still exist in `tmux`, they stay usable.
+
+`tflow` may use `tmux` session options to mirror metadata such as:
+
+- whether a session is temporary
+- which project a session belongs to
+- whether a pane is the sidebar pane
+
+This is part of the intended design. In this architecture, `tmux` is both the runtime and part of the visible UI surface.
 
 ## Terminal UI
 
-On startup, `tflow` looks like a normal terminal.
+On startup, the user should see a normal live terminal session, not a captured or replayed terminal surface.
 
-Normal Terminal means that all coloring, font and style settings, will be 100% identical to a normal terminal.
+The primary interaction model is:
 
-This is very IMPORTANT, `tmux` must not overwrite any color or skin of other programs.
+- the active terminal runs directly inside `tmux`
+- `Ctrl+F` toggles a slim sidebar by splitting the current `tmux` window
+- switching sessions closes the sidebar and returns focus to the selected session
 
-There is no status bar or additional UI, except for two `key=value` badges in the top bar showing the current project and session name.
+The top line shows two badges:
 
-The badges are updated whenever the session or project changes, so they always reflect the active state.
+- `project=<name>`
+- `session=<name>`
 
-The core feature is a fixed-width sidebar toggled with `Ctrl+F`.
-The sidebar should be slim, using not more as 20%-25% space.
-The content of the sidebar is centered.
+In volatile mode, the project badge value is empty.
 
-The sidebar is shown on the left side and contains:
+These badges may be implemented through the `tmux` status line, as on `main`.
 
-- a header section with a centered `TFLOW` badge
-- a session list, which visually a component with boarder and shadow
-- a project list, which visually a component with boarder and shadow
- an always-visible command line
-- a help section shown only when help is enabled
+The sidebar is shown on the left and contains:
 
-All sidebar-related prompts, inputs, confirmations, and dialog messages use the command line.
+- a `TFLOW` header
+- a project tree
+- session rows inside expanded projects
+- an inline command/status area
 
-`Ctrl+Q` is the only exception. Because it can be triggered outside the sidebar, its confirmation uses a centered dialog.
+The sidebar handles the current feature set from `main`:
 
-Command-line messages disappear automatically after a short time.
+- create project
+- create terminal, `k9s`, and agent sessions
+- move session to another project
+- rename project or session
+- delete project or session
+- update project settings
+- quit the current `tflow` instance
 
-Invalid input keeps the current prompt open, shows an error, and allows the user to correct the input.
-
-## Runtime Architecture
-
-`tflow` uses `tmux` panes/windows as the terminal runtime.
-
-The sidebar and badges are implemented by `tflow` as the controlling TUI around the active tmux client/session, not as tmux status lines.
-
-The initial backend is a minimal `tmux` abstraction built on ordinary `tmux` commands.
-
-`tmux` control mode and VT-style terminal rendering are not mandatory for the baseline implementation.
-
-They are introduced only if the simple backend cannot support the required outer TUI behavior.
-
-Persistent session identity is stored in `store.json`.
-
-Each persistent session has an internal stable ID used to derive the internal tmux session name.
-
-User-visible names are project/session names only. Internal tmux names are never shown.
-
-Multiple `tflow` instances share the same persistent store. If two instances select the same persistent session, they attach to the same underlying tmux session.
-
-Volatile sessions are owned by one `tflow` instance only and are never shared.
-
-`tflow` captures `pane_current_path`:
-- before switching sessions
-- before switching projects
-- before moving sessions
-- before shutdown when possible
-
-CWD persistence is best-effort. Crash or forced termination may lose the latest cwd update.
-
-On normal exit or confirmed `Ctrl+Q`, volatile sessions are killed.
-
-Moving a session into a project fails if the destination project already contains a session with the same name.
-
-When deleting the active project, `tflow` switches to the next project in store order. If the deleted project was the last project, it wraps to the first project. If no persistent project remains, `tflow` switches to a fresh volatile `code` session.
-
+The UI should stay simple and responsive. The architecture does not require terminal capture, VT replay, or a full outer TUI around the live session.
 
 ## Projects and Sessions
 
-Projects are persistent and managed only through the `tflow` UI.
+Projects are lightweight groups over existing `tmux` sessions.
 
-A project has:
+A project contains:
 
-- a globally unique name
-- a `workdir`
-- at least one session
+- a unique project name
+- optional settings used when creating sessions
 
-Session names are unique within one project.
+Project settings may include:
 
-Different projects may contain sessions with the same name. Switching, moving, and selecting sessions must use the project context internally, so equal session names across projects never conflict.
+- `workdir`
+- `protect`
+- cluster settings for `k9s`
+- agent binary for agent sessions
 
-A session can be moved into a project. This makes the session persistent and lets it survive terminal exit or `Ctrl+Q`.
+Sessions are identified by their `tmux` session names.
 
-When the active context is volatile, creating a project attaches all current volatile sessions to it, writes the project to the store, and selects the new project.
+To match the current behavior on `main`:
 
-When the active context is already inside a persistent project, creating a project creates a new project with a fresh `code` session in the new project `workdir`.
+- session names are globally unique across `tflow`
+- a session belongs to at most one project
+- moving a session changes metadata, not the underlying runtime model
+- adding the current volatile session to a project makes it persistent
 
-If no volatile sessions exist when a project is created, `tflow` creates a default `code` session in the project `workdir`.
+Creating a project does not need to create a default session automatically.
 
-Project order follows the store order. New projects are appended to the end.
+Deleting the last session of a project does not need to delete the project automatically.
 
-Session order follows creation order.
+When a new session is created:
 
-When switching to a project, `tflow` selects the first session by creation order.
+- inside a project, it starts in that project `workdir` when one is set
+- outside a project, it starts in the current working directory
 
-Renaming a project or session keeps its position and updates the store.
+Session kinds currently supported are:
 
-Renaming a project validates global project name uniqueness.
+- `terminal`
+- `k9s`
+- `agent`
 
-Renaming a session validates session name uniqueness within the current project.
+## State
 
-Duplicate names are rejected with an error in the command line.
+`tflow` does not use a user-edited `config.yaml` or per-project YAML files.
 
-## Lifecycle and Store
+All persistent metadata lives in one JSON file:
 
-`tflow` does not use a user-edited config file.
+- `$XDG_STATE_HOME/tflow/store.json`
 
-Persistent data is stored in `$XDG_STATE_HOME/tflow/store.json`.
+The store is only meant to keep the current application state. It is not a full runtime database.
 
-The store is the source of truth for:
+The store should contain enough information to rebuild the sidebar state and project metadata, including:
 
-- projects
-- sessions
-- persistent session stable IDs
-- project `workdir`
-- last known working directory per session
+- project order
+- session-to-project mapping
+- session type
+- per-project settings
+- lightweight UI state when useful, such as expanded projects
 
-The store is shared by all `tflow` instances.
+The store should stay simple:
 
-If no store exists, `tflow` creates an empty one.
+- no stable internal session IDs are required
+- no mandatory file locking requirement is part of the architecture
+- no mandatory atomic rename requirement is part of the architecture
+- best-effort writes are enough for this version
 
-Invalid `store.json` fails startup with a clear error.
+The main requirement is that the file stays valid JSON and that `tflow` can load it on startup.
 
-Duplicate project names in `store.json` fail startup with a clear error.
+If the state file does not exist, `tflow` creates an empty one when needed.
 
-Duplicate session names within one project fail startup with a clear error.
+If the state file is invalid, startup should fail with a clear error.
 
-Duplicate persistent session stable IDs in `store.json` fail startup with a clear error.
+## Key Interactions
 
-Store writes must use file locking and atomic rename.
+- `Ctrl+F`: toggle the sidebar in the current `tmux` window
+- `Ctrl+Q`: confirm shutdown of the current `tflow` instance and remove its volatile sessions
+- `Enter` on a session: switch to that session and close the sidebar
+- `Enter` on a project: expand or collapse it
+- `n`: enter the new-item flow used on `main`
+- `m`: move the selected session
+- `r`: rename the selected item
+- `d`: delete the selected item with confirmation
+- `e`: edit project settings
 
-`tflow` stores project `workdir` and session `cwd` as expanded absolute paths.
-
-Persistent projects are loaded from the store on startup.
-
-Persistent sessions are restored lazily when switching to a project from the sidebar.
-
-Lazy restore only restores sessions for the selected project.
-
-Restored persistent sessions reopen in their last known working directory.
-
-If a restored session `cwd` no longer exists, `tflow` falls back to the project `workdir`.
-
-If a persistent project has no saved sessions, `tflow` creates a default `code` session in the project `workdir`.
-
-Volatile sessions are never restored.
-
-Project creation validates that `workdir` exists before writing to the store.
-
-If a project `workdir` does not exist, selecting or creating the project fails and asks the user to change the `workdir`.
-
-`tmux` session names are internal only and must never be shown in the UI.
-
-Internal `tmux` session names must be globally unique.
-
-```json
-{
-  "projects": [
-    {
-      "name": "project-a",
-      "workdir": "/home/user/Projects/project-a",
-      "sessions": [
-        {
-          "id": "3d7a67d6-3f57-4a7e-8ae0-f9ea4d8164d7",
-          "name": "code",
-          "cwd": "/home/user/Projects/project-a"
-        }
-      ]
-    }
-  ]
-}
-```
-
-## Deletion
-
-Destructive confirmations use a `y/N` prompt.
-
-Deleting a session requires confirmation in the command line.
-
-Deleting the last session of a project prompts for deleting the whole project.
-
-If the project deletion is cancelled, the session deletion is cancelled.
-
-Deleting a project kills all sessions of that project and removes it from the store.
-
-Deleting the active project switches to the next persistent project by store order.
-
-If no next persistent project exists, `tflow` switches to a fresh volatile `code` session.
-
-Deleting a non-active project does not change the current session or project.
-
-Moving the last session out of a project prompts for deleting the now-empty project.
-
-If confirmed, the move completes and the empty project is deleted.
-
-If cancelled, the move is cancelled.
-
-## New Sessions
-
-Creating a new session prompts for the session name in the command line.
-
-Duplicate session names in the current project are rejected with an error in the command line.
-
-When a project is selected, new sessions start in the project `workdir`.
-
-When no project is selected, new volatile sessions start in the current session working directory.
-
-## Moving Sessions
-
-`m` moves only the selected session.
-
-`m` can move a volatile session into an existing project.
-
-Moving a session removes it from its source project or volatile session list.
-
-If all volatile sessions are moved into projects, `tflow` creates a fresh volatile `code` session.
-
-## Editing Projects
-
-`e` edits the selected project `workdir`.
-
-The new `workdir` must exist before it is written to the store.
-
-The new `workdir` is stored as an expanded absolute path.
-
-## Keybindings
-
-- `Ctrl+F`: toggle the sidebar in the current session window
-- `Ctrl+Q`: open a centered confirmation dialog to terminate the current `tflow` instance
-- `Ctrl+C`: close the sidebar when it is open
-- `Ctrl+C`: pass through to the terminal session when the sidebar is closed
-- `Esc`: cancel the active prompt, hint mode, or confirmation first; close the sidebar on the next press
-- `?`: toggle help on or off
-- `Tab`: switch focus between the session list and the project list
-- `j` / `k`: move up or down in the focused list
-- `Enter`: switch to the selected session and close the sidebar
-- `Enter`: switch to the selected project and its first session by creation order
-- `n`: create a new terminal session
-- `N`: create a new project
-- `e`: edit the selected project `workdir`
-- `r`: rename the selected session or project
-- `m`: move the selected session to another project using hint mode
-- `d`: delete the selected session with confirmation
-- `D`: delete the selected project and all of its sessions with destructive confirmation
-
-`Ctrl+Q` confirmation shows the number of volatile sessions that will be killed.
-
-`Ctrl+Q` kills only volatile sessions. Persistent sessions stay alive.
-
-`Ctrl+Q` is ignored while a sidebar prompt, hint mode, or confirmation is active.
-
-## Hint Mode
-
-Hint mode is entered by actions that require selecting a project.
-
-When hint mode is active, `tflow` highlights the required starting characters of each project name. The highlighted characters are colorized.
-
-If multiple projects share the same prefix, hint mode continues until the typed characters identify exactly one project.
-
-Hint mode follows the project order from the store.
-
-Example projects:
-
-- Apple
-- Pier
-
-In this case, `A` and `P` are highlighted. Pressing one of them selects the matching project.
-
-## Workdir Autocompletion
-
-Workdir prompts use path autocompletion.
-
-While entering a `workdir` in the command line, pressing `Tab` completes the current path segment.
-
-If multiple matches exist, `tflow` shows a limited number of available matches in the command line and waits for more input.
-
-If more matches exist than can be shown, the command line indicates that the result was truncated.
+Exact prompt wording can change, but the interaction style should stay close to `main`.
 
 ## Dependencies and Design
 
-- `tmux` is required. If it is missing, `tflow` fails startup with a clear error.
-- Charmbracelet modules are used for all TUI elements.
-- The design uses the Catppuccin color palette.
-- The UI should be minimal, consistent, and visually clean.
+- `tmux` is required
+- Charmbracelet libraries are used for the menu/sidebar UI
+- the design should stay close to the current visual behavior on `main`
+- architecture should prefer simple session handling over speculative abstractions
