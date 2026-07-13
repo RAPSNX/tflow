@@ -2,27 +2,9 @@ package ui
 
 import "tflow/internal/store"
 
-type appConfig = store.AppConfig
 type appState = store.AppState
 type clusterConfig = store.ClusterConfig
 type projectConfig = store.ProjectConfig
-type themeOverrides = store.ThemeOverrides
-
-func loadAppConfig() (appConfig, error) {
-	return store.LoadAppConfig()
-}
-
-func loadAppConfigForStatePath(statePath string) (appConfig, error) {
-	return store.LoadAppConfigForStatePath(statePath)
-}
-
-func loadAppConfigForDir(baseDir string) (appConfig, error) {
-	return store.LoadAppConfigForDir(baseDir)
-}
-
-func saveDefaultAppConfig() error {
-	return store.SaveDefaultAppConfig()
-}
 
 func loadProjectConfigs(statePath string, state appState) (map[string]projectConfig, error) {
 	return store.LoadProjectConfigs(statePath, state)

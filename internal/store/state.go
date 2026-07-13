@@ -18,7 +18,7 @@ type AppState struct {
 }
 
 func AppStatePath() string {
-	return filepath.Join(ConfigDir(), "state.json")
+	return filepath.Join(legacyStateDir(), "state.json")
 }
 
 func LoadAppState(path string) (AppState, error) {
@@ -164,4 +164,14 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func legacyStateDir() string {
+	if dir, err := os.UserConfigDir(); err == nil && strings.TrimSpace(dir) != "" {
+		return filepath.Join(dir, "tflow")
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return filepath.Join(home, ".config", "tflow")
+	}
+	return filepath.Join(".", ".tflow")
 }

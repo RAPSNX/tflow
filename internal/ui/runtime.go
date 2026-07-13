@@ -69,11 +69,7 @@ func (m sessionManager) SwitchClient(name string) error {
 }
 
 func (m sessionManager) EnsureControlMode(binaryPath string) error {
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
-	palette := themeFromConfig(cfg)
+	palette := themePaletteForName("catppuccin")
 	return m.inner.EnsureControlMode(binaryPath, runtmux.Palette{
 		Surface0: palette.Surface0,
 		Subtext:  palette.Subtext,

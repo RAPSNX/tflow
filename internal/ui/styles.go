@@ -210,27 +210,3 @@ func applyTheme(p themePalette) {
 		Foreground(textColor).
 		Padding(1, 2)
 }
-
-func themeFromConfig(cfg appConfig) themePalette {
-	palette := themePaletteForName(cfg.Theme)
-	applyOverride := func(current, override string) string {
-		if override == "" {
-			return current
-		}
-		return override
-	}
-	palette.BaseBG = applyOverride(palette.BaseBG, cfg.Colors.BaseBG)
-	palette.Surface0 = applyOverride(palette.Surface0, cfg.Colors.Surface0)
-	palette.Surface1 = applyOverride(palette.Surface1, cfg.Colors.Surface1)
-	palette.Text = applyOverride(palette.Text, cfg.Colors.Text)
-	palette.Subtext = applyOverride(palette.Subtext, cfg.Colors.Subtext)
-	palette.Blue = applyOverride(palette.Blue, cfg.Colors.Blue)
-	palette.Teal = applyOverride(palette.Teal, cfg.Colors.Teal)
-	palette.Yellow = applyOverride(palette.Yellow, cfg.Colors.Yellow)
-	palette.Red = applyOverride(palette.Red, cfg.Colors.Red)
-	palette.Mantle = applyOverride(palette.Mantle, cfg.Colors.Mantle)
-	palette.Crust = applyOverride(palette.Crust, cfg.Colors.Crust)
-	palette.BadgeText = applyOverride(palette.BadgeText, cfg.Colors.BadgeText)
-	palette.SelectedText = applyOverride(palette.SelectedText, cfg.Colors.SelectedText)
-	return palette
-}

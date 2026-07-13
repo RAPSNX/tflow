@@ -171,9 +171,6 @@ func OpenMenu() error {
 }
 
 func prepareStartup(manager tmuxController, binaryPath, cwd string) (string, error) {
-	if err := saveDefaultAppConfig(); err != nil {
-		return "", err
-	}
 	existing, err := manager.ListSessions()
 	if err != nil {
 		return "", err
@@ -213,10 +210,6 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 	input.Blur()
 
 	statePath := appStatePath()
-	cfg, cfgErr := loadAppConfigForStatePath(statePath)
-	if cfgErr == nil {
-		applyTheme(themeFromConfig(cfg))
-	}
 	state, err := loadAppState(statePath)
 	if err != nil {
 		state = appState{
@@ -236,7 +229,7 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 		}
 	}
 	if err == nil {
-		err = cfgErr
+		err = nil
 	}
 	for name := range projectConfigs {
 		if !containsString(state.Projects, name) {

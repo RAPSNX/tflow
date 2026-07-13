@@ -186,16 +186,8 @@ func TestNStartsNewPrefixMode(t *testing.T) {
 	}
 }
 
-func TestNewModelStartsWithoutProjectsWhenConfigIsEmpty(t *testing.T) {
+func TestNewModelStartsWithoutProjectsWhenStateIsEmpty(t *testing.T) {
 	configHome := t.TempDir()
-	configDir := configHome + "/tflow"
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll returned error: %v", err)
-	}
-	if err := os.WriteFile(configDir+"/config.yaml", []byte(""), 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-
 	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
 	t.Cleanup(func() {
 		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)

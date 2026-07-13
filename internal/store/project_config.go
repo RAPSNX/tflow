@@ -3,9 +3,6 @@ package store
 import (
 	"bytes"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -42,18 +39,6 @@ func (cfg ProjectConfig) AgentBinaryValue() string {
 	return cfg.AgentBinary
 }
 
-func ProjectConfigDir(statePath string) string {
-	cfg, err := LoadAppConfigForStatePath(statePath)
-	if err != nil {
-		return filepath.Join(filepath.Dir(statePath), "projects")
-	}
-	return cfg.ProjectsDir
-}
-
-func ProjectConfigPath(statePath, project string) string {
-	return filepath.Join(ProjectConfigDir(statePath), normalizeProjectName(project)+".yaml")
-}
-
 func LoadProjectConfigs(statePath string, state AppState) (map[string]ProjectConfig, error) {
 	configs := map[string]ProjectConfig{}
 
@@ -69,69 +54,18 @@ func LoadProjectConfigs(statePath string, state AppState) (map[string]ProjectCon
 		}
 		configs[project] = NormalizeProjectConfig(cfg)
 	}
-
-	dir := ProjectConfigDir(statePath)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return configs, nil
-		}
-		return nil, err
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yaml" {
-			continue
-		}
-		path := filepath.Join(dir, entry.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-		cfg, err := ParseProjectConfig(data)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", path, err)
-		}
-		cfg = NormalizeProjectConfig(cfg)
-		if cfg.Name == "" {
-			return nil, fmt.Errorf("parse %s: missing project name", path)
-		}
-		configs[cfg.Name] = cfg
-	}
-
 	return configs, nil
 }
 
 func SaveProjectConfigs(statePath string, configs map[string]ProjectConfig) error {
-	dir := ProjectConfigDir(statePath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-
-	names := make([]string, 0, len(configs))
-	for name := range configs {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	for _, name := range names {
-		cfg := NormalizeProjectConfig(configs[name])
-		if cfg.Name == "" {
-			continue
-		}
-		if err := os.WriteFile(ProjectConfigPath(statePath, cfg.Name), MarshalProjectConfig(cfg), 0o644); err != nil {
-			return err
-		}
-	}
-
+	_ = statePath
+	_ = configs
 	return nil
 }
 
 func RemoveProjectConfigFile(statePath, project string) error {
-	err := os.Remove(ProjectConfigPath(statePath, project))
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
+	_ = statePath
+	_ = project
 	return nil
 }
 
