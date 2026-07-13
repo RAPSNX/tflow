@@ -42,9 +42,7 @@ Use Go’s built-in `testing` package by default.
 
 - Keep Go files small and focused.
 - Avoid large multi-purpose files.
-- Prefer files below 300 lines.
-- Files above 400 lines require a clear reason.
-- Files above 500 lines must be split before continuing.
+- Prefer files with lower line count.
 - Split by responsibility, not randomly.
 - Do not hide unrelated behavior in one package file.
 
