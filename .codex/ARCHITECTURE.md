@@ -41,27 +41,27 @@ The primary interaction model is:
 - `Ctrl+F` toggles a slim sidebar by splitting the current `tmux` window
 - switching sessions closes the sidebar and returns focus to the selected session
 
-The top line shows two badges:
+The top line shows two badges with values:
 
-- `project=<name>`
-- `session=<name>`
+- `project`
+- `session`
 
 In volatile mode, the project badge value is empty.
 
-These badges may be implemented through the `tmux` status line, as on `main`.
+These badges are implemented through the `tmux` status line, as on `main`.
 
 The sidebar is shown on the left and contains:
 
 - a `TFLOW` header
-- a project tree
-- session rows inside expanded projects
-- an inline command/status area
+- a session list section
+- an inline command/status area (like a neovim commandline)
 
-The sidebar handles the current feature set from `main`:
+The neovim commandline acts as an input field.
+The neovim commandline acts as a confirmation tooling.
 
-- create project
-- create terminal, `k9s`, and agent sessions
-- move session to another project
+The sidebar handles the current feature set:
+
+- create project or session
 - rename project or session
 - delete project or session
 - update project settings
@@ -76,38 +76,25 @@ Projects are lightweight groups over existing `tmux` sessions.
 A project contains:
 
 - a unique project name
-- optional settings used when creating sessions
-
-Project settings may include:
-
-- `workdir`
-- `protect`
-- cluster settings for `k9s`
-- agent binary for agent sessions
+- a `workdir` in which sessions start per default
 
 Sessions are identified by their `tmux` session names.
 
-To match the current behavior on `main`:
+Sessions have the following criterias:
 
-- session names are globally unique across `tflow`
+- session names are only unique in project scope
 - a session belongs to at most one project
 - moving a session changes metadata, not the underlying runtime model
 - adding the current volatile session to a project makes it persistent
 
-Creating a project does not need to create a default session automatically.
+Creating a project creates a default session named "code" automatically.
 
-Deleting the last session of a project does not need to delete the project automatically.
+Deleting the last session of a project does ask via comandline bar.
 
 When a new session is created:
 
 - inside a project, it starts in that project `workdir` when one is set
 - outside a project, it starts in the current working directory
-
-Session kinds currently supported are:
-
-- `terminal`
-- `k9s`
-- `agent`
 
 ## State
 
@@ -123,9 +110,7 @@ The store should contain enough information to rebuild the sidebar state and pro
 
 - project order
 - session-to-project mapping
-- session type
 - per-project settings
-- lightweight UI state when useful, such as expanded projects
 
 The store should stay simple:
 
@@ -145,7 +130,6 @@ If the state file is invalid, startup should fail with a clear error.
 - `Ctrl+F`: toggle the sidebar in the current `tmux` window
 - `Ctrl+Q`: confirm shutdown of the current `tflow` instance and remove its volatile sessions
 - `Enter` on a session: switch to that session and close the sidebar
-- `Enter` on a project: expand or collapse it
 - `n`: enter the new-item flow used on `main`
 - `m`: move the selected session
 - `r`: rename the selected item
