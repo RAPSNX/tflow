@@ -64,6 +64,8 @@ A project contains:
 - a unique project name
 - a default `workdir`
 
+Creating a project creates a default session named `code`.
+
 A session belongs to at most one project.
 
 When a new session is created:
@@ -77,7 +79,7 @@ Switching to a project uses the command line and shows all existing projects in 
 
 Typing enough characters to uniquely match a project and pressing `Enter` switches to that project.
 
-For example, if `gardener` and `gate` exist, `pgar` switches to `gardener` and `pgat` switches to `gate`.
+For example, after starting project switch with `p`, typing `gar` switches to `gardener` and typing `gat` switches to `gate` when those are unique matches.
 
 Switching to a project selects that project's first session and closes the sidebar.
 
@@ -98,7 +100,7 @@ All persistent metadata lives in one JSON file:
 The store keeps only the metadata needed for `tflow` to rebuild project and sidebar state, including:
 
 - project order
-- session-to-project mapping
+- project membership for sessions
 - per-project settings
 
 If the state file does not exist, `tflow` creates an empty one when needed.
