@@ -129,12 +129,25 @@ If the state file is invalid, startup should fail with a clear error.
 
 - `Ctrl+F`: toggle the sidebar in the current `tmux` window
 - `Ctrl+Q`: confirm shutdown of the current `tflow` instance and remove its volatile sessions
-- `Enter` on a session: switch to that session and close the sidebar
 - `n`: enter the new-item flow used on `main`
 - `m`: move the selected session
 - `r`: rename the selected item
 - `d`: delete the selected item with confirmation
 - `e`: edit project settings
+
+
+`Ctrl+F`: toggle the sidebar in the current session window
+`Ctrl+Q`: open a centered confirmation dialog to terminate the current tflow instance
+`Ctrl+C`: close the sidebar when it is open
+`Ctrl+C`: pass through to the terminal session when the sidebar is closed
+`Esc`: cancel the active prompt, hint mode, or confirmation first; close the sidebar on the next press
+`?`: toggle help on or off
+`j` / `k`: move up or down in the focused list
+- `Enter` on a session: switch to that session and close the sidebar
+`n`: create a new terminal session
+`N`: create a new project, which makes all volatile sessions part of it
+`r`: rename the selected session
+d: delete the selected session with confirmation
 
 Exact prompt wording can change, but the interaction style should stay close to `main`.
 
