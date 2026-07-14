@@ -142,11 +142,23 @@ func TestEnsureStartupStateMigratesLegacySessionSnapshot(t *testing.T) {
 	if strings.Join(state.Projects, ",") != strings.Join(wantProjects, ",") {
 		t.Fatalf("projects = %#v, want %#v", state.Projects, wantProjects)
 	}
-	if got := state.SessionProjects["agent"]; got != "bug-iowait" {
-		t.Fatalf("sessionProjects[agent] = %q", got)
+	if got := state.SessionProjects["atze_a"]; got != "atze" {
+		t.Fatalf("sessionProjects[atze_a] = %q", got)
 	}
-	if got := state.SessionTypes["agent"]; got != "agent" {
-		t.Fatalf("sessionTypes[agent] = %q", got)
+	if got := state.SessionProjects["atze_code"]; got != "atze" {
+		t.Fatalf("sessionProjects[atze_code] = %q", got)
+	}
+	if got := state.SessionProjects["bug-iowait_agent"]; got != "bug-iowait" {
+		t.Fatalf("sessionProjects[bug-iowait_agent] = %q", got)
+	}
+	if got := state.SessionProjects["bug-iowait_code"]; got != "bug-iowait" {
+		t.Fatalf("sessionProjects[bug-iowait_code] = %q", got)
+	}
+	if got := state.SessionTypes["bug-iowait_agent"]; got != "agent" {
+		t.Fatalf("sessionTypes[bug-iowait_agent] = %q", got)
+	}
+	if _, ok := state.SessionProjects["agent"]; ok {
+		t.Fatal("sessionProjects unexpectedly used display session name key")
 	}
 
 	data, err := os.ReadFile(AppStatePath())
@@ -159,6 +171,38 @@ func TestEnsureStartupStateMigratesLegacySessionSnapshot(t *testing.T) {
 	}
 	if !strings.Contains(plain, `"projects": {`) {
 		t.Fatalf("store.json missing object-based projects map: %s", plain)
+	}
+}
+
+func TestLoadAppStateMigratesLegacySessionSnapshotWithoutTmuxNameFallbacksToSessionName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	legacy := []byte(`{
+  "projects": [
+    {
+      "name": "garden",
+      "sessions": [
+        {"name": "agent", "type": "agent"},
+        {"name": "code", "tmux_name": "garden_code", "type": "terminal"}
+      ]
+    }
+  ]
+}`)
+	if err := os.WriteFile(path, legacy, 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	state, err := LoadAppState(path)
+	if err != nil {
+		t.Fatalf("LoadAppState returned error: %v", err)
+	}
+	if got := state.SessionProjects["agent"]; got != "garden" {
+		t.Fatalf("sessionProjects[agent] = %q", got)
+	}
+	if got := state.SessionProjects["garden_code"]; got != "garden" {
+		t.Fatalf("sessionProjects[garden_code] = %q", got)
+	}
+	if got := state.SessionTypes["agent"]; got != "agent" {
+		t.Fatalf("sessionTypes[agent] = %q", got)
 	}
 }
 

@@ -48,8 +48,9 @@ type legacyProject struct {
 }
 
 type legacySession struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
+	Name     string `json:"name"`
+	TmuxName string `json:"tmux_name"`
+	Type     string `json:"type"`
 }
 
 func AppStatePath() string {
@@ -348,15 +349,19 @@ func decodeLegacySessionSnapshotState(data []byte) (AppState, error) {
 		state.Projects = append(state.Projects, name)
 		state.ExpandedProjects[name] = true
 		for _, session := range project.Sessions {
-			if strings.TrimSpace(session.Name) == "" {
+			sessionKey := strings.TrimSpace(session.TmuxName)
+			if sessionKey == "" {
+				sessionKey = strings.TrimSpace(session.Name)
+			}
+			if sessionKey == "" {
 				continue
 			}
-			state.SessionProjects[session.Name] = name
+			state.SessionProjects[sessionKey] = name
 			if strings.TrimSpace(session.Type) == "" {
-				state.SessionTypes[session.Name] = "terminal"
+				state.SessionTypes[sessionKey] = "terminal"
 				continue
 			}
-			state.SessionTypes[session.Name] = strings.TrimSpace(session.Type)
+			state.SessionTypes[sessionKey] = strings.TrimSpace(session.Type)
 		}
 	}
 
