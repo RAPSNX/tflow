@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -141,6 +142,7 @@ func TestDDeletesSelectedSession(t *testing.T) {
 
 func TestKFromFirstSessionSelectsProjectContext(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "", "").(model)
+	m.width = 48
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
 	m.sessionProjects = map[string]string{"dev": defaultProjectName, "api": defaultProjectName}
@@ -148,6 +150,30 @@ func TestKFromFirstSessionSelectsProjectContext(t *testing.T) {
 	m.selectedSession = "dev"
 
 	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if got.selectedProject != defaultProjectName {
+		t.Fatalf("selectedProject = %q, want %q", got.selectedProject, defaultProjectName)
+	}
+	if got.selectedSession != "" {
+		t.Fatalf("selectedSession = %q, want project selection", got.selectedSession)
+	}
+	if plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(got.renderSessionPanel(40), ""); !strings.Contains(plain, "project default") {
+		t.Fatalf("renderSessionPanel missing visible project row in %q", plain)
+	}
+}
+
+func TestJFromLastSessionSelectsProjectContext(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "", "").(model)
+	m.projects = []string{defaultProjectName}
+	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
+	m.sessionProjects = map[string]string{"dev": defaultProjectName, "api": defaultProjectName}
+	m.selectedProject = defaultProjectName
+	m.selectedSession = "api"
+
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	got := updated.(model)
 	if cmd != nil {
 		t.Fatal("expected no command")

@@ -52,16 +52,26 @@ func (m model) renderSessionPanel(width int) string {
 	}
 
 	sessions := m.contextSessions()
+	lines = append(lines, "")
+	if m.selectedProject != "" && m.selectedSession == "" {
+		lines = append(lines, m.renderProjectRow())
+	}
 	if len(sessions) == 0 {
-		lines = append(lines, "", mutedStyle.Render("No sessions in this context"))
+		lines = append(lines, mutedStyle.Render("No sessions in this context"))
 	} else {
-		lines = append(lines, "")
 		for index, session := range sessions {
 			lines = append(lines, m.renderSessionRow(index, session))
 		}
 	}
 
 	return panelStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+}
+
+func (m model) renderProjectRow() string {
+	project := m.contextProject()
+	style := m.rowStyle(m.selectedProject != "" && m.selectedSession == "", project)
+	content := "project " + fallbackText(project, "none")
+	return style.Width(max(16, m.width-12)).Render(content)
 }
 
 func (m model) renderSessionRow(index int, s session) string {
