@@ -28,9 +28,6 @@ func (m model) saveState() error {
 		}
 		state.ProjectDirs[project] = normalizeCWD(dir)
 	}
-	for project, expanded := range m.expandedProjects {
-		state.ExpandedProjects[normalizeProjectName(project)] = expanded
-	}
 	state = normalizeAppState(state)
 	if err := saveAppState(m.statePath, state); err != nil {
 		return err

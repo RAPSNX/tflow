@@ -4,130 +4,19 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
-func (m *model) shiftRow(delta int) {
-	rows := m.treeRows()
-	if len(rows) == 0 {
+func (m *model) shiftSession(delta int) {
+	sessions := m.contextSessions()
+	if len(sessions) == 0 {
 		return
 	}
-	index := m.selectedRowIndex()
+	index := m.selectedSessionIndex()
 	if index < 0 {
 		index = 0
 	}
-	index = (index + delta + len(rows)) % len(rows)
-	m.selectRow(rows[index])
-}
-
-func (m *model) collapseSelection() {
-	row, ok := m.selectedRow()
-	if !ok {
-		return
-	}
-	switch row.kind {
-	case rowSession:
-		m.selectedProject = row.project
-		m.selectedSession = ""
-	case rowProject:
-		if m.expandedProjects[row.project] {
-			m.expandedProjects[row.project] = false
-			m.selectedProject = row.project
-			m.selectedSession = ""
-			_ = m.saveState()
-		}
-	}
-}
-
-func (m *model) expandSelection() {
-	row, ok := m.selectedRow()
-	if !ok {
-		return
-	}
-	switch row.kind {
-	case rowProject:
-		if !m.expandedProjects[row.project] {
-			m.expandedProjects[row.project] = true
-			_ = m.saveState()
-		}
-	case rowSession:
-		m.selectedProject = row.project
-		m.selectedSession = row.session
-	}
-}
-
-func (m *model) toggleProject(project string) {
-	m.expandedProjects[project] = !m.expandedProjects[project]
-	if !m.expandedProjects[project] {
-		m.selectedProject = project
-		m.selectedSession = ""
-	}
-	_ = m.saveState()
-}
-
-func (m model) renameValue(row treeRow) string {
-	if row.kind == rowProject {
-		return row.project
-	}
-	return row.session
-}
-
-func (m model) treeRows() []treeRow {
-	rows := make([]treeRow, 0, len(m.projects))
-	for _, project := range m.projects {
-		rows = append(rows, treeRow{kind: rowProject, project: project})
-		if !m.expandedProjects[project] {
-			continue
-		}
-		for _, s := range m.projectSessions(project) {
-			rows = append(rows, treeRow{
-				kind:    rowSession,
-				project: project,
-				session: s.Name,
-				depth:   1,
-			})
-		}
-	}
-	return rows
-}
-
-func (m model) selectedRow() (treeRow, bool) {
-	rows := m.treeRows()
-	index := m.selectedRowIndex()
-	if index < 0 || index >= len(rows) {
-		return treeRow{}, false
-	}
-	return rows[index], true
-}
-
-func (m model) selectedRowIndex() int {
-	rows := m.treeRows()
-	if len(rows) == 0 {
-		return -1
-	}
-	for index, row := range rows {
-		if row.kind == rowSession && row.session == m.selectedSession && row.project == m.selectedProject {
-			return index
-		}
-		if row.kind == rowProject && row.project == m.selectedProject && m.selectedSession == "" {
-			return index
-		}
-	}
-	for index, row := range rows {
-		if row.kind == rowSession && row.session == m.currentSession {
-			return index
-		}
-	}
-	return 0
-}
-
-func (m *model) selectRow(row treeRow) {
-	m.selectedProject = row.project
-	if row.kind == rowSession {
-		m.selectedSession = row.session
-		return
-	}
-	m.selectedSession = ""
+	index = (index + delta + len(sessions)) % len(sessions)
+	m.selectedSession = sessions[index].Name
 }
 
 func (m model) selectedSessionInfo() (session, bool) {
@@ -153,23 +42,6 @@ func (m model) findSession(name string) (session, bool) {
 	return session{}, false
 }
 
-func (m model) addCurrentTempSession() (tea.Model, tea.Cmd) {
-	current, ok := m.currentSessionInfo()
-	if !ok {
-		m.status = "No current session to add."
-		return m, nil
-	}
-	if !current.Temporary {
-		m.status = "Current session is not temporary."
-		return m, nil
-	}
-	project := m.contextProject()
-	return m, func() tea.Msg {
-		err := m.tmux.SetSessionTemporary(current.Name, false)
-		return sessionMovedMsg{session: current.Name, project: project, err: err}
-	}
-}
-
 func (m model) contextProject() string {
 	if m.selectedProject != "" {
 		return m.selectedProject
@@ -177,38 +49,43 @@ func (m model) contextProject() string {
 	if m.selectedSession != "" {
 		return normalizeProjectName(m.sessionProjects[m.selectedSession])
 	}
+	if m.currentSession != "" {
+		return normalizeProjectName(m.sessionProjects[m.currentSession])
+	}
 	return ""
 }
 
 func (m *model) syncSelection() {
 	m.projects = normalizeProjectList(m.projects)
-	if m.expandedProjects == nil {
-		m.expandedProjects = map[string]bool{}
-	}
-	for _, project := range m.projects {
-		if _, ok := m.expandedProjects[project]; !ok {
-			m.expandedProjects[project] = true
-		}
-	}
 	if !containsString(m.projects, m.selectedProject) {
 		m.selectedProject = ""
 	}
-	if m.selectedSession != "" {
-		if _, ok := m.findSession(m.selectedSession); !ok {
-			m.selectedSession = ""
-		}
-	}
-	if m.selectedSession == "" && m.currentSession != "" {
-		if current, ok := m.findSession(m.currentSession); ok && !current.Temporary {
-			m.selectedSession = m.currentSession
-			m.selectedProject = normalizeProjectName(m.sessionProjects[m.currentSession])
+	if m.selectedProject == "" {
+		if current, ok := m.currentSessionInfo(); ok && !current.Temporary {
+			m.selectedProject = normalizeProjectName(m.sessionProjects[current.Name])
 		}
 	}
 	if m.selectedProject == "" && len(m.projects) > 0 {
 		m.selectedProject = m.projects[0]
 	}
-	if m.selectedProject != "" && !m.expandedProjects[m.selectedProject] {
-		m.expandedProjects[m.selectedProject] = true
+
+	sessions := m.contextSessions()
+	if !containsSessionName(sessions, m.selectedSession) {
+		m.selectedSession = ""
+	}
+	if m.selectedSession == "" {
+		if current, ok := m.currentSessionInfo(); ok && !current.Temporary {
+			currentProject := normalizeProjectName(m.sessionProjects[current.Name])
+			if m.selectedProject == "" || currentProject == m.selectedProject {
+				m.selectedSession = current.Name
+				if currentProject != "" {
+					m.selectedProject = currentProject
+				}
+			}
+		}
+	}
+	if m.selectedSession == "" && len(sessions) > 0 {
+		m.selectedSession = sessions[0].Name
 	}
 }
 
@@ -222,10 +99,6 @@ func (m *model) ensureSessionProjects() bool {
 		m.sessionTypes = map[string]sessionType{}
 		changed = true
 	}
-	if m.expandedProjects == nil {
-		m.expandedProjects = map[string]bool{}
-		changed = true
-	}
 	for _, s := range m.sessions {
 		if s.Temporary {
 			continue
@@ -235,12 +108,8 @@ func (m *model) ensureSessionProjects() bool {
 			m.sessionProjects[s.Name] = project
 			changed = true
 		}
-		if !containsString(m.projects, project) {
+		if project != "" && !containsString(m.projects, project) {
 			m.projects = append(m.projects, project)
-			changed = true
-		}
-		if _, ok := m.expandedProjects[project]; !ok {
-			m.expandedProjects[project] = true
 			changed = true
 		}
 		if _, ok := m.sessionTypes[s.Name]; !ok {
@@ -260,8 +129,6 @@ func (m *model) assignSessionProject(name, project string) {
 	m.sessionProjects[name] = project
 	if project != "" {
 		m.addProject(project)
-	}
-	if project != "" {
 		m.setProjectConfig(projectConfig{Name: project})
 	}
 }
@@ -275,18 +142,15 @@ func (m *model) addProject(name string) {
 		m.projects = append(m.projects, name)
 		m.projects = normalizeProjectList(m.projects)
 	}
-	if m.expandedProjects == nil {
-		m.expandedProjects = map[string]bool{}
-	}
-	if _, ok := m.expandedProjects[name]; !ok {
-		m.expandedProjects[name] = true
-	}
 }
 
 func (m model) projectSessions(project string) []session {
 	project = normalizeProjectName(project)
 	result := make([]session, 0, len(m.sessions))
 	for _, s := range m.sessions {
+		if s.Temporary {
+			continue
+		}
 		if normalizeProjectName(m.sessionProjects[s.Name]) == project {
 			result = append(result, s)
 		}
@@ -294,48 +158,47 @@ func (m model) projectSessions(project string) []session {
 	return result
 }
 
-func (m model) matchingProjects(prefix string) []string {
-	prefix = normalizeProjectName(prefix)
-	if prefix == "" {
-		return append([]string(nil), m.projects...)
-	}
-	matches := make([]string, 0, len(m.projects))
-	for _, project := range m.projects {
-		if strings.HasPrefix(strings.ToLower(project), prefix) {
-			matches = append(matches, project)
+func (m model) contextSessions() []session {
+	project := m.selectedProject
+	if project == "" {
+		result := make([]session, 0, len(m.sessions))
+		for _, s := range m.sessions {
+			if s.Temporary {
+				continue
+			}
+			result = append(result, s)
 		}
+		return result
 	}
-	return matches
+	return m.projectSessions(project)
 }
 
-func (m model) rowStyle(selected, project bool, projectName string) lipgloss.Style {
-	switch {
-	case project && selected:
-		return selectedProjectStyle
-	case project:
-		return projectStyle.Copy().Foreground(lipgloss.Color(projectAccentColor(projectName)))
-	case selected:
-		return selectedSessionStyle
-	default:
-		return sessionStyle.Copy().Foreground(lipgloss.Color(projectAccentColor(projectName)))
+func (m model) selectedSessionIndex() int {
+	sessions := m.contextSessions()
+	for index, s := range sessions {
+		if s.Name == m.selectedSession {
+			return index
+		}
 	}
+	return -1
+}
+
+func (m model) rowStyle(selected bool, projectName string) lipgloss.Style {
+	if selected {
+		return selectedSessionStyle
+	}
+	return sessionStyle.Copy().Foreground(lipgloss.Color(projectAccentColor(projectName)))
 }
 
 func (m model) visibleSessionCount() int {
-	count := 0
-	for _, session := range m.sessions {
-		if session.Temporary {
-			continue
-		}
-		count++
-	}
-	return count
+	return len(m.contextSessions())
 }
 
-func (m model) singleMatchingProject() (string, bool) {
-	matches := m.matchingProjects(m.moveQuery)
-	if len(matches) == 1 {
-		return matches[0], true
+func containsSessionName(sessions []session, want string) bool {
+	for _, s := range sessions {
+		if s.Name == want {
+			return true
+		}
 	}
-	return "", false
+	return false
 }
