@@ -187,11 +187,15 @@ func TestNStartsNewPrefixMode(t *testing.T) {
 }
 
 func TestNewModelStartsWithoutProjectsWhenStateIsEmpty(t *testing.T) {
+	stateHome := t.TempDir()
 	configHome := t.TempDir()
+	oldStateHome := os.Getenv("XDG_STATE_HOME")
 	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
 	t.Cleanup(func() {
+		_ = os.Setenv("XDG_STATE_HOME", oldStateHome)
 		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
 	})
+	_ = os.Setenv("XDG_STATE_HOME", stateHome)
 	_ = os.Setenv("XDG_CONFIG_HOME", configHome)
 
 	m := newModel(fakeTmuxController{}, "", "").(model)

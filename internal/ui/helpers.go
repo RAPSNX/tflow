@@ -2,7 +2,6 @@ package ui
 
 import (
 	"hash/fnv"
-	"sort"
 	"strings"
 	"unicode"
 )
@@ -55,9 +54,6 @@ func normalizeProjectList(projects []string) []string {
 	}
 	for _, project := range projects {
 		add(project)
-	}
-	if len(result) > 1 {
-		sort.Strings(result)
 	}
 	return result
 }

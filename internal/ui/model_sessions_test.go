@@ -261,9 +261,9 @@ func TestSanitizeSessionName(t *testing.T) {
 	}
 }
 
-func TestProjectNormalizationSortsAndDeduplicates(t *testing.T) {
+func TestProjectNormalizationPreservesOrderAndDeduplicates(t *testing.T) {
 	got := normalizeProjectList([]string{"small", "default", "alpha", "small"})
-	want := []string{"alpha", "default", "small"}
+	want := []string{"small", "default", "alpha"}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("normalizeProjectList = %#v, want %#v", got, want)
 	}
