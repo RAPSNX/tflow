@@ -18,9 +18,9 @@
 
 ## Remove obsolete UI and interaction behavior [primary-agent]
 
-- [ ] Remove project and session tree behavior and replace it with a flat session-list assumption.
-- [ ] Remove session move-to-project behavior.
-- [ ] Remove key handling and prompts that exist only for the deleted move flow.
+- [x] Remove project and session tree behavior and replace it with a flat session-list assumption.
+- [x] Remove session move-to-project behavior.
+- [x] Remove key handling and prompts that exist only for the deleted move flow.
 - [ ] Remove UI states and rendering paths that no longer match the architecture.
 
 ## Introduce the new store foundation [sub-agent]
