@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -292,29 +291,6 @@ func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
 	}
 	m.syncSelection()
 	if err := m.syncTmuxSessionProjects(); err != nil {
-		m.err = err
-		m.status = err.Error()
-		return m, nil
-	}
-	m.err = nil
-	m.status = ""
-	return m, nil
-}
-
-func (m *model) commitProjectDir() (tea.Model, tea.Cmd) {
-	project := m.contextProject()
-	dir := strings.TrimSpace(m.input.Value())
-	cfg := m.projectConfig(project)
-	m.mode = inputNone
-	m.input.Blur()
-	m.input.Prompt = ""
-	if dir == "" {
-		cfg.Workdir = ""
-	} else {
-		cfg.Workdir = normalizeCWD(dir)
-	}
-	m.setProjectConfig(cfg)
-	if err := m.saveState(); err != nil {
 		m.err = err
 		m.status = err.Error()
 		return m, nil

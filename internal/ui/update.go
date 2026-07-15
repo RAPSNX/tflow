@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -228,17 +227,6 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "p":
 		return m.beginProjectSwitch()
-	case "c":
-		if m.contextProject() == "" {
-			m.status = "No project selected."
-			return m, nil
-		}
-		m.mode = inputSetProjectDir
-		m.input.Prompt = "dir: "
-		m.input.SetValue(m.projectDir(m.contextProject()))
-		m.input.Focus()
-		m.status = fmt.Sprintf("Set the default directory for %s.", m.contextProject())
-		return m, nil
 	case "d":
 		return m.beginDelete()
 	case "r":
@@ -327,20 +315,6 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case tea.KeyEnter:
 			return m.commitProjectSwitch()
-		}
-		next, cmd := m.input.Update(msg)
-		m.input = next
-		return m, cmd
-	case inputSetProjectDir:
-		switch msg.Type {
-		case tea.KeyEsc:
-			m.mode = inputNone
-			m.input.Blur()
-			m.input.Prompt = ""
-			m.status = "Directory update cancelled."
-			return m, nil
-		case tea.KeyEnter:
-			return m.commitProjectDir()
 		}
 		next, cmd := m.input.Update(msg)
 		m.input = next

@@ -235,26 +235,6 @@ func TestProjectEditorCommandSplitsEditorArgs(t *testing.T) {
 	}
 }
 
-func TestSetProjectDirectoryPersistsValue(t *testing.T) {
-	tmp := t.TempDir()
-	m := newModel(fakeTmuxController{}, "", "").(model)
-	m.statePath = tmp + "/state.json"
-	m.projects = []string{defaultProjectName, "small"}
-	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}}
-	m.selectedProject = "small"
-	m.mode = inputSetProjectDir
-	m.input.SetValue("/tmp/small-project")
-
-	updated, cmd := m.commitProjectDir()
-	got := *(updated.(*model))
-	if cmd != nil {
-		t.Fatal("expected no command")
-	}
-	if got.projectConfig("small").Workdir != "/tmp/small-project" {
-		t.Fatalf("workdir = %q, want /tmp/small-project", got.projectConfig("small").Workdir)
-	}
-}
-
 func TestSanitizeSessionName(t *testing.T) {
 	if got, want := sanitizeSessionName(" Prod/Main 01 "), "prod-main-01"; got != want {
 		t.Fatalf("sanitizeSessionName = %q, want %q", got, want)
