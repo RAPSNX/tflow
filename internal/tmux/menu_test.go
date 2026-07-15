@@ -125,6 +125,11 @@ func TestToggleMenuPassesCurrentClientToMenuProcess(t *testing.T) {
 	}
 
 	got := strings.Join(splitWindow, " ")
+	for _, want := range []string{"split-window", "-h", "-b", "-f", "-l", menuWidth} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("split-window command = %q, want %q", got, want)
+		}
+	}
 	if !strings.Contains(got, "TFLOW_CURRENT_CLIENT='@2'") {
 		t.Fatalf("split-window command = %q, want current client env", got)
 	}

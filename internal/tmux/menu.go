@@ -65,7 +65,7 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 	}
 
 	menuCommand := fmt.Sprintf("%s=%s %s=%s exec %s menu", CurrentSessionEnv, ShellQuote(currentSession), CurrentClientEnv, ShellQuote(currentClient), ShellQuote(binaryPath))
-	paneID, err := m.runner()("split-window", "-t", windowID, "-h", "-b", "-l", menuWidth, "-P", "-F", "#{pane_id}", menuCommand)
+	paneID, err := m.runner()("split-window", "-t", windowID, "-h", "-b", "-f", "-l", menuWidth, "-P", "-F", "#{pane_id}", menuCommand)
 	if err != nil {
 		return err
 	}
