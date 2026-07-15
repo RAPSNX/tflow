@@ -1,5 +1,11 @@
 # Alpha implementation checklist
 
+## Bug fixes [primary-agent]
+
+- [ ] Fix `Ctrl+F` sidebar toggle so opening and closing the sidebar does not shift the active terminal prompt.
+- [ ] Keep the active terminal pane stable while the sidebar opens as a real tmux pane.
+- [ ] Add regression coverage for the tmux sidebar split behavior so the active pane is not split directly.
+
 ## Package split and file-size baseline [primary-agent]
 
 - [x] Move tmux process and session responsibilities into a focused package with small files.
