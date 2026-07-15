@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"strings"
-	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -44,7 +43,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		project := m.contextProject()
 		m.assignSessionProject(msg.session.Name, project)
 		m.setSessionType(msg.session.Name, msg.kind)
-		m.expandedProjects[project] = true
 		m.selectedProject = project
 		m.selectedSession = msg.session.Name
 		m.mode = inputNone
@@ -84,7 +82,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		msg.config = normalizeProjectConfig(msg.config)
 		m.addProject(msg.config.Name)
 		m.setProjectConfig(msg.config)
-		m.expandedProjects[msg.config.Name] = true
 		m.selectedProject = msg.config.Name
 		m.selectedSession = ""
 		m.mode = inputNone
@@ -96,26 +93,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.status = ""
 		return m, nil
-	case sessionMovedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.status = msg.err.Error()
-			return m, nil
-		}
-		m.assignSessionProject(msg.session, msg.project)
-		m.expandedProjects[msg.project] = true
-		m.selectedProject = msg.project
-		m.selectedSession = msg.session
-		m.moveQuery = ""
-		m.mode = inputNone
-		if err := m.saveState(); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
-		}
-		m.err = nil
-		m.status = ""
-		return m, m.loadSessionsCmd()
 	case sessionRenamedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -136,7 +113,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentSession = msg.newName
 		}
 		m.mode = inputNone
-		m.renameRow = treeRow{}
+		m.renameTarget = renameTarget{}
 		if err := m.saveState(); err != nil {
 			m.err = err
 			m.status = err.Error()
@@ -161,9 +138,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cfg.Name = msg.newName
 		m.setProjectConfig(cfg)
 		m.projects = replaceProject(m.projects, msg.oldName, msg.newName)
-		expanded := m.expandedProjects[msg.oldName]
-		delete(m.expandedProjects, msg.oldName)
-		m.expandedProjects[msg.newName] = expanded
 		if err := removeProjectConfigFile(m.statePath, msg.oldName); err != nil {
 			m.err = err
 			m.status = err.Error()
@@ -173,7 +147,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selectedProject = msg.newName
 		}
 		m.mode = inputNone
-		m.renameRow = treeRow{}
+		m.renameTarget = renameTarget{}
 		if err := m.saveState(); err != nil {
 			m.err = err
 			m.status = err.Error()
@@ -233,16 +207,10 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q":
 		return m, m.closeMenuCmd()
 	case "j", "down":
-		m.shiftRow(1)
+		m.shiftSession(1)
 		return m, nil
 	case "k", "up":
-		m.shiftRow(-1)
-		return m, nil
-	case "h", "left":
-		m.collapseSelection()
-		return m, nil
-	case "l", "right":
-		m.expandSelection()
+		m.shiftSession(-1)
 		return m, nil
 	case ":":
 		m.mode = inputCommand
@@ -253,34 +221,21 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, nil
 	case "enter":
-		row, ok := m.selectedRow()
-		if !ok {
-			return m, nil
-		}
-		if row.kind == rowProject {
-			m.toggleProject(row.project)
-			return m, nil
-		}
 		return m.switchSelectedSession()
 	case "n":
 		m.mode = inputNew
-		m.status = "New: np project, nt terminal, nk k9s, nc agent, na add current temp."
+		m.status = "New: p project, t terminal, k k9s, c agent."
 		return m, nil
 	case "c":
+		if m.contextProject() == "" {
+			m.status = "No project selected."
+			return m, nil
+		}
 		m.mode = inputSetProjectDir
 		m.input.Prompt = "dir: "
 		m.input.SetValue(m.projectDir(m.contextProject()))
 		m.input.Focus()
 		m.status = fmt.Sprintf("Set the default directory for %s.", m.contextProject())
-		return m, nil
-	case "m":
-		if _, ok := m.selectedSessionInfo(); !ok {
-			m.status = "Select a session to move."
-			return m, nil
-		}
-		m.mode = inputMoveProject
-		m.moveQuery = ""
-		m.status = "Move: type project prefix."
 		return m, nil
 	case "d":
 		return m.beginDelete()
@@ -359,36 +314,6 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		next, cmd := m.input.Update(msg)
 		m.input = next
 		return m, cmd
-	case inputMoveProject:
-		switch msg.Type {
-		case tea.KeyEsc:
-			m.mode = inputNone
-			m.moveQuery = ""
-			m.status = "Move cancelled."
-			return m, nil
-		case tea.KeyBackspace, tea.KeyDelete:
-			if m.moveQuery != "" {
-				m.moveQuery = m.moveQuery[:len(m.moveQuery)-1]
-			}
-			m.updateMoveStatus()
-			return m, nil
-		case tea.KeyEnter:
-			return m.commitMoveProject()
-		}
-		if len(msg.String()) == 1 {
-			r := []rune(msg.String())[0]
-			if unicode.IsLetter(r) || unicode.IsDigit(r) {
-				m.moveQuery += strings.ToLower(string(r))
-				if project, ok := m.singleMatchingProject(); ok {
-					return m, func() tea.Msg {
-						s, _ := m.selectedSessionInfo()
-						return sessionMovedMsg{session: s.Name, project: project}
-					}
-				}
-				m.updateMoveStatus()
-				return m, nil
-			}
-		}
 	case inputSetProjectDir:
 		switch msg.Type {
 		case tea.KeyEsc:
@@ -407,7 +332,7 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyEsc:
 			m.mode = inputNone
-			m.deleteRow = treeRow{}
+			m.deleteTarget = deleteTarget{}
 			m.status = "Delete cancelled."
 			return m, nil
 		case tea.KeyEnter:
@@ -442,7 +367,7 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyEsc:
 			m.mode = inputNone
-			m.renameRow = treeRow{}
+			m.renameTarget = renameTarget{}
 			m.input.Blur()
 			m.input.Prompt = ""
 			m.status = "Rename cancelled."
@@ -477,12 +402,10 @@ func (m model) updateNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startSessionCreate(sessionKindTerminal)
 	case "k":
 		return m.startSessionCreate(sessionKindK9s)
-	case "a":
-		return m.addCurrentTempSession()
 	case "c":
 		return m.startSessionCreate(sessionKindAgent)
 	default:
-		m.status = "New: use np, nt, nk, nc, or na."
+		m.status = "New: use p, t, k, or c."
 		return m, nil
 	}
 }
