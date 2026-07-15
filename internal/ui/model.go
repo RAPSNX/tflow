@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -156,7 +157,11 @@ func Start() error {
 }
 
 func OpenMenu() error {
-	_, err := tea.NewProgram(NewMenu(), tea.WithAltScreen()).Run()
+	menu, err := buildModel(newSessionManager(), os.Getenv(menuCurrentEnv), os.Getenv("TMUX_PANE"))
+	if err != nil {
+		return err
+	}
+	_, err = tea.NewProgram(menu, tea.WithAltScreen()).Run()
 	return err
 }
 
@@ -192,6 +197,15 @@ func defaultSessionDir() string {
 }
 
 func newModel(manager tmuxController, current, paneID string) tea.Model {
+	menu, err := buildModel(manager, current, paneID)
+	if err != nil {
+		menu.err = err
+		menu.status = err.Error()
+	}
+	return menu
+}
+
+func buildModel(manager tmuxController, current, paneID string) (model, error) {
 	cwd, _ := os.Getwd()
 
 	input := textinput.New()
@@ -202,27 +216,13 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 	statePath := appStatePath()
 	state, err := loadAppState(statePath)
 	if err != nil {
-		state = appState{
-			Projects:        []string{},
-			SessionProjects: map[string]string{},
-			SessionTypes:    map[string]string{},
-			ProjectDirs:     map[string]string{},
-		}
+		return model{}, fmt.Errorf("load state %q: %w", statePath, err)
 	}
 	state = normalizeAppState(state)
-	projectConfigs, configErr := loadProjectConfigs(statePath, state)
-	if configErr != nil {
-		projectConfigs = map[string]projectConfig{}
-		if err == nil {
-			err = configErr
-		}
+	projectConfigs, err := loadProjectConfigs(statePath, state)
+	if err != nil {
+		return model{}, fmt.Errorf("load project settings %q: %w", statePath, err)
 	}
-	for name := range projectConfigs {
-		if !containsString(state.Projects, name) {
-			state.Projects = append(state.Projects, name)
-		}
-	}
-	state = normalizeAppState(state)
 
 	return model{
 		tmux:            manager,
@@ -238,8 +238,8 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 		cwd:             cwd,
 		statePath:       statePath,
 		status:          "",
-		err:             err,
-	}
+		err:             nil,
+	}, nil
 }
 
 func (m model) Init() tea.Cmd {

@@ -18,8 +18,65 @@ func TestLoadAppStateDefaultsToEmptyStoreWhenFileMissing(t *testing.T) {
 	if len(state.Projects) != 0 {
 		t.Fatalf("projects = %#v, want none", state.Projects)
 	}
-	if len(state.ExpandedProjects) != 0 {
-		t.Fatalf("expandedProjects = %#v, want none", state.ExpandedProjects)
+	if len(state.ProjectConfigs) != 0 {
+		t.Fatalf("projectConfigs = %#v, want none", state.ProjectConfigs)
+	}
+}
+
+func TestSaveAndLoadAppStateRoundTripsProjectSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	state := AppState{
+		Projects:        []string{"small"},
+		SessionProjects: map[string]string{"dev": "small"},
+		SessionTypes:    map[string]string{"dev": "agent"},
+		ProjectConfigs: map[string]ProjectConfig{
+			"small": {
+				Name:        "small",
+				Workdir:     "/tmp/project-small",
+				Protect:     true,
+				AgentBinary: "aider",
+				Cluster: ClusterConfig{
+					Path:          "/tmp/kubeconfig",
+					ConnectionCmd: "aws eks update-kubeconfig --name prod",
+				},
+			},
+		},
+	}
+
+	if err := SaveAppState(path, state); err != nil {
+		t.Fatalf("SaveAppState returned error: %v", err)
+	}
+
+	loaded, err := LoadAppState(path)
+	if err != nil {
+		t.Fatalf("LoadAppState returned error: %v", err)
+	}
+	cfg := loaded.ProjectConfigs["small"]
+	if cfg.Workdir != "/tmp/project-small" {
+		t.Fatalf("workdir = %q", cfg.Workdir)
+	}
+	if !cfg.Protect {
+		t.Fatal("protect = false, want true")
+	}
+	if cfg.AgentBinary != "aider" {
+		t.Fatalf("agentBinary = %q", cfg.AgentBinary)
+	}
+	if cfg.Cluster.Path != "/tmp/kubeconfig" {
+		t.Fatalf("cluster path = %q", cfg.Cluster.Path)
+	}
+	if cfg.Cluster.ConnectionCmd != "aws eks update-kubeconfig --name prod" {
+		t.Fatalf("connectionCmd = %q", cfg.Cluster.ConnectionCmd)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile returned error: %v", err)
+	}
+	plain := string(data)
+	for _, want := range []string{"\"project_order\"", "\"agent_binary\"", "\"cluster\"", "\"protect\""} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("store.json missing %s: %s", want, plain)
+		}
 	}
 }
 
@@ -88,11 +145,8 @@ func TestLoadAppStateSupportsLegacyStringListState(t *testing.T) {
 	if got := state.SessionTypes["dev"]; got != "agent" {
 		t.Fatalf("sessionTypes[dev] = %q, want agent", got)
 	}
-	if got := state.ProjectDirs["small"]; got != "/tmp/project" {
-		t.Fatalf("projectDirs[small] = %q", got)
-	}
-	if state.ExpandedProjects["small"] {
-		t.Fatal("expandedProjects[small] = true, want false")
+	if got := state.ProjectConfigs["small"].Workdir; got != "/tmp/project" {
+		t.Fatalf("projectConfigs[small].workdir = %q", got)
 	}
 }
 
