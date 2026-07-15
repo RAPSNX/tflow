@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -102,16 +101,17 @@ func (m *model) startSessionCreate(kind sessionKind) (tea.Model, tea.Cmd) {
 	m.mode = inputCreateSession
 	m.createSessionKind = kind
 	m.input.Prompt = "session: "
+	scope := fallbackText(m.contextProject(), "current directory")
 	switch kind {
 	case sessionKindK9s:
 		m.input.SetValue("k9s")
-		m.status = fmt.Sprintf("Create a new k9s session in %s.", m.contextProject())
+		m.status = fmt.Sprintf("Create a new k9s session in %s.", scope)
 	case sessionKindAgent:
 		m.input.SetValue("agent")
-		m.status = fmt.Sprintf("Create a new agent session in %s.", m.contextProject())
+		m.status = fmt.Sprintf("Create a new agent session in %s.", scope)
 	default:
 		m.input.SetValue("")
-		m.status = fmt.Sprintf("Create a new terminal session in %s.", m.contextProject())
+		m.status = fmt.Sprintf("Create a new terminal session in %s.", scope)
 	}
 	m.input.Focus()
 	m.input.CursorEnd()
@@ -138,35 +138,13 @@ func (m model) sessionStartupCommand(kind sessionKind) (string, error) {
 	}
 }
 
-func (m *model) updateMoveStatus() {
-	matches := m.matchingProjects(m.moveQuery)
-	switch {
-	case m.moveQuery == "":
-		m.status = "Move: type project prefix."
-	case len(matches) == 0:
-		m.status = "Move: no matching project."
-	default:
-		m.status = "Move matches: " + strings.Join(matches, ", ")
-	}
-}
-
-func (m model) projectLabel(project string) string {
-	project = normalizeProjectName(project)
-	if m.mode != inputMoveProject {
-		return project
-	}
-	if m.moveQuery == "" {
-		return project
-	}
-	if !strings.HasPrefix(project, m.moveQuery) {
-		return project
-	}
-	prefix := lipgloss.NewStyle().Bold(true).Foreground(yellowColor).Render(project[:len(m.moveQuery)])
-	return prefix + project[len(m.moveQuery):]
-}
-
 func (m model) editProject() (tea.Model, tea.Cmd) {
 	project := m.contextProject()
+	if project == "" {
+		m.err = fmt.Errorf("no project selected")
+		m.status = "No project selected."
+		return m, nil
+	}
 	cfg := m.projectConfig(project)
 	path, err := writeProjectEditFile(cfg)
 	if err != nil {
@@ -249,8 +227,6 @@ func (m model) applyProjectEdit(oldName string, cfg projectConfig) (tea.Model, t
 		}
 		m.projects = replaceProject(m.projects, oldName, cfg.Name)
 		delete(m.projectConfigs, oldName)
-		delete(m.expandedProjects, oldName)
-		m.expandedProjects[cfg.Name] = true
 		if m.selectedProject == oldName {
 			m.selectedProject = cfg.Name
 		}

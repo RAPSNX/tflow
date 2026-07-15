@@ -15,9 +15,10 @@ const (
 	inputNew
 	inputCreateSession
 	inputCreateProject
-	inputMoveProject
+	inputSwitchProject
 	inputSetProjectDir
 	inputConfirmDelete
+	inputConfirmProjectSwitch
 	inputRename
 	inputCommand
 )
@@ -41,12 +42,6 @@ type sessionKilledMsg struct {
 type projectCreatedMsg struct {
 	config projectConfig
 	err    error
-}
-
-type sessionMovedMsg struct {
-	session string
-	project string
-	err     error
 }
 
 type sessionRenamedMsg struct {
@@ -76,18 +71,14 @@ type menuActionMsg struct {
 	err error
 }
 
-type treeRowKind int
-
-const (
-	rowProject treeRowKind = iota
-	rowSession
-)
-
-type treeRow struct {
-	kind    treeRowKind
+type renameTarget struct {
 	project string
 	session string
-	depth   int
+}
+
+type deleteTarget struct {
+	project string
+	session string
 }
 
 type model struct {
@@ -98,22 +89,21 @@ type model struct {
 
 	mode inputMode
 
-	sessions         []session
-	projects         []string
-	sessionProjects  map[string]string
-	sessionTypes     map[string]sessionType
-	projectConfigs   map[string]projectConfig
-	expandedProjects map[string]bool
-	selectedProject  string
-	selectedSession  string
-	currentSession   string
-	paneID           string
+	sessions        []session
+	projects        []string
+	sessionProjects map[string]string
+	sessionTypes    map[string]sessionType
+	projectConfigs  map[string]projectConfig
+	selectedProject string
+	selectedSession string
+	currentSession  string
+	paneID          string
 
-	input             textinput.Model
-	moveQuery         string
-	renameRow         treeRow
-	deleteRow         treeRow
-	createSessionKind sessionKind
+	input               textinput.Model
+	renameTarget        renameTarget
+	deleteTarget        deleteTarget
+	switchProjectTarget string
+	createSessionKind   sessionKind
 
 	cwd       string
 	statePath string
@@ -213,11 +203,10 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 	state, err := loadAppState(statePath)
 	if err != nil {
 		state = appState{
-			Projects:         []string{},
-			SessionProjects:  map[string]string{},
-			SessionTypes:     map[string]string{},
-			ProjectDirs:      map[string]string{},
-			ExpandedProjects: map[string]bool{},
+			Projects:        []string{},
+			SessionProjects: map[string]string{},
+			SessionTypes:    map[string]string{},
+			ProjectDirs:     map[string]string{},
 		}
 	}
 	state = normalizeAppState(state)
@@ -228,9 +217,6 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 			err = configErr
 		}
 	}
-	if err == nil {
-		err = nil
-	}
 	for name := range projectConfigs {
 		if !containsString(state.Projects, name) {
 			state.Projects = append(state.Projects, name)
@@ -239,21 +225,20 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 	state = normalizeAppState(state)
 
 	return model{
-		tmux:             manager,
-		mode:             inputNone,
-		projects:         state.Projects,
-		sessionProjects:  state.SessionProjects,
-		sessionTypes:     normalizeSessionTypes(state.SessionTypes),
-		projectConfigs:   projectConfigs,
-		expandedProjects: state.ExpandedProjects,
-		selectedProject:  "",
-		currentSession:   current,
-		paneID:           paneID,
-		input:            input,
-		cwd:              cwd,
-		statePath:        statePath,
-		status:           "",
-		err:              err,
+		tmux:            manager,
+		mode:            inputNone,
+		projects:        state.Projects,
+		sessionProjects: state.SessionProjects,
+		sessionTypes:    normalizeSessionTypes(state.SessionTypes),
+		projectConfigs:  projectConfigs,
+		selectedProject: "",
+		currentSession:  current,
+		paneID:          paneID,
+		input:           input,
+		cwd:             cwd,
+		statePath:       statePath,
+		status:          "",
+		err:             err,
 	}
 }
 
