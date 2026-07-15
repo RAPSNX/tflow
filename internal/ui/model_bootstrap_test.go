@@ -107,6 +107,109 @@ func TestMenuEnterSwitchesSessionAndClosesPane(t *testing.T) {
 	}
 }
 
+func TestPStartsProjectSwitchMode(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "dev", "").(model)
+	m.projects = []string{"small", "storage"}
+	m.sessions = []session{{Name: "dev"}}
+	m.sessionProjects = map[string]string{"dev": "small"}
+
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	got := *(updated.(*model))
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if got.mode != inputSwitchProject {
+		t.Fatalf("mode = %v, want inputSwitchProject", got.mode)
+	}
+	if got.input.Prompt != "project: " {
+		t.Fatalf("prompt = %q, want project prompt", got.input.Prompt)
+	}
+}
+
+func TestProjectSwitchUsesUniquePrefixAndClosesPane(t *testing.T) {
+	var switched []string
+	var closed []string
+	m := newModel(fakeTmuxController{
+		switchClient: func(name string) error {
+			switched = append(switched, name)
+			return nil
+		},
+		closePane: func(paneID string) error {
+			closed = append(closed, paneID)
+			return nil
+		},
+	}, "dev", "%3").(model)
+	m.projects = []string{"small", "storage"}
+	m.sessions = []session{{Name: "dev"}, {Name: "api"}, {Name: "keep"}}
+	m.sessionProjects = map[string]string{"dev": "small", "api": "small", "keep": "storage"}
+	m.selectedProject = "small"
+	m.selectedSession = "dev"
+
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	pending := *(updated.(*model))
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	pending.input.SetValue("sto")
+
+	updated, cmd = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(model)
+	if cmd == nil {
+		t.Fatal("expected switch command")
+	}
+	if got.selectedProject != "storage" {
+		t.Fatalf("selectedProject = %q, want storage", got.selectedProject)
+	}
+	if got.selectedSession != "keep" {
+		t.Fatalf("selectedSession = %q, want keep", got.selectedSession)
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("menu action returned error: %v", msg.err)
+	}
+	if gotCalls, want := fmt.Sprint(switched), fmt.Sprint([]string{"keep"}); gotCalls != want {
+		t.Fatalf("switches = %s, want %s", gotCalls, want)
+	}
+	if gotCalls, want := fmt.Sprint(closed), fmt.Sprint([]string{"%3"}); gotCalls != want {
+		t.Fatalf("closed = %s, want %s", gotCalls, want)
+	}
+}
+
+func TestProjectSwitchFromVolatileSessionRequiresConfirmation(t *testing.T) {
+	var switched []string
+	m := newModel(fakeTmuxController{
+		switchClient: func(name string) error {
+			switched = append(switched, name)
+			return nil
+		},
+	}, "scratch-temp", "").(model)
+	m.projects = []string{"storage"}
+	m.sessions = []session{{Name: "scratch-temp", Temporary: true}, {Name: "keep"}}
+	m.sessionProjects = map[string]string{"keep": "storage"}
+
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	pending := *(updated.(*model))
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	pending.input.SetValue("sto")
+
+	updated, cmd = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	confirming := *(updated.(*model))
+	if cmd != nil {
+		t.Fatal("expected no switch command before confirmation")
+	}
+	if confirming.mode != inputConfirmProjectSwitch {
+		t.Fatalf("mode = %v, want inputConfirmProjectSwitch", confirming.mode)
+	}
+	if confirming.switchProjectTarget != "storage" {
+		t.Fatalf("switchProjectTarget = %q, want storage", confirming.switchProjectTarget)
+	}
+	if len(switched) != 0 {
+		t.Fatalf("switches before confirmation = %#v", switched)
+	}
+}
+
 func TestDDeletesSelectedSession(t *testing.T) {
 	var killed []string
 	m := newModel(fakeTmuxController{

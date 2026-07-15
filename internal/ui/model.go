@@ -15,8 +15,10 @@ const (
 	inputNew
 	inputCreateSession
 	inputCreateProject
+	inputSwitchProject
 	inputSetProjectDir
 	inputConfirmDelete
+	inputConfirmProjectSwitch
 	inputRename
 	inputCommand
 )
@@ -97,10 +99,11 @@ type model struct {
 	currentSession  string
 	paneID          string
 
-	input             textinput.Model
-	renameTarget      renameTarget
-	deleteTarget      deleteTarget
-	createSessionKind sessionKind
+	input               textinput.Model
+	renameTarget        renameTarget
+	deleteTarget        deleteTarget
+	switchProjectTarget string
+	createSessionKind   sessionKind
 
 	cwd       string
 	statePath string

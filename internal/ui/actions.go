@@ -29,6 +29,66 @@ func (m model) switchSelectedSession() (tea.Model, tea.Cmd) {
 	}
 }
 
+func (m *model) beginProjectSwitch() (tea.Model, tea.Cmd) {
+	if len(m.projects) == 0 {
+		m.status = "No projects available."
+		return m, nil
+	}
+	m.mode = inputSwitchProject
+	m.switchProjectTarget = ""
+	m.input.Prompt = "project: "
+	m.input.SetValue("")
+	m.input.Focus()
+	m.status = "Type a project prefix to switch."
+	return m, nil
+}
+
+func (m *model) commitProjectSwitch() (tea.Model, tea.Cmd) {
+	project, ok := m.uniqueMatchingProject(m.input.Value())
+	if !ok {
+		m.status = "No unique project match."
+		return m, nil
+	}
+	if current, ok := m.currentSessionInfo(); ok && current.Temporary {
+		m.mode = inputConfirmProjectSwitch
+		m.switchProjectTarget = project
+		m.input.Blur()
+		m.input.Prompt = ""
+		m.input.SetValue("")
+		m.status = fmt.Sprintf("Confirm switch from volatile session to project %s.", project)
+		return m, nil
+	}
+	return m.switchToProject(project)
+}
+
+func (m *model) confirmProjectSwitch() (tea.Model, tea.Cmd) {
+	project := m.switchProjectTarget
+	m.switchProjectTarget = ""
+	return m.switchToProject(project)
+}
+
+func (m *model) switchToProject(project string) (tea.Model, tea.Cmd) {
+	project = normalizeProjectName(project)
+	m.mode = inputNone
+	m.switchProjectTarget = ""
+	m.input.Blur()
+	m.input.Prompt = ""
+	m.input.SetValue("")
+	if project == "" {
+		m.status = "No project selected."
+		return m, nil
+	}
+	sessions := m.projectSessions(project)
+	if len(sessions) == 0 {
+		m.status = fmt.Sprintf("Project %s has no sessions.", project)
+		return m, nil
+	}
+	m.selectedProject = project
+	m.selectedSession = sessions[0].Name
+	m.status = ""
+	return m.switchSelectedSession()
+}
+
 func (m model) killSelectedSession() (tea.Model, tea.Cmd) {
 	s, ok := m.selectedSessionInfo()
 	if !ok {

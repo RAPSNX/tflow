@@ -12,7 +12,7 @@ func (m model) View() string {
 	}
 
 	switch m.mode {
-	case inputNew:
+	case inputNew, inputSwitchProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderMenu())
 	case inputCreateSession:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Session"))
@@ -22,6 +22,8 @@ func (m model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderProjectDirOverlay())
 	case inputConfirmDelete:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderDeleteOverlay())
+	case inputConfirmProjectSwitch:
+		return appStyle.Width(m.width).Height(m.height).Render(m.renderProjectSwitchConfirmOverlay())
 	case inputRename:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderRenameOverlay())
 	default:
@@ -39,7 +41,7 @@ func (m model) renderMenu() string {
 
 func (m model) renderHeader(width int) string {
 	left := brandBadgeStyle.Render("TFLOW")
-	project := countBadgeStyle.Render("project " + fallbackText(m.contextProject(), ""))
+	project := countBadgeStyle.Render("project " + fallbackText(m.currentProject(), ""))
 	session := countBadgeStyle.Render("session " + fallbackText(m.currentSession, ""))
 	right := lipgloss.JoinHorizontal(lipgloss.Left, project, " ", session)
 	gap := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
@@ -85,10 +87,21 @@ func (m model) renderSessionRow(index int, s session) string {
 
 func (m model) renderFooter(width int) string {
 	lines := []string{}
-	if m.mode == inputNew {
+	switch m.mode {
+	case inputNew:
 		lines = append(lines, hintStyle.Render("new: [p] project  [t] terminal  [k] k9s  [c] agent  [esc] cancel"))
-	} else {
-		lines = append(lines, hintStyle.Render("[j/k] move  [enter] switch  [n] new  [r] rename  [d] delete  [e] edit project"))
+	case inputSwitchProject:
+		lines = append(lines, inputStyle.Render(m.input.View()), hintStyle.Render("Enter switches. Esc cancels."))
+		matches := m.matchingProjects(m.input.Value())
+		if len(matches) == 0 {
+			lines = append(lines, mutedStyle.Render("No matching projects."))
+		} else {
+			for _, project := range matches {
+				lines = append(lines, sessionStyle.Render("  "+project))
+			}
+		}
+	default:
+		lines = append(lines, hintStyle.Render("[j/k] move  [enter] switch  [n] new  [p] project  [r] rename  [d] delete  [e] edit project"))
 	}
 	if m.mode == inputCommand {
 		lines = append(lines, inputStyle.Render(m.input.View()), hintStyle.Render("Enter runs. Esc cancels."))
@@ -130,6 +143,17 @@ func (m model) renderDeleteOverlay() string {
 		hintStyle.Render("Enter, d, or y confirms. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(42, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m model) renderProjectSwitchConfirmOverlay() string {
+	lines := []string{
+		titleStyle.Render("Confirm Project Switch"),
+		mutedStyle.Render("Switch from the current volatile session to project " + fallbackText(m.switchProjectTarget, "none") + "?"),
+		"",
+		hintStyle.Render("Enter or y confirms. Esc cancels."),
+	}
+	box := overlayStyle.Width(max(24, min(48, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 

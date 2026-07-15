@@ -124,6 +124,23 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	}
 }
 
+func TestRenderHeaderUsesLiveSessionProject(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.currentSession = "keep"
+	m.selectedProject = "small"
+	m.sessions = []session{{Name: "keep"}}
+	m.sessionProjects = map[string]string{"keep": "storage"}
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHeader(40), "")
+	if !strings.Contains(plain, "project storage") {
+		t.Fatalf("renderHeader missing live project in %q", plain)
+	}
+	if strings.Contains(plain, "project small") {
+		t.Fatalf("renderHeader used selected project in %q", plain)
+	}
+}
+
 func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 	m := NewMenu().(model)
 	m.width = 48

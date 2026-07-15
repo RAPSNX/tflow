@@ -38,6 +38,14 @@ func (m model) currentSessionInfo() (session, bool) {
 	return m.findSession(m.currentSession)
 }
 
+func (m model) currentProject() string {
+	current, ok := m.currentSessionInfo()
+	if !ok || current.Temporary {
+		return ""
+	}
+	return normalizeProjectName(m.sessionProjects[current.Name])
+}
+
 func (m model) findSession(name string) (session, bool) {
 	for _, s := range m.sessions {
 		if s.Name == name {
@@ -54,10 +62,7 @@ func (m model) contextProject() string {
 	if m.selectedSession != "" {
 		return normalizeProjectName(m.sessionProjects[m.selectedSession])
 	}
-	if m.currentSession != "" {
-		return normalizeProjectName(m.sessionProjects[m.currentSession])
-	}
-	return ""
+	return m.currentProject()
 }
 
 func (m *model) syncSelection() {
@@ -147,6 +152,28 @@ func (m *model) addProject(name string) {
 		m.projects = append(m.projects, name)
 		m.projects = normalizeProjectList(m.projects)
 	}
+}
+
+func (m model) matchingProjects(query string) []string {
+	query = normalizeProjectName(query)
+	if query == "" {
+		return append([]string(nil), m.projects...)
+	}
+	matches := make([]string, 0, len(m.projects))
+	for _, project := range m.projects {
+		if strings.HasPrefix(project, query) {
+			matches = append(matches, project)
+		}
+	}
+	return matches
+}
+
+func (m model) uniqueMatchingProject(query string) (string, bool) {
+	matches := m.matchingProjects(query)
+	if len(matches) != 1 {
+		return "", false
+	}
+	return matches[0], true
 }
 
 func (m model) projectSessions(project string) []session {

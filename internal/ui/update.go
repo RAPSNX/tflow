@@ -226,6 +226,8 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = inputNew
 		m.status = "New: p project, t terminal, k k9s, c agent."
 		return m, nil
+	case "p":
+		return m.beginProjectSwitch()
 	case "c":
 		if m.contextProject() == "" {
 			m.status = "No project selected."
@@ -314,6 +316,21 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		next, cmd := m.input.Update(msg)
 		m.input = next
 		return m, cmd
+	case inputSwitchProject:
+		switch msg.Type {
+		case tea.KeyEsc:
+			m.mode = inputNone
+			m.input.Blur()
+			m.input.Prompt = ""
+			m.input.SetValue("")
+			m.status = "Project switch cancelled."
+			return m, nil
+		case tea.KeyEnter:
+			return m.commitProjectSwitch()
+		}
+		next, cmd := m.input.Update(msg)
+		m.input = next
+		return m, cmd
 	case inputSetProjectDir:
 		switch msg.Type {
 		case tea.KeyEsc:
@@ -341,6 +358,20 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "d", "y":
 			return m.confirmDelete()
+		}
+	case inputConfirmProjectSwitch:
+		switch msg.Type {
+		case tea.KeyEsc:
+			m.mode = inputNone
+			m.switchProjectTarget = ""
+			m.status = "Project switch cancelled."
+			return m, nil
+		case tea.KeyEnter:
+			return m.confirmProjectSwitch()
+		}
+		switch msg.String() {
+		case "y":
+			return m.confirmProjectSwitch()
 		}
 	case inputCommand:
 		switch msg.Type {
