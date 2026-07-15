@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -140,9 +139,8 @@ func TestDDeletesSelectedSession(t *testing.T) {
 	}
 }
 
-func TestKFromFirstSessionSelectsProjectContext(t *testing.T) {
+func TestKFromFirstSessionWrapsToLastSession(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "", "").(model)
-	m.width = 48
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
 	m.sessionProjects = map[string]string{"dev": defaultProjectName, "api": defaultProjectName}
@@ -157,15 +155,12 @@ func TestKFromFirstSessionSelectsProjectContext(t *testing.T) {
 	if got.selectedProject != defaultProjectName {
 		t.Fatalf("selectedProject = %q, want %q", got.selectedProject, defaultProjectName)
 	}
-	if got.selectedSession != "" {
-		t.Fatalf("selectedSession = %q, want project selection", got.selectedSession)
-	}
-	if plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(got.renderSessionPanel(40), ""); !strings.Contains(plain, "project default") {
-		t.Fatalf("renderSessionPanel missing visible project row in %q", plain)
+	if got.selectedSession != "api" {
+		t.Fatalf("selectedSession = %q, want api", got.selectedSession)
 	}
 }
 
-func TestJFromLastSessionSelectsProjectContext(t *testing.T) {
+func TestJFromLastSessionWrapsToFirstSession(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "", "").(model)
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
@@ -181,56 +176,8 @@ func TestJFromLastSessionSelectsProjectContext(t *testing.T) {
 	if got.selectedProject != defaultProjectName {
 		t.Fatalf("selectedProject = %q, want %q", got.selectedProject, defaultProjectName)
 	}
-	if got.selectedSession != "" {
-		t.Fatalf("selectedSession = %q, want project selection", got.selectedSession)
-	}
-}
-
-func TestDDeletesSelectedProjectAfterProjectSelection(t *testing.T) {
-	var killed []string
-	m := newModel(fakeTmuxController{
-		killSession: func(name string) error {
-			killed = append(killed, name)
-			return nil
-		},
-	}, "", "").(model)
-	m.projects = []string{"small", "storage"}
-	m.sessions = []session{{Name: "dev"}, {Name: "api"}, {Name: "keep"}}
-	m.sessionProjects = map[string]string{"dev": "small", "api": "small", "keep": "storage"}
-	m.selectedProject = "small"
-	m.selectedSession = "dev"
-
-	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	projectSelected := updated.(model)
-	if cmd != nil {
-		t.Fatal("expected no command")
-	}
-	if projectSelected.selectedSession != "" {
-		t.Fatalf("selectedSession = %q, want project selection", projectSelected.selectedSession)
-	}
-
-	updated, cmd = projectSelected.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	pending := *(updated.(*model))
-	if cmd != nil {
-		t.Fatal("expected no command")
-	}
-	if pending.mode != inputConfirmDelete {
-		t.Fatalf("mode = %v, want inputConfirmDelete", pending.mode)
-	}
-	if pending.deleteTarget.project != "small" {
-		t.Fatalf("deleteTarget = %#v", pending.deleteTarget)
-	}
-
-	_, cmd = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("expected project delete command")
-	}
-	msg := cmd().(projectDeletedMsg)
-	if msg.err != nil {
-		t.Fatalf("delete returned error: %v", msg.err)
-	}
-	if got, want := fmt.Sprint(killed), fmt.Sprint([]string{"dev", "api"}); got != want {
-		t.Fatalf("killed = %s, want %s", got, want)
+	if got.selectedSession != "dev" {
+		t.Fatalf("selectedSession = %q, want dev", got.selectedSession)
 	}
 }
 

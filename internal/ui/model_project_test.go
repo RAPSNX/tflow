@@ -155,24 +155,6 @@ func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 	}
 }
 
-func TestRenderSessionPanelShowsVisibleProjectRowWhenProjectSelected(t *testing.T) {
-	m := NewMenu().(model)
-	m.width = 48
-	m.projects = []string{defaultProjectName}
-	m.sessions = []session{{Name: "dev"}}
-	m.sessionProjects = map[string]string{"dev": defaultProjectName}
-	m.selectedProject = defaultProjectName
-	m.selectedSession = ""
-
-	view := m.renderSessionPanel(40)
-	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(view, "")
-	for _, want := range []string{"Sessions", "project default", "dev"} {
-		if !strings.Contains(plain, want) {
-			t.Fatalf("renderSessionPanel missing %q in %q", want, plain)
-		}
-	}
-}
-
 func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 	tmp := t.TempDir()
 	var killed []string

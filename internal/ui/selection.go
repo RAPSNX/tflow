@@ -12,27 +12,16 @@ func (m *model) shiftSession(delta int) {
 		return
 	}
 
-	if m.selectedProject == "" {
-		index := m.selectedSessionIndex()
-		if index < 0 {
+	index := m.selectedSessionIndex()
+	if index < 0 {
+		if delta < 0 {
 			index = 0
+		} else {
+			index = len(sessions) - 1
 		}
-		index = (index + delta + len(sessions)) % len(sessions)
-		m.selectedSession = sessions[index].Name
-		return
 	}
-
-	positionCount := len(sessions) + 1
-	position := 0
-	if index := m.selectedSessionIndex(); index >= 0 {
-		position = index + 1
-	}
-	position = (position + delta + positionCount) % positionCount
-	if position == 0 {
-		m.selectedSession = ""
-		return
-	}
-	m.selectedSession = sessions[position-1].Name
+	index = (index + delta + len(sessions)) % len(sessions)
+	m.selectedSession = sessions[index].Name
 }
 
 func (m model) selectedSessionInfo() (session, bool) {
