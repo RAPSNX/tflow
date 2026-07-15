@@ -33,10 +33,10 @@
 
 ## Tmux runtime baseline [sub-agent]
 
-- [ ] Run `tflow` on its own tmux socket.
-- [ ] Start with one volatile tmux session and attach the user to it.
-- [ ] Keep the active terminal as a real tmux terminal.
-- [ ] Keep persistent sessions as ordinary tmux sessions grouped by metadata.
+- [x] Run `tflow` on its own tmux socket.
+- [x] Start with one volatile tmux session and attach the user to it.
+- [x] Keep the active terminal as a real tmux terminal.
+- [x] Keep persistent sessions as ordinary tmux sessions grouped by metadata.
 - [ ] Remove volatile sessions on normal exit or confirmed `Ctrl+Q`.
 
 ## Sidebar pane and top badges [primary-agent]
