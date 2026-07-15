@@ -37,7 +37,7 @@
 - [x] Start with one volatile tmux session and attach the user to it.
 - [x] Keep the active terminal as a real tmux terminal.
 - [x] Keep persistent sessions as ordinary tmux sessions grouped by metadata.
-- [x] Remove volatile sessions on normal exit or confirmed `Ctrl+Q`.
+- [ ] Remove volatile sessions on normal exit or confirmed `Ctrl+Q`.
 
 ## Sidebar pane and top badges [primary-agent]
 
