@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -353,6 +354,35 @@ func TestNewModelStartsWithoutProjectsWhenStateIsEmpty(t *testing.T) {
 	}
 	if m.selectedProject != "" {
 		t.Fatalf("selectedProject = %q, want empty", m.selectedProject)
+	}
+}
+
+func TestBuildModelFailsWhenStoreIsInvalid(t *testing.T) {
+	stateHome := t.TempDir()
+	configHome := t.TempDir()
+	oldStateHome := os.Getenv("XDG_STATE_HOME")
+	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("XDG_STATE_HOME", oldStateHome)
+		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+	})
+	_ = os.Setenv("XDG_STATE_HOME", stateHome)
+	_ = os.Setenv("XDG_CONFIG_HOME", configHome)
+
+	path := appStatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("{not-json"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	_, err := buildModel(fakeTmuxController{}, "", "")
+	if err == nil {
+		t.Fatal("buildModel returned nil error")
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("error = %q, want path %q", err, path)
 	}
 }
 

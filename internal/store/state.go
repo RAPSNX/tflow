@@ -11,11 +11,10 @@ import (
 )
 
 type AppState struct {
-	Projects         []string          `json:"projects"`
-	SessionProjects  map[string]string `json:"session_projects"`
-	SessionTypes     map[string]string `json:"session_types"`
-	ProjectDirs      map[string]string `json:"project_dirs"`
-	ExpandedProjects map[string]bool   `json:"expanded_projects"`
+	Projects        []string                 `json:"projects"`
+	SessionProjects map[string]string        `json:"session_projects"`
+	SessionTypes    map[string]string        `json:"session_types"`
+	ProjectConfigs  map[string]ProjectConfig `json:"project_configs"`
 }
 
 type storedState struct {
@@ -26,8 +25,15 @@ type storedState struct {
 }
 
 type storedProject struct {
-	Workdir  string `json:"workdir,omitempty"`
-	Expanded *bool  `json:"expanded,omitempty"`
+	Workdir     string         `json:"workdir,omitempty"`
+	Protect     bool           `json:"protect,omitempty"`
+	AgentBinary string         `json:"agent_binary,omitempty"`
+	Cluster     *storedCluster `json:"cluster,omitempty"`
+}
+
+type storedCluster struct {
+	Path          string `json:"path,omitempty"`
+	ConnectionCmd string `json:"connection_cmd,omitempty"`
 }
 
 type legacyStringListState struct {
@@ -94,14 +100,7 @@ func EnsureStartupState() error {
 	if err != nil {
 		return err
 	}
-	state = NormalizeAppState(state)
-	if state.SessionProjects == nil {
-		state.SessionProjects = map[string]string{}
-	}
-	if state.ExpandedProjects == nil {
-		state.ExpandedProjects = map[string]bool{}
-	}
-	return SaveAppState(path, state)
+	return SaveAppState(path, NormalizeAppState(state))
 }
 
 func NormalizeAppState(state AppState) AppState {
@@ -112,45 +111,47 @@ func NormalizeAppState(state AppState) AppState {
 	if state.SessionTypes == nil {
 		state.SessionTypes = map[string]string{}
 	}
-	if state.ProjectDirs == nil {
-		state.ProjectDirs = map[string]string{}
-	}
-	if state.ExpandedProjects == nil {
-		state.ExpandedProjects = map[string]bool{}
-	}
-	for _, project := range state.Projects {
-		if _, ok := state.ExpandedProjects[project]; !ok {
-			state.ExpandedProjects[project] = true
-		}
+	if state.ProjectConfigs == nil {
+		state.ProjectConfigs = map[string]ProjectConfig{}
 	}
 	for _, name := range sortedStringKeys(state.SessionProjects) {
-		project := state.SessionProjects[name]
-		normalized := normalizeProjectName(project)
-		state.SessionProjects[name] = normalized
-		if !containsString(state.Projects, normalized) {
-			state.Projects = append(state.Projects, normalized)
-		}
-		if _, ok := state.ExpandedProjects[normalized]; !ok {
-			state.ExpandedProjects[normalized] = true
+		project := normalizeProjectName(state.SessionProjects[name])
+		if project == "" {
+			delete(state.SessionProjects, name)
+		} else {
+			state.SessionProjects[name] = project
+			if !containsString(state.Projects, project) {
+				state.Projects = append(state.Projects, project)
+			}
 		}
 		if _, ok := state.SessionTypes[name]; !ok {
 			state.SessionTypes[name] = "terminal"
 		}
 	}
-	for _, project := range sortedStringKeys(state.ProjectDirs) {
-		dir := state.ProjectDirs[project]
+
+	normalizedConfigs := map[string]ProjectConfig{}
+	for _, project := range sortedStringKeys(state.ProjectConfigs) {
+		cfg := state.ProjectConfigs[project]
 		normalized := normalizeProjectName(project)
-		if normalized == "" || strings.TrimSpace(dir) == "" {
-			delete(state.ProjectDirs, project)
+		if cfg.Name != "" {
+			normalized = normalizeProjectName(cfg.Name)
+		}
+		if normalized == "" {
 			continue
 		}
-		delete(state.ProjectDirs, project)
-		state.ProjectDirs[normalized] = normalizeCWD(dir)
+		cfg.Name = normalized
+		normalizedConfigs[normalized] = NormalizeProjectConfig(cfg)
 		if !containsString(state.Projects, normalized) {
 			state.Projects = append(state.Projects, normalized)
 		}
 	}
+	state.ProjectConfigs = normalizedConfigs
 	state.Projects = normalizeProjectList(state.Projects)
+	for _, project := range state.Projects {
+		cfg := NormalizeProjectConfig(state.ProjectConfigs[project])
+		cfg.Name = project
+		state.ProjectConfigs[project] = cfg
+	}
 	return state
 }
 
@@ -224,11 +225,10 @@ func slicesSort(values []string) {
 
 func emptyAppState() AppState {
 	return AppState{
-		Projects:         []string{},
-		SessionProjects:  map[string]string{},
-		SessionTypes:     map[string]string{},
-		ProjectDirs:      map[string]string{},
-		ExpandedProjects: map[string]bool{},
+		Projects:        []string{},
+		SessionProjects: map[string]string{},
+		SessionTypes:    map[string]string{},
+		ProjectConfigs:  map[string]ProjectConfig{},
 	}
 }
 
@@ -271,10 +271,19 @@ func encodeAppState(state AppState) ([]byte, error) {
 	}
 
 	for _, project := range state.Projects {
-		stored.Projects[project] = storedProject{
-			Workdir:  state.ProjectDirs[project],
-			Expanded: boolPointer(state.ExpandedProjects[project]),
+		cfg := NormalizeProjectConfig(state.ProjectConfigs[project])
+		projectState := storedProject{
+			Workdir:     cfg.Workdir,
+			Protect:     cfg.Protect,
+			AgentBinary: cfg.AgentBinary,
 		}
+		if cfg.Cluster.Path != "" || cfg.Cluster.ConnectionCmd != "" {
+			projectState.Cluster = &storedCluster{
+				Path:          cfg.Cluster.Path,
+				ConnectionCmd: cfg.Cluster.ConnectionCmd,
+			}
+		}
+		stored.Projects[project] = projectState
 	}
 
 	return json.MarshalIndent(stored, "", "  ")
@@ -296,12 +305,19 @@ func decodeStoredState(data []byte) (AppState, error) {
 			continue
 		}
 		extraProjects = append(extraProjects, project)
-		if dir := strings.TrimSpace(cfg.Workdir); dir != "" {
-			state.ProjectDirs[project] = normalizeCWD(dir)
+		projectConfig := ProjectConfig{
+			Name:        project,
+			Workdir:     cfg.Workdir,
+			Protect:     cfg.Protect,
+			AgentBinary: cfg.AgentBinary,
 		}
-		if cfg.Expanded != nil {
-			state.ExpandedProjects[project] = *cfg.Expanded
+		if cfg.Cluster != nil {
+			projectConfig.Cluster = ClusterConfig{
+				Path:          cfg.Cluster.Path,
+				ConnectionCmd: cfg.Cluster.ConnectionCmd,
+			}
 		}
+		state.ProjectConfigs[project] = NormalizeProjectConfig(projectConfig)
 	}
 	slicesSort(extraProjects)
 	for _, project := range extraProjects {
@@ -326,11 +342,10 @@ func decodeLegacyStringListState(data []byte) (AppState, error) {
 		return AppState{}, err
 	}
 	return NormalizeAppState(AppState{
-		Projects:         append([]string(nil), legacy.Projects...),
-		SessionProjects:  cloneStringMap(legacy.SessionProjects),
-		SessionTypes:     cloneStringMap(legacy.SessionTypes),
-		ProjectDirs:      cloneStringMap(legacy.ProjectDirs),
-		ExpandedProjects: cloneBoolMap(legacy.ExpandedProjects),
+		Projects:        append([]string(nil), legacy.Projects...),
+		SessionProjects: cloneStringMap(legacy.SessionProjects),
+		SessionTypes:    cloneStringMap(legacy.SessionTypes),
+		ProjectConfigs:  legacyProjectConfigs(legacy.ProjectDirs),
 	}), nil
 }
 
@@ -347,7 +362,6 @@ func decodeLegacySessionSnapshotState(data []byte) (AppState, error) {
 			continue
 		}
 		state.Projects = append(state.Projects, name)
-		state.ExpandedProjects[name] = true
 		for _, session := range project.Sessions {
 			sessionKey := strings.TrimSpace(session.TmuxName)
 			if sessionKey == "" {
@@ -394,21 +408,20 @@ func cloneStringMap(values map[string]string) map[string]string {
 	return cloned
 }
 
-func cloneBoolMap(values map[string]bool) map[string]bool {
-	if values == nil {
-		return map[string]bool{}
+func legacyProjectConfigs(projectDirs map[string]string) map[string]ProjectConfig {
+	configs := map[string]ProjectConfig{}
+	for project, dir := range projectDirs {
+		project = normalizeProjectName(project)
+		dir = strings.TrimSpace(dir)
+		if project == "" || dir == "" {
+			continue
+		}
+		configs[project] = NormalizeProjectConfig(ProjectConfig{
+			Name:    project,
+			Workdir: dir,
+		})
 	}
-	cloned := make(map[string]bool, len(values))
-	for key, value := range values {
-		cloned[key] = value
-	}
-	return cloned
-}
-
-func boolPointer(value bool) *bool {
-	ptr := new(bool)
-	*ptr = value
-	return ptr
+	return configs
 }
 
 func loadLegacyState(path string) (AppState, bool, error) {

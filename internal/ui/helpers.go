@@ -8,11 +8,10 @@ import (
 
 func (m model) saveState() error {
 	state := appState{
-		Projects:         append([]string(nil), m.projects...),
-		SessionProjects:  map[string]string{},
-		SessionTypes:     map[string]string{},
-		ProjectDirs:      map[string]string{},
-		ExpandedProjects: map[string]bool{},
+		Projects:        append([]string(nil), m.projects...),
+		SessionProjects: map[string]string{},
+		SessionTypes:    map[string]string{},
+		ProjectConfigs:  map[string]projectConfig{},
 	}
 	for name, project := range m.sessionProjects {
 		state.SessionProjects[name] = normalizeProjectName(project)
@@ -22,17 +21,14 @@ func (m model) saveState() error {
 	}
 	for project, cfg := range m.projectConfigs {
 		project = normalizeProjectName(project)
-		dir := strings.TrimSpace(cfg.Workdir)
-		if project == "" || dir == "" {
+		if project == "" {
 			continue
 		}
-		state.ProjectDirs[project] = normalizeCWD(dir)
+		cfg = normalizeProjectConfig(cfg)
+		cfg.Name = project
+		state.ProjectConfigs[project] = cfg
 	}
-	state = normalizeAppState(state)
-	if err := saveAppState(m.statePath, state); err != nil {
-		return err
-	}
-	return saveProjectConfigs(m.statePath, m.projectConfigs)
+	return saveAppState(m.statePath, normalizeAppState(state))
 }
 
 func normalizeProjectList(projects []string) []string {

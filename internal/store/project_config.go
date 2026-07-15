@@ -40,19 +40,14 @@ func (cfg ProjectConfig) AgentBinaryValue() string {
 }
 
 func LoadProjectConfigs(statePath string, state AppState) (map[string]ProjectConfig, error) {
-	configs := map[string]ProjectConfig{}
+	_ = statePath
+	state = NormalizeAppState(state)
 
+	configs := make(map[string]ProjectConfig, len(state.Projects))
 	for _, project := range state.Projects {
-		project = normalizeProjectName(project)
-		if project == "" {
-			continue
-		}
-		cfg := configs[project]
+		cfg := NormalizeProjectConfig(state.ProjectConfigs[project])
 		cfg.Name = project
-		if dir := strings.TrimSpace(state.ProjectDirs[project]); dir != "" {
-			cfg.Workdir = normalizeCWD(dir)
-		}
-		configs[project] = NormalizeProjectConfig(cfg)
+		configs[project] = cfg
 	}
 	return configs, nil
 }

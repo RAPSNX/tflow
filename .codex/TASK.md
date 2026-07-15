@@ -25,11 +25,11 @@
 
 ## Introduce the new store foundation
 
-- [ ] Create a single store at `$XDG_STATE_HOME/tflow/store.json`.
-- [ ] Define store data for project order, project settings, and project membership for sessions.
-- [ ] Load an empty store when the file does not exist.
-- [ ] Fail startup with a clear error when the store file is invalid.
-- [ ] Add tests for store load, empty-store creation, and invalid-store failure.
+- [x] Create a single store at `$XDG_STATE_HOME/tflow/store.json`.
+- [x] Define store data for project order, project settings, and project membership for sessions.
+- [x] Load an empty store when the file does not exist.
+- [x] Fail startup with a clear error when the store file is invalid.
+- [x] Add tests for store load, empty-store creation, and invalid-store failure.
 
 ## Tmux runtime baseline
 
