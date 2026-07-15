@@ -1,5 +1,14 @@
 # Alpha implementation checklist
 
+## Execution guidance
+
+- Prefer a single coder by default. Only split work when the package boundary is already isolated enough to avoid rebases or overlapping edits.
+- Safe parallel slice A: `internal/store` for "Introduce the new store foundation". Keep any adapter fallout in `internal/ui/store.go` small and merge this slice before wider UI work.
+- Safe parallel slice B: `internal/tmux` for "Tmux runtime baseline" and the tmux-side work for sidebar pane lifecycle and quit cleanup. Keep any interface fallout in `internal/ui/runtime.go` small and merge this slice before wider UI work.
+- Keep the `internal/ui` rewrite single-owner. Do not split "Remove obsolete UI and interaction behavior", the UI side of "Sidebar pane and top badges", "Session list navigation", "Project creation and switching", "Session and project management", or "Quit flow" across subagents.
+- If a task needs coordinated edits in `internal/ui/model.go`, `internal/ui/update.go`, `internal/ui/selection.go`, `internal/ui/view.go`, `internal/ui/session_meta.go`, or the UI test files, prefer sequential implementation over parallel work.
+- Merge order when parallelizing: store slice and tmux slice first, then rebase one UI stream on top of those settled interfaces, then finish cleanup and verification.
+
 ## Package split and file-size baseline
 
 - [x] Move tmux process and session responsibilities into a focused package with small files.
