@@ -18,8 +18,6 @@ func (m model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Session"))
 	case inputCreateProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Project"))
-	case inputSetProjectDir:
-		return appStyle.Width(m.width).Height(m.height).Render(m.renderProjectDirOverlay())
 	case inputConfirmDelete:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderDeleteOverlay())
 	case inputConfirmProjectSwitch:
@@ -154,19 +152,6 @@ func (m model) renderProjectSwitchConfirmOverlay() string {
 		hintStyle.Render("Enter or y confirms. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(48, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
-}
-
-func (m model) renderProjectDirOverlay() string {
-	lines := []string{
-		titleStyle.Render("Project Directory"),
-		mutedStyle.Render("project: " + fallbackText(m.contextProject(), "none")),
-		"",
-		inputStyle.Render(m.input.View()),
-		"",
-		hintStyle.Render("Enter saves. Esc cancels."),
-	}
-	box := overlayStyle.Width(max(24, min(44, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 

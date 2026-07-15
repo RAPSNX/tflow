@@ -17,7 +17,6 @@ const (
 	inputCreateSession
 	inputCreateProject
 	inputSwitchProject
-	inputSetProjectDir
 	inputConfirmDelete
 	inputConfirmProjectSwitch
 	inputRename
