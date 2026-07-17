@@ -51,9 +51,6 @@ Use Go’s built-in `testing` package by default.
 - Read `AGENTS.md` before editing.
 - Read `.codex/ARCHITECTURE.md` before changing behavior.
 - Use `.codex/TASK.md` as the current implementation checklist.
-- This repo uses one primary agent and one sub-agent.
-- Always check if a the use of a sub-agent is currently possible if so ask everytime regardless whats the task if it should use it.
-- `.codex/TASK.md` section tags define which agent owns each section.
 - `.codex/ARCHITECTURE.md` describes the target state and is the source of truth for intended behavior.
 - `.codex/TASK.md` must be derived from `.codex/ARCHITECTURE.md`.
 - If `.codex/TASK.md` conflicts with `.codex/ARCHITECTURE.md`, stop and ask.
