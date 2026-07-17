@@ -117,3 +117,7 @@ func shellQuote(value string) string {
 func nextTempSessionName(existing []session) string {
 	return runtmux.NextTempSessionName(existing)
 }
+
+func isSessionExists(err error) bool {
+	return runtmux.IsSessionExists(err)
+}

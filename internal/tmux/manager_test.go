@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -173,6 +174,25 @@ func TestSetSessionTemporaryRequiresInstanceIDWhenVolatile(t *testing.T) {
 
 	if err := manager.SetSessionTemporary("otter-temp", true, ""); err == nil {
 		t.Fatal("SetSessionTemporary returned nil error, want missing instance failure")
+	}
+}
+
+func TestCreateSessionReturnsDuplicateSessionError(t *testing.T) {
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			if args[0] == "new-session" {
+				return "", fmt.Errorf("duplicate session: otter-temp")
+			}
+			return "", nil
+		},
+	}
+
+	_, err := manager.CreateSession("otter-temp", "/tmp", "")
+	if err == nil {
+		t.Fatal("CreateSession returned nil error, want duplicate session failure")
+	}
+	if !IsSessionExists(err) {
+		t.Fatalf("CreateSession error = %v, want duplicate session classification", err)
 	}
 }
 

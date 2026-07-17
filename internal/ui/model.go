@@ -132,9 +132,10 @@ const (
 type sessionType string
 
 const (
-	sessionTypeTerminal sessionType = "terminal"
-	sessionTypeK9s      sessionType = "k9s"
-	sessionTypeAgent    sessionType = "agent"
+	sessionTypeTerminal      sessionType = "terminal"
+	sessionTypeK9s           sessionType = "k9s"
+	sessionTypeAgent         sessionType = "agent"
+	startupSessionRetryLimit             = 128
 )
 
 func NewMenu() tea.Model {
@@ -194,9 +195,22 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 	if err != nil {
 		return "", err
 	}
-	name := nextTempSessionName(existing)
-	if _, err := manager.CreateSession(name, cwd, ""); err != nil {
-		return "", err
+	var name string
+	created := false
+	for attempts := 0; attempts < startupSessionRetryLimit; attempts++ {
+		name = nextTempSessionName(existing)
+		if _, err := manager.CreateSession(name, cwd, ""); err != nil {
+			if !isSessionExists(err) {
+				return "", err
+			}
+			existing = append(existing, session{Name: name})
+			continue
+		}
+		created = true
+		break
+	}
+	if !created {
+		return "", fmt.Errorf("allocate startup session after %d retries", startupSessionRetryLimit)
 	}
 	if err := manager.SetSessionTemporary(name, true, instanceID); err != nil {
 		return "", err

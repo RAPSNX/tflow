@@ -53,12 +53,6 @@ func (m Manager) CreateSession(name, cwd, command string) (Session, error) {
 	cwd = NormalizeCWD(cwd)
 	command = strings.TrimSpace(command)
 
-	if _, err := m.runner()("has-session", "-t", name); err == nil {
-		return Session{Name: name}, nil
-	} else if !isNoSession(err) && !IsNoServer(err) {
-		return Session{}, err
-	}
-
 	args := []string{"new-session", "-d", "-s", name, "-c", cwd}
 	if command != "" {
 		args = append(args, userShell(), "-lc", command)

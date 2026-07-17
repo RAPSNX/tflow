@@ -123,6 +123,15 @@ func IsNoServer(err error) bool {
 		(strings.Contains(msg, "error connecting to ") && strings.Contains(msg, "No such file or directory"))
 }
 
+func IsSessionExists(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "duplicate session") ||
+		strings.Contains(msg, "session already exists")
+}
+
 func isNoSession(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "can't find session")
 }

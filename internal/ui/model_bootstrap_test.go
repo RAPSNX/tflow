@@ -74,6 +74,46 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 	}
 }
 
+func TestPrepareStartupRetriesWhenTempSessionNameAlreadyExists(t *testing.T) {
+	var calls []string
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "otter-temp"}}, nil
+		},
+		createSession: func(name, cwd, command string) (session, error) {
+			calls = append(calls, "create:"+name)
+			if name == "fox-temp" {
+				return session{}, fmt.Errorf("duplicate session: fox-temp")
+			}
+			return session{Name: name}, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			calls = append(calls, fmt.Sprintf("temporary:%s:%t:%s", name, temporary, instanceID))
+			return nil
+		},
+		ensureControlMode: func(binaryPath string) error {
+			calls = append(calls, "control:"+binaryPath)
+			return nil
+		},
+	}
+
+	name, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1")
+	if err != nil {
+		t.Fatalf("prepareStartup returned error: %v", err)
+	}
+	if got, want := name, "lynx-temp"; got != want {
+		t.Fatalf("name = %q, want %q", got, want)
+	}
+	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{
+		"create:fox-temp",
+		"create:lynx-temp",
+		"temporary:lynx-temp:true:instance-1",
+		"control:/tmp/tflow",
+	}); got != want {
+		t.Fatalf("calls = %s, want %s", got, want)
+	}
+}
+
 func TestStartWithManagerCleansUpInstanceVolatileSessionsAfterAttach(t *testing.T) {
 	var cleaned []string
 	manager := fakeTmuxController{
