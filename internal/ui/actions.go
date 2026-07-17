@@ -134,12 +134,6 @@ func (m model) closeMenuCmd() tea.Cmd {
 	}
 }
 
-func (m model) quitAllCmd() tea.Cmd {
-	return func() tea.Msg {
-		return menuActionMsg{quitAll: true}
-	}
-}
-
 func (m *model) beginRename() (tea.Model, tea.Cmd) {
 	if s, ok := m.selectedSessionInfo(); ok {
 		m.mode = inputRename

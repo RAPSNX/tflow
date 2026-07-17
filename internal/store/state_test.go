@@ -80,6 +80,22 @@ func TestSaveAndLoadAppStateRoundTripsProjectSettings(t *testing.T) {
 	}
 }
 
+func TestNormalizeProjectListMatchesFormerCallSiteBehavior(t *testing.T) {
+	got := NormalizeProjectList([]string{
+		" Small ",
+		"default",
+		"Alpha/One",
+		"small",
+		"alpha.one",
+		"",
+		"alpha-one",
+	})
+	want := []string{"small", "default", "alpha-one"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("NormalizeProjectList = %#v, want %#v", got, want)
+	}
+}
+
 func TestEnsureStartupStateCreatesEmptyStoreAtStatePath(t *testing.T) {
 	stateHome := t.TempDir()
 	configHome := t.TempDir()

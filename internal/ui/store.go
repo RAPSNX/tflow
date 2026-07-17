@@ -29,3 +29,15 @@ func appStatePath() string {
 func normalizeProjectConfig(cfg projectConfig) projectConfig {
 	return store.NormalizeProjectConfig(cfg)
 }
+
+func normalizeProjectName(name string) string {
+	return store.NormalizeProjectName(name)
+}
+
+func normalizeProjectList(projects []string) []string {
+	return store.NormalizeProjectList(projects)
+}
+
+func containsString(values []string, want string) bool {
+	return store.ContainsString(values, want)
+}

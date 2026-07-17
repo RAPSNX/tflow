@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"tflow/internal/store"
 )
 
 func (m Manager) ListSessions() ([]Session, error) {
@@ -60,6 +62,7 @@ func (m Manager) CreateSession(name, cwd, command string) (Session, error) {
 	if _, err := m.runner()(args...); err != nil {
 		return Session{}, err
 	}
+	// This rename-window fallback string was captured against tmux 3.7b.
 	if _, err := m.runner()("rename-window", "-t", name+":1", name); err != nil && !strings.Contains(err.Error(), "can't find window") {
 		return Session{}, err
 	}
@@ -141,7 +144,7 @@ func (m Manager) SyncSessionProjects(sessionProjects map[string]string) error {
 		if name == "" {
 			continue
 		}
-		project = normalizeProjectName(project)
+		project = store.NormalizeProjectName(project)
 		if _, err := m.runner()("set-option", "-t", name, projectMarker, project); err != nil {
 			if isNoSession(err) || IsNoServer(err) {
 				continue

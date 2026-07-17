@@ -2,27 +2,27 @@
 
 ## Instance ID collision (P1)
 
-- [ ] Replace `time.Now().UnixNano()` in `newInstanceID` with a collision-resistant identifier (PID + random suffix, or crypto/rand).
-- [ ] Add a regression test that starts two instances within the same nanosecond tick and asserts they receive different instance IDs.
-- [ ] Add a regression test confirming `CleanupVolatileSessions` never kills a volatile session belonging to a different, still-running instance.
+- [x] Replace `time.Now().UnixNano()` in `newInstanceID` with a collision-resistant identifier (PID + random suffix, or crypto/rand).
+- [x] Add a regression test that starts two instances within the same nanosecond tick and asserts they receive different instance IDs.
+- [x] Add a regression test confirming `CleanupVolatileSessions` never kills a volatile session belonging to a different, still-running instance.
 
 ## Deduplicate normalization helpers
 
-- [ ] Pick one canonical `normalizeProjectName` implementation (in `store`) and remove the duplicates in `internal/tmux` and `internal/ui`.
-- [ ] Pick one canonical `normalizeProjectList` implementation; resolve the sort-order mismatch between `internal/tmux` (sorted) and `store`/`internal/ui` (insertion order) before merging.
-- [ ] Remove the duplicated `normalizeCWD`/`expandHomeDir` pair from `internal/tmux/util.go` in favor of `store`'s version, or extract both into a shared internal package.
-- [ ] Remove the duplicated `containsString` helper from `internal/ui` in favor of `store`'s version.
-- [ ] Add a test asserting the merged `normalizeProjectList` behaves identically for all former call sites.
+- [x] Pick one canonical `normalizeProjectName` implementation (in `store`) and remove the duplicates in `internal/tmux` and `internal/ui`.
+- [x] Pick one canonical `normalizeProjectList` implementation; resolve the sort-order mismatch between `internal/tmux` (sorted) and `store`/`internal/ui` (insertion order) before merging.
+- [x] Remove the duplicated `normalizeCWD`/`expandHomeDir` pair from `internal/tmux/util.go` in favor of `store`'s version, or extract both into a shared internal package.
+- [x] Remove the duplicated `containsString` helper from `internal/ui` in favor of `store`'s version.
+- [x] Add a test asserting the merged `normalizeProjectList` behaves identically for all former call sites.
 
 ## Style cleanup
 
-- [ ] Replace the hand-rolled O(n²) `slicesSort` in `internal/store/state.go` with `sort.Strings`, per `AGENTS.md`'s "use standard Go idioms".
-- [ ] Remove the unused variadic `...string` parameter from `newModel` and `buildModel`, and update call sites/tests to drop the stray empty-string arguments.
-- [ ] Add a short comment near `isNoSession`/`IsNoServer`/`"can't find window"` string-matching noting the tmux version these error strings were captured against.
+- [x] Replace the hand-rolled O(n²) `slicesSort` in `internal/store/state.go` with `sort.Strings`, per `AGENTS.md`'s "use standard Go idioms".
+- [x] Remove the unused variadic `...string` parameter from `newModel` and `buildModel`, and update call sites/tests to drop the stray empty-string arguments.
+- [x] Add a short comment near `isNoSession`/`IsNoServer`/`"can't find window"` string-matching noting the tmux version these error strings were captured against.
 
 ## Dead / unreachable behavior
 
-- [ ] Remove `quitAllCmd`/`menuActionMsg.quitAll` handling until implemented (overlaps with the still-open "Quit flow" section in `.codex/TASK.md`).
+- [x] Remove `quitAllCmd`/`menuActionMsg.quitAll` handling until implemented (overlaps with the still-open "Quit flow" section in `.codex/TASK.md`).
 
 # Alpha implementation checklist
 

@@ -30,7 +30,7 @@ func TestCreateSessionUsesCurrentDirectory(t *testing.T) {
 			}
 			return session{Name: name, Windows: 1}, nil
 		},
-	}, "", "").(model)
+	}, "").(model)
 	m.selectedProject = "small"
 	m.mode = inputCreateSession
 	m.input.SetValue("dev")
@@ -55,7 +55,7 @@ func TestCreateSessionUsesProjectDirectoryWhenConfigured(t *testing.T) {
 			gotCWD = cwd
 			return session{Name: name, Windows: 1}, nil
 		},
-	}, "", "").(model)
+	}, "").(model)
 	m.selectedProject = "small"
 	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/tmp/project-small"}}
 	m.mode = inputCreateSession
@@ -83,7 +83,7 @@ func TestCreateSessionUsesExpandedHomeDirectoryWhenConfigured(t *testing.T) {
 			gotCWD = cwd
 			return session{Name: name, Windows: 1}, nil
 		},
-	}, "", "").(model)
+	}, "").(model)
 	m.selectedProject = "small"
 	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "~/project-small"}}
 	m.mode = inputCreateSession
@@ -111,7 +111,7 @@ func TestCreateK9sSessionUsesClusterPath(t *testing.T) {
 			gotCommand = command
 			return session{Name: name, Windows: 1}, nil
 		},
-	}, "", "").(model)
+	}, "").(model)
 	m.selectedProject = "small"
 	m.projectConfigs = map[string]projectConfig{
 		"small": {Name: "small", Workdir: "/tmp/project-small", Cluster: clusterConfig{Path: "/tmp/kubeconfig"}},
@@ -143,7 +143,7 @@ func TestCreateK9sSessionUsesConnectionCommand(t *testing.T) {
 			gotCommand = command
 			return session{Name: name, Windows: 1}, nil
 		},
-	}, "", "").(model)
+	}, "").(model)
 	m.selectedProject = "small"
 	m.projectConfigs = map[string]projectConfig{
 		"small": {Name: "small", Cluster: clusterConfig{ConnectionCmd: "aws eks update-kubeconfig --name prod"}},
@@ -172,7 +172,7 @@ func TestCreateAgentSessionUsesConfiguredAgentBinary(t *testing.T) {
 			gotCommand = command
 			return session{Name: name, Windows: 1}, nil
 		},
-	}, "", "").(model)
+	}, "").(model)
 	m.selectedProject = "small"
 	m.projectConfigs = map[string]projectConfig{
 		"small": {Name: "small", AgentBinary: "aider"},
@@ -204,7 +204,7 @@ func TestCreateAgentSessionDefaultsToCodexBinary(t *testing.T) {
 			gotCommand = command
 			return session{Name: name, Windows: 1}, nil
 		},
-	}, "", "").(model)
+	}, "").(model)
 	m.selectedProject = "small"
 	m.mode = inputCreateSession
 	m.createSessionKind = sessionKindAgent
