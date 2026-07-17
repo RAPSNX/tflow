@@ -3,7 +3,9 @@ package ui
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -145,9 +147,14 @@ func Start() error {
 	if err != nil {
 		return err
 	}
+	return startWithManager(newSessionManager(), exe, cwd, newInstanceID())
+}
 
-	manager := newSessionManager()
-	sessionName, err := prepareStartup(manager, exe, cwd)
+func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string) error {
+	if err := os.Setenv(menuInstanceEnv, instanceID); err != nil {
+		return err
+	}
+	sessionName, err := prepareStartup(manager, binaryPath, cwd, instanceID)
 	if err != nil {
 		return err
 	}
@@ -159,7 +166,15 @@ func Start() error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	runErr := cmd.Run()
+	cleanupErr := manager.CleanupVolatileSessions(instanceID)
+	if runErr != nil {
+		if cleanupErr != nil {
+			return fmt.Errorf("attach session: %w; cleanup volatile sessions: %v", runErr, cleanupErr)
+		}
+		return runErr
+	}
+	return cleanupErr
 }
 
 func OpenMenu() error {
@@ -174,7 +189,7 @@ func OpenMenu() error {
 	return runMenuExitAction(newSessionManager(), finalModel)
 }
 
-func prepareStartup(manager tmuxController, binaryPath, cwd string) (string, error) {
+func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) (string, error) {
 	existing, err := manager.ListSessions()
 	if err != nil {
 		return "", err
@@ -183,7 +198,7 @@ func prepareStartup(manager tmuxController, binaryPath, cwd string) (string, err
 	if _, err := manager.CreateSession(name, cwd, ""); err != nil {
 		return "", err
 	}
-	if err := manager.SetSessionTemporary(name, true); err != nil {
+	if err := manager.SetSessionTemporary(name, true, instanceID); err != nil {
 		return "", err
 	}
 	if err := manager.EnsureControlMode(binaryPath); err != nil {
@@ -279,4 +294,8 @@ func unwrapMenuModel(value tea.Model) (model, bool) {
 	default:
 		return model{}, false
 	}
+}
+
+func newInstanceID() string {
+	return "tflow-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 }

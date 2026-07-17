@@ -51,16 +51,17 @@
 - [x] Start with one volatile tmux session and attach the user to it.
 - [x] Keep the active terminal as a real tmux terminal.
 - [x] Keep persistent sessions as ordinary tmux sessions grouped by metadata.
-- [ ] Track volatile sessions per `tflow` instance.
-- [ ] Remove only the current instance's volatile sessions on normal exit or confirmed `Ctrl+Q`.
+- [x] Track volatile sessions per `tflow` instance.
+- [x] Remove only the current instance's volatile sessions on normal exit or confirmed `Ctrl+Q`.
+- [x] Propagate the current `tflow` instance id through popup and menu commands so volatile-session cleanup targets the correct tmux sessions.
 
 ## Sidebar popup and top badges
 
-- [ ] Toggle the sidebar as a real tmux popup with `Ctrl+F`.
-- [ ] Show current project and session in the top UI.
-- [ ] Keep the project badge empty in volatile mode.
-- [ ] Render the sidebar with a `TFLOW` header, a flat session list, and a command/status area.
-- [ ] Close the sidebar after switching sessions.
+- [x] Toggle the sidebar as a real tmux popup with `Ctrl+F`.
+- [x] Show current project and session in the top UI.
+- [x] Keep the project badge empty in volatile mode.
+- [x] Render the sidebar with a `TFLOW` header, a flat session list, and a command/status area.
+- [x] Close the sidebar after switching sessions.
 
 ## Session list navigation
 

@@ -11,11 +11,13 @@ const (
 	menuPopupEnvPrefix = "TFLOW_MENU_POPUP_"
 	projectMarker      = "@tflow-project"
 	tempMarker         = "@tflow-temp"
+	instanceMarker     = "@tflow-instance"
 	menuWidth          = "36"
 	menuHeight         = "100%"
 	menuToggleKey      = "C-f"
 	CurrentSessionEnv  = "TFLOW_CURRENT_SESSION"
 	CurrentClientEnv   = "TFLOW_CURRENT_CLIENT"
+	CurrentInstanceEnv = "TFLOW_INSTANCE_ID"
 )
 
 type Session struct {
@@ -23,12 +25,13 @@ type Session struct {
 	Windows   int
 	Attached  bool
 	Temporary bool
+	Instance  string
 }
 
 type Controller interface {
 	ListSessions() ([]Session, error)
 	CreateSession(name, cwd, command string) (Session, error)
-	SetSessionTemporary(name string, temporary bool) error
+	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	AttachCommand(name string) (*exec.Cmd, error)
 	KillSession(name string) error
 	RenameSession(oldName, newName string) error
@@ -38,6 +41,7 @@ type Controller interface {
 	ToggleMenu(binaryPath string) error
 	CloseMenu() error
 	QuitAll() error
+	CleanupVolatileSessions(instanceID string) error
 }
 
 type Runner func(args ...string) (string, error)

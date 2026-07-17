@@ -141,6 +141,23 @@ func TestRenderHeaderUsesLiveSessionProject(t *testing.T) {
 	}
 }
 
+func TestRenderHeaderLeavesProjectBadgeEmptyForVolatileSession(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.currentSession = "scratch-temp"
+	m.selectedProject = "small"
+	m.sessions = []session{{Name: "scratch-temp", Temporary: true}}
+	m.sessionProjects = map[string]string{"scratch-temp": "small"}
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHeader(40), "")
+	if strings.Contains(plain, "project small") {
+		t.Fatalf("renderHeader used project badge for volatile session in %q", plain)
+	}
+	if !strings.Contains(plain, "session scratch-temp") {
+		t.Fatalf("renderHeader missing session badge in %q", plain)
+	}
+}
+
 func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 	m := NewMenu().(model)
 	m.width = 48
@@ -168,6 +185,25 @@ func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 	for _, unwanted := range []string{"Projects", "small", "[-]"} {
 		if strings.Contains(plain, unwanted) {
 			t.Fatalf("renderSessionPanel unexpectedly contained %q in %q", unwanted, plain)
+		}
+	}
+}
+
+func TestRenderMenuIncludesBrandSessionPanelAndStatusArea(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.height = 16
+	m.projects = []string{defaultProjectName}
+	m.sessions = []session{{Name: "dev"}}
+	m.sessionProjects = map[string]string{"dev": defaultProjectName}
+	m.selectedProject = defaultProjectName
+	m.selectedSession = "dev"
+	m.status = "Type a project prefix to switch."
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderMenu(), "")
+	for _, want := range []string{"TFLOW", "Sessions", "Type a project prefix to switch."} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("renderMenu missing %q in %q", want, plain)
 		}
 	}
 }

@@ -56,6 +56,27 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 	}
 }
 
+func TestEnsureControlModeBindsToggleKeyWithInstanceEnv(t *testing.T) {
+	t.Setenv(CurrentInstanceEnv, "instance-1")
+
+	var got []string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			if len(args) >= 4 && args[0] == "bind-key" {
+				got = append([]string(nil), args...)
+			}
+			return "", nil
+		},
+	}
+
+	if err := manager.EnsureControlMode("/tmp/tflow", Palette{}); err != nil {
+		t.Fatalf("EnsureControlMode returned error: %v", err)
+	}
+	if len(got) < 5 || !strings.Contains(got[4], CurrentInstanceEnv+"='instance-1'") {
+		t.Fatalf("bind args = %#v, want instance env propagation", got)
+	}
+}
+
 func TestToggleMenuClosesExistingPopup(t *testing.T) {
 	var calls [][]string
 	manager := Manager{
@@ -103,6 +124,7 @@ func TestToggleMenuClosesExistingPopup(t *testing.T) {
 }
 
 func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
+	t.Setenv(CurrentInstanceEnv, "instance-1")
 	var popupArgs []string
 	var calls [][]string
 	manager := Manager{
@@ -149,7 +171,7 @@ func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
 	}
 
 	got := strings.Join(popupArgs, " ")
-	for _, want := range []string{"display-popup", "-c @2", "-E", "-w " + menuWidth, "-h " + menuHeight, "-x 0", "-y C", "-e " + CurrentSessionEnv + "=otter-temp", "-e " + CurrentClientEnv + "=@2"} {
+	for _, want := range []string{"display-popup", "-c @2", "-E", "-w " + menuWidth, "-h " + menuHeight, "-x 0", "-y C", "-e " + CurrentSessionEnv + "=otter-temp", "-e " + CurrentClientEnv + "=@2", "-e " + CurrentInstanceEnv + "=instance-1"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("display-popup command = %q, want %q", got, want)
 		}
@@ -207,13 +229,22 @@ func TestToggleMenuUnmarksPopupIfOpenFails(t *testing.T) {
 }
 
 func TestQuitAllDetachesExplicitClientWhenAvailable(t *testing.T) {
+	t.Setenv(CurrentSessionEnv, "otter-temp")
 	t.Setenv(CurrentClientEnv, "@2")
+	t.Setenv(CurrentInstanceEnv, "instance-1")
 
-	var got []string
+	var calls [][]string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			got = append([]string(nil), args...)
-			return "", nil
+			calls = append(calls, append([]string(nil), args...))
+			switch args[0] {
+			case "list-sessions":
+				return "otter-temp\t1\t1\t1\tinstance-1\nfox-temp\t1\t0\t1\tinstance-1\n", nil
+			case "run-shell", "kill-session":
+				return "", nil
+			default:
+				return "", nil
+			}
 		},
 	}
 
@@ -221,6 +252,18 @@ func TestQuitAllDetachesExplicitClientWhenAvailable(t *testing.T) {
 		t.Fatalf("QuitAll returned error: %v", err)
 	}
 
+	foundKill := false
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join([]string{"kill-session", "-t", "fox-temp"}, "\x00") {
+			foundKill = true
+			break
+		}
+	}
+	if !foundKill {
+		t.Fatalf("calls = %#v, want detached volatile session cleanup", calls)
+	}
+
+	got := calls[len(calls)-1]
 	if len(got) != 2 || got[0] != "run-shell" {
 		t.Fatalf("run command = %#v, want run-shell", got)
 	}

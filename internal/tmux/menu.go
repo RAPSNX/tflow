@@ -11,11 +11,15 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		return fmt.Errorf("tflow binary path is empty")
 	}
 
-	runShell := fmt.Sprintf("%s=%s %s=%s exec %s toggle-menu",
-		CurrentSessionEnv, ShellQuote("#{session_name}"),
-		CurrentClientEnv, ShellQuote("#{client_name}"),
-		ShellQuote(binaryPath),
-	)
+	parts := []string{
+		fmt.Sprintf("%s=%s", CurrentSessionEnv, ShellQuote("#{session_name}")),
+		fmt.Sprintf("%s=%s", CurrentClientEnv, ShellQuote("#{client_name}")),
+	}
+	if instanceID := strings.TrimSpace(os.Getenv(CurrentInstanceEnv)); instanceID != "" {
+		parts = append(parts, fmt.Sprintf("%s=%s", CurrentInstanceEnv, ShellQuote(instanceID)))
+	}
+	parts = append(parts, "exec "+ShellQuote(binaryPath)+" toggle-menu")
+	runShell := strings.Join(parts, " ")
 	commands := [][]string{
 		{"set-option", "-g", "status", "on"},
 		{"set-option", "-g", "status-position", "top"},
@@ -68,7 +72,7 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 		return err
 	}
 
-	_, err = m.runner()(
+	args := []string{
 		"display-popup",
 		"-c", currentClient,
 		"-E",
@@ -78,8 +82,10 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 		"-y", "C",
 		"-e", fmt.Sprintf("%s=%s", CurrentSessionEnv, currentSession),
 		"-e", fmt.Sprintf("%s=%s", CurrentClientEnv, currentClient),
-		popupShellCommand(binaryPath, currentClient),
-	)
+	}
+	args = append(args, popupInstanceEnvArgs()...)
+	args = append(args, popupShellCommand(binaryPath, currentClient))
+	_, err = m.runner()(args...)
 	if err != nil {
 		_ = m.unmarkMenuPopup(currentClient)
 		return err
@@ -99,8 +105,15 @@ func (m Manager) CloseMenu() error {
 }
 
 func (m Manager) QuitAll() error {
+	currentSession, err := m.contextValue(CurrentSessionEnv, "#{session_name}")
+	if err != nil {
+		return err
+	}
 	clientID, err := m.contextValue(CurrentClientEnv, "#{client_name}")
 	if err != nil {
+		return err
+	}
+	if err := m.cleanupVolatileSessions(os.Getenv(CurrentInstanceEnv), currentSession); err != nil {
 		return err
 	}
 	script := []string{}
@@ -190,6 +203,14 @@ func popupShellCommand(binaryPath, clientID string) string {
 		ShellQuote(binaryPath) + " menu",
 	}, "; ")
 	return "sh -lc " + ShellQuote(script)
+}
+
+func popupInstanceEnvArgs() []string {
+	instanceID := strings.TrimSpace(os.Getenv(CurrentInstanceEnv))
+	if instanceID == "" {
+		return nil
+	}
+	return []string{"-e", fmt.Sprintf("%s=%s", CurrentInstanceEnv, instanceID)}
 }
 
 func popupUnsetScript(clientID string) string {
