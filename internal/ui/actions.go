@@ -20,11 +20,7 @@ func (m model) switchSelectedSession() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, func() tea.Msg {
-		err := m.tmux.SwitchClient(s.Name)
-		if err == nil {
-			err = m.tmux.CloseMenu()
-		}
-		return menuActionMsg{err: err}
+		return menuActionMsg{err: m.tmux.SwitchClient(s.Name)}
 	}
 }
 

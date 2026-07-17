@@ -40,7 +40,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"set-option", "-g", "window-status-current-format", ""},
 		{"set-option", "-g", "default-shell", "/bin/zsh"},
 		{"set-option", "-g", "default-command", "exec '/bin/zsh' -l"},
-		{"bind-key", "-n", "C-f", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_id}' exec '/tmp/tflow' toggle-menu"},
+		{"bind-key", "-n", "C-f", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
 	}
 	for _, want := range wants {
 		found := false
@@ -66,7 +66,7 @@ func TestToggleMenuClosesExistingPopup(t *testing.T) {
 				switch args[2] {
 				case "#{session_name}":
 					return "otter-temp", nil
-				case "#{client_id}":
+				case "#{client_name}":
 					return "@2", nil
 				default:
 					t.Fatalf("unexpected display-message format: %v", args)
@@ -113,7 +113,7 @@ func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
 				switch args[2] {
 				case "#{session_name}":
 					return "otter-temp", nil
-				case "#{client_id}":
+				case "#{client_name}":
 					return "@2", nil
 				default:
 					t.Fatalf("unexpected display-message format: %v", args)
@@ -174,7 +174,7 @@ func TestToggleMenuUnmarksPopupIfOpenFails(t *testing.T) {
 				switch args[2] {
 				case "#{session_name}":
 					return "otter-temp", nil
-				case "#{client_id}":
+				case "#{client_name}":
 					return "@2", nil
 				default:
 					return "", fmt.Errorf("unexpected display-message format: %v", args)
@@ -244,7 +244,7 @@ func TestToggleMenuOpensClosesThenOpensAgain(t *testing.T) {
 				switch args[2] {
 				case "#{session_name}":
 					return "otter-temp", nil
-				case "#{client_id}":
+				case "#{client_name}":
 					return "@2", nil
 				default:
 					return "", fmt.Errorf("unexpected display-message format: %v", args)
@@ -332,7 +332,7 @@ func TestToggleMenuClearsStalePopupMarkerOnCloseError(t *testing.T) {
 				switch args[2] {
 				case "#{session_name}":
 					return "otter-temp", nil
-				case "#{client_id}":
+				case "#{client_name}":
 					return "@2", nil
 				default:
 					return "", fmt.Errorf("unexpected display-message format: %v", args)

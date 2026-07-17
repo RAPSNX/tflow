@@ -75,14 +75,9 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 
 func TestMenuEnterSwitchesSessionAndClosesMenu(t *testing.T) {
 	var switched []string
-	closed := 0
 	m := newModel(fakeTmuxController{
 		switchClient: func(name string) error {
 			switched = append(switched, name)
-			return nil
-		},
-		closeMenu: func() error {
-			closed++
 			return nil
 		},
 	}, "dev").(model)
@@ -102,9 +97,6 @@ func TestMenuEnterSwitchesSessionAndClosesMenu(t *testing.T) {
 	}
 	if got, want := fmt.Sprint(switched), fmt.Sprint([]string{"dev"}); got != want {
 		t.Fatalf("switches = %s, want %s", got, want)
-	}
-	if closed != 1 {
-		t.Fatalf("closed = %d, want 1", closed)
 	}
 }
 
@@ -129,14 +121,9 @@ func TestPStartsProjectSwitchMode(t *testing.T) {
 
 func TestProjectSwitchUsesUniquePrefixAndClosesMenu(t *testing.T) {
 	var switched []string
-	closed := 0
 	m := newModel(fakeTmuxController{
 		switchClient: func(name string) error {
 			switched = append(switched, name)
-			return nil
-		},
-		closeMenu: func() error {
-			closed++
 			return nil
 		},
 	}, "dev").(model)
@@ -170,9 +157,6 @@ func TestProjectSwitchUsesUniquePrefixAndClosesMenu(t *testing.T) {
 	}
 	if gotCalls, want := fmt.Sprint(switched), fmt.Sprint([]string{"keep"}); gotCalls != want {
 		t.Fatalf("switches = %s, want %s", gotCalls, want)
-	}
-	if closed != 1 {
-		t.Fatalf("closed = %d, want 1", closed)
 	}
 }
 

@@ -13,7 +13,7 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 
 	runShell := fmt.Sprintf("%s=%s %s=%s exec %s toggle-menu",
 		CurrentSessionEnv, ShellQuote("#{session_name}"),
-		CurrentClientEnv, ShellQuote("#{client_id}"),
+		CurrentClientEnv, ShellQuote("#{client_name}"),
 		ShellQuote(binaryPath),
 	)
 	commands := [][]string{
@@ -52,7 +52,7 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 	if err != nil {
 		return err
 	}
-	currentClient, err := m.contextValue(CurrentClientEnv, "#{client_id}")
+	currentClient, err := m.contextValue(CurrentClientEnv, "#{client_name}")
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 }
 
 func (m Manager) CloseMenu() error {
-	clientID, err := m.contextValue(CurrentClientEnv, "#{client_id}")
+	clientID, err := m.contextValue(CurrentClientEnv, "#{client_name}")
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func (m Manager) CloseMenu() error {
 }
 
 func (m Manager) QuitAll() error {
-	clientID, err := m.contextValue(CurrentClientEnv, "#{client_id}")
+	clientID, err := m.contextValue(CurrentClientEnv, "#{client_name}")
 	if err != nil {
 		return err
 	}
