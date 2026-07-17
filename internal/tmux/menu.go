@@ -74,7 +74,7 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 		"-E",
 		"-w", menuWidth,
 		"-h", menuHeight,
-		"-x", "#{popup_pane_left}",
+		"-x", "0",
 		"-y", "C",
 		"-e", fmt.Sprintf("%s=%s", CurrentSessionEnv, currentSession),
 		"-e", fmt.Sprintf("%s=%s", CurrentClientEnv, currentClient),
@@ -106,9 +106,9 @@ func (m Manager) QuitAll() error {
 	script := []string{}
 	if strings.TrimSpace(clientID) != "" {
 		script = append(script, popupCloseScript(clientID))
-		script = append(script, "tmux detach-client -t "+ShellQuote(clientID)+" >/dev/null 2>&1")
+		script = append(script, shellTmuxCommand("detach-client", "-t", clientID)+" >/dev/null 2>&1")
 	} else {
-		script = append(script, "tmux -L "+ShellQuote(socketName)+" detach-client >/dev/null 2>&1")
+		script = append(script, shellTmuxCommand("detach-client")+" >/dev/null 2>&1")
 	}
 	_, runErr := m.runner()("run-shell", strings.Join(script, "; "))
 	return runErr
@@ -193,11 +193,11 @@ func popupShellCommand(binaryPath, clientID string) string {
 }
 
 func popupUnsetScript(clientID string) string {
-	return "tmux set-environment -gu " + popupEnvKey(clientID) + " >/dev/null 2>&1"
+	return shellTmuxCommand("set-environment", "-gu", popupEnvKey(clientID)) + " >/dev/null 2>&1"
 }
 
 func popupCloseScript(clientID string) string {
-	return "tmux display-popup -C -c " + ShellQuote(clientID) + " >/dev/null 2>&1; " + popupUnsetScript(clientID)
+	return shellTmuxCommand("display-popup", "-C", "-c", clientID) + " >/dev/null 2>&1; " + popupUnsetScript(clientID)
 }
 
 func popupEnvKey(clientID string) string {
@@ -216,6 +216,15 @@ func popupEnvKey(clientID string) string {
 		}
 	}
 	return key.String()
+}
+
+func shellTmuxCommand(args ...string) string {
+	quoted := make([]string, 0, len(args)+3)
+	quoted = append(quoted, "tmux", "-L", ShellQuote(socketName))
+	for _, arg := range args {
+		quoted = append(quoted, ShellQuote(arg))
+	}
+	return strings.Join(quoted, " ")
 }
 
 func isBenignPopupCloseError(err error) bool {

@@ -149,12 +149,12 @@ func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
 	}
 
 	got := strings.Join(popupArgs, " ")
-	for _, want := range []string{"display-popup", "-c @2", "-E", "-w " + menuWidth, "-h " + menuHeight, "-x #{popup_pane_left}", "-y C", "-e " + CurrentSessionEnv + "=otter-temp", "-e " + CurrentClientEnv + "=@2"} {
+	for _, want := range []string{"display-popup", "-c @2", "-E", "-w " + menuWidth, "-h " + menuHeight, "-x 0", "-y C", "-e " + CurrentSessionEnv + "=otter-temp", "-e " + CurrentClientEnv + "=@2"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("display-popup command = %q, want %q", got, want)
 		}
 	}
-	for _, want := range []string{"trap cleanup EXIT HUP INT TERM", "set-environment -gu " + popupEnvKey("@2"), "/tmp/tflow", " menu"} {
+	for _, want := range []string{"trap cleanup EXIT HUP INT TERM", "tmux -L ", "set-environment", popupEnvKey("@2"), "/tmp/tflow", " menu"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("display-popup command = %q, want popup script to contain %q", got, want)
 		}
@@ -224,7 +224,11 @@ func TestQuitAllDetachesExplicitClientWhenAvailable(t *testing.T) {
 	if len(got) != 2 || got[0] != "run-shell" {
 		t.Fatalf("run command = %#v, want run-shell", got)
 	}
-	for _, want := range []string{"display-popup -C -c '@2'", "set-environment -gu " + popupEnvKey("@2"), "detach-client -t '@2'"} {
+	for _, want := range []string{
+		"tmux -L 'tflow' 'display-popup' '-C' '-c' '@2'",
+		"tmux -L 'tflow' 'set-environment' '-gu' '" + popupEnvKey("@2") + "'",
+		"tmux -L 'tflow' 'detach-client' '-t' '@2'",
+	} {
 		if !strings.Contains(got[1], want) {
 			t.Fatalf("run-shell script = %q, want %q", got[1], want)
 		}
