@@ -73,19 +73,19 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 	}
 }
 
-func TestMenuEnterSwitchesSessionAndClosesPane(t *testing.T) {
+func TestMenuEnterSwitchesSessionAndClosesMenu(t *testing.T) {
 	var switched []string
-	var closed []string
+	closed := 0
 	m := newModel(fakeTmuxController{
 		switchClient: func(name string) error {
 			switched = append(switched, name)
 			return nil
 		},
-		closePane: func(paneID string) error {
-			closed = append(closed, paneID)
+		closeMenu: func() error {
+			closed++
 			return nil
 		},
-	}, "dev", "%3").(model)
+	}, "dev").(model)
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}}
 	m.sessionProjects = map[string]string{"dev": defaultProjectName}
@@ -103,8 +103,8 @@ func TestMenuEnterSwitchesSessionAndClosesPane(t *testing.T) {
 	if got, want := fmt.Sprint(switched), fmt.Sprint([]string{"dev"}); got != want {
 		t.Fatalf("switches = %s, want %s", got, want)
 	}
-	if got, want := fmt.Sprint(closed), fmt.Sprint([]string{"%3"}); got != want {
-		t.Fatalf("closed = %s, want %s", got, want)
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1", closed)
 	}
 }
 
@@ -127,19 +127,19 @@ func TestPStartsProjectSwitchMode(t *testing.T) {
 	}
 }
 
-func TestProjectSwitchUsesUniquePrefixAndClosesPane(t *testing.T) {
+func TestProjectSwitchUsesUniquePrefixAndClosesMenu(t *testing.T) {
 	var switched []string
-	var closed []string
+	closed := 0
 	m := newModel(fakeTmuxController{
 		switchClient: func(name string) error {
 			switched = append(switched, name)
 			return nil
 		},
-		closePane: func(paneID string) error {
-			closed = append(closed, paneID)
+		closeMenu: func() error {
+			closed++
 			return nil
 		},
-	}, "dev", "%3").(model)
+	}, "dev").(model)
 	m.projects = []string{"small", "storage"}
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}, {Name: "keep"}}
 	m.sessionProjects = map[string]string{"dev": "small", "api": "small", "keep": "storage"}
@@ -171,8 +171,8 @@ func TestProjectSwitchUsesUniquePrefixAndClosesPane(t *testing.T) {
 	if gotCalls, want := fmt.Sprint(switched), fmt.Sprint([]string{"keep"}); gotCalls != want {
 		t.Fatalf("switches = %s, want %s", gotCalls, want)
 	}
-	if gotCalls, want := fmt.Sprint(closed), fmt.Sprint([]string{"%3"}); gotCalls != want {
-		t.Fatalf("closed = %s, want %s", gotCalls, want)
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1", closed)
 	}
 }
 
@@ -285,14 +285,14 @@ func TestJFromLastSessionWrapsToFirstSession(t *testing.T) {
 	}
 }
 
-func TestCtrlCClosesMenuPane(t *testing.T) {
-	closed := ""
+func TestCtrlCClosesMenu(t *testing.T) {
+	closed := 0
 	m := newModel(fakeTmuxController{
-		closePane: func(paneID string) error {
-			closed = paneID
+		closeMenu: func() error {
+			closed++
 			return nil
 		},
-	}, "", "%3").(model)
+	}, "").(model)
 
 	_, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyCtrlC})
 	if cmd == nil {
@@ -302,8 +302,55 @@ func TestCtrlCClosesMenuPane(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("close returned error: %v", msg.err)
 	}
-	if closed != "%3" {
-		t.Fatalf("closed = %q, want %%3", closed)
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1", closed)
+	}
+}
+
+func TestCtrlFClosesMenuFromNormalMode(t *testing.T) {
+	closed := 0
+	m := newModel(fakeTmuxController{
+		closeMenu: func() error {
+			closed++
+			return nil
+		},
+	}, "").(model)
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
+	if cmd == nil {
+		t.Fatal("expected close command")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("close returned error: %v", msg.err)
+	}
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1", closed)
+	}
+}
+
+func TestCtrlFClosesMenuFromModalMode(t *testing.T) {
+	closed := 0
+	m := newModel(fakeTmuxController{
+		closeMenu: func() error {
+			closed++
+			return nil
+		},
+	}, "").(model)
+	m.mode = inputCommand
+	m.input.Prompt = ":"
+	m.input.SetValue("qa!")
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
+	if cmd == nil {
+		t.Fatal("expected close command")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("close returned error: %v", msg.err)
+	}
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1", closed)
 	}
 }
 
@@ -419,13 +466,13 @@ func TestNewPrefixUnknownKeyShowsHint(t *testing.T) {
 }
 
 func TestCommandModeQAQuitsAll(t *testing.T) {
-	quitAllPane := ""
+	quitAllCalls := 0
 	m := newModel(fakeTmuxController{
-		quitAll: func(paneID string) error {
-			quitAllPane = paneID
+		quitAll: func() error {
+			quitAllCalls++
 			return nil
 		},
-	}, "", "%7").(model)
+	}, "").(model)
 	m.mode = inputCommand
 	m.input.Prompt = ":"
 	m.input.SetValue("qa!")
@@ -438,8 +485,8 @@ func TestCommandModeQAQuitsAll(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("quit all returned error: %v", msg.err)
 	}
-	if quitAllPane != "%7" {
-		t.Fatalf("quitAllPane = %q, want %%7", quitAllPane)
+	if quitAllCalls != 1 {
+		t.Fatalf("quitAllCalls = %d, want 1", quitAllCalls)
 	}
 }
 

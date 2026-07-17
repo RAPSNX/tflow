@@ -13,7 +13,7 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 
 	runShell := fmt.Sprintf("%s=%s %s=%s exec %s toggle-menu",
 		CurrentSessionEnv, ShellQuote("#{session_name}"),
-		CurrentClientEnv, ShellQuote("#{client_name}"),
+		CurrentClientEnv, ShellQuote("#{client_id}"),
 		ShellQuote(binaryPath),
 	)
 	commands := [][]string{
@@ -52,7 +52,7 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 	if err != nil {
 		return err
 	}
-	currentClient, err := m.contextValue(CurrentClientEnv, "#{client_name}")
+	currentClient, err := m.contextValue(CurrentClientEnv, "#{client_id}")
 	if err != nil {
 		return err
 	}
@@ -87,30 +87,31 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 	return nil
 }
 
-func (m Manager) ClosePane(paneID string) error {
-	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
-		return m.closeMenuPopup(clientID)
+func (m Manager) CloseMenu() error {
+	clientID, err := m.contextValue(CurrentClientEnv, "#{client_id}")
+	if err != nil {
+		return err
 	}
-	if strings.TrimSpace(paneID) == "" {
+	if strings.TrimSpace(clientID) == "" {
 		return nil
 	}
-	_, err := m.runner()("kill-pane", "-t", paneID)
-	return err
+	return m.closeMenuPopup(clientID)
 }
 
-func (m Manager) QuitAll(paneID string) error {
+func (m Manager) QuitAll() error {
+	clientID, err := m.contextValue(CurrentClientEnv, "#{client_id}")
+	if err != nil {
+		return err
+	}
 	script := []string{}
-	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
+	if strings.TrimSpace(clientID) != "" {
 		script = append(script, popupCloseScript(clientID))
 		script = append(script, "tmux detach-client -t "+ShellQuote(clientID)+" >/dev/null 2>&1")
 	} else {
-		if trimmed := strings.TrimSpace(paneID); trimmed != "" {
-			script = append(script, "tmux -L "+ShellQuote(socketName)+" kill-pane -t "+ShellQuote(trimmed)+" >/dev/null 2>&1")
-		}
 		script = append(script, "tmux -L "+ShellQuote(socketName)+" detach-client >/dev/null 2>&1")
 	}
-	_, err := m.runner()("run-shell", strings.Join(script, "; "))
-	return err
+	_, runErr := m.runner()("run-shell", strings.Join(script, "; "))
+	return runErr
 }
 
 func (m Manager) currentValue(format string) (string, error) {
@@ -168,7 +169,7 @@ func (m Manager) closeMenuPopup(clientID string) error {
 	_, closeErr := m.runner()("display-popup", "-C", "-c", clientID)
 	unmarkErr := m.unmarkMenuPopup(clientID)
 	if closeErr != nil {
-		if isMissingPopup(closeErr) {
+		if isBenignPopupCloseError(closeErr) {
 			return unmarkErr
 		}
 		if unmarkErr != nil {
@@ -214,10 +215,12 @@ func popupEnvKey(clientID string) string {
 	return key.String()
 }
 
-func isMissingPopup(err error) bool {
+func isBenignPopupCloseError(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := strings.TrimSpace(err.Error())
-	return msg == "exit status 1" || strings.Contains(msg, "no popup")
+	return msg == "exit status 1" ||
+		strings.Contains(msg, "no popup") ||
+		strings.Contains(msg, "can't find client")
 }

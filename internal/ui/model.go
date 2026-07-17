@@ -97,7 +97,6 @@ type model struct {
 	selectedProject string
 	selectedSession string
 	currentSession  string
-	paneID          string
 
 	input               textinput.Model
 	renameTarget        renameTarget
@@ -129,7 +128,7 @@ const (
 )
 
 func NewMenu() tea.Model {
-	return newModel(newSessionManager(), os.Getenv(menuCurrentEnv), os.Getenv("TMUX_PANE"))
+	return newModel(newSessionManager(), os.Getenv(menuCurrentEnv))
 }
 
 func Start() error {
@@ -156,7 +155,7 @@ func Start() error {
 }
 
 func OpenMenu() error {
-	menu, err := buildModel(newSessionManager(), os.Getenv(menuCurrentEnv), os.Getenv("TMUX_PANE"))
+	menu, err := buildModel(newSessionManager(), os.Getenv(menuCurrentEnv))
 	if err != nil {
 		return err
 	}
@@ -195,8 +194,8 @@ func defaultSessionDir() string {
 	return "."
 }
 
-func newModel(manager tmuxController, current, paneID string) tea.Model {
-	menu, err := buildModel(manager, current, paneID)
+func newModel(manager tmuxController, current string, _ ...string) tea.Model {
+	menu, err := buildModel(manager, current)
 	if err != nil {
 		menu.err = err
 		menu.status = err.Error()
@@ -204,7 +203,7 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 	return menu
 }
 
-func buildModel(manager tmuxController, current, paneID string) (model, error) {
+func buildModel(manager tmuxController, current string, _ ...string) (model, error) {
 	cwd, _ := os.Getwd()
 
 	input := textinput.New()
@@ -232,7 +231,6 @@ func buildModel(manager tmuxController, current, paneID string) (model, error) {
 		projectConfigs:  projectConfigs,
 		selectedProject: "",
 		currentSession:  current,
-		paneID:          paneID,
 		input:           input,
 		cwd:             cwd,
 		statePath:       statePath,

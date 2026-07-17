@@ -36,8 +36,8 @@ type Controller interface {
 	EnsureControlMode(binaryPath string, palette Palette) error
 	SyncSessionProjects(sessionProjects map[string]string) error
 	ToggleMenu(binaryPath string) error
-	ClosePane(paneID string) error
-	QuitAll(paneID string) error
+	CloseMenu() error
+	QuitAll() error
 }
 
 type Runner func(args ...string) (string, error)

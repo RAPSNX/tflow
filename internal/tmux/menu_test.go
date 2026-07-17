@@ -40,7 +40,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"set-option", "-g", "window-status-current-format", ""},
 		{"set-option", "-g", "default-shell", "/bin/zsh"},
 		{"set-option", "-g", "default-command", "exec '/bin/zsh' -l"},
-		{"bind-key", "-n", "C-f", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
+		{"bind-key", "-n", "C-f", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_id}' exec '/tmp/tflow' toggle-menu"},
 	}
 	for _, want := range wants {
 		found := false
@@ -66,7 +66,7 @@ func TestToggleMenuClosesExistingPopup(t *testing.T) {
 				switch args[2] {
 				case "#{session_name}":
 					return "otter-temp", nil
-				case "#{client_name}":
+				case "#{client_id}":
 					return "@2", nil
 				default:
 					t.Fatalf("unexpected display-message format: %v", args)
@@ -113,7 +113,7 @@ func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
 				switch args[2] {
 				case "#{session_name}":
 					return "otter-temp", nil
-				case "#{client_name}":
+				case "#{client_id}":
 					return "@2", nil
 				default:
 					t.Fatalf("unexpected display-message format: %v", args)
@@ -174,7 +174,7 @@ func TestToggleMenuUnmarksPopupIfOpenFails(t *testing.T) {
 				switch args[2] {
 				case "#{session_name}":
 					return "otter-temp", nil
-				case "#{client_name}":
+				case "#{client_id}":
 					return "@2", nil
 				default:
 					return "", fmt.Errorf("unexpected display-message format: %v", args)
@@ -217,7 +217,7 @@ func TestQuitAllDetachesExplicitClientWhenAvailable(t *testing.T) {
 		},
 	}
 
-	if err := manager.QuitAll("%7"); err != nil {
+	if err := manager.QuitAll(); err != nil {
 		t.Fatalf("QuitAll returned error: %v", err)
 	}
 
@@ -231,6 +231,61 @@ func TestQuitAllDetachesExplicitClientWhenAvailable(t *testing.T) {
 	}
 	if strings.Contains(got[1], "kill-pane") {
 		t.Fatalf("run-shell script = %q, should not kill the active pane when closing a popup", got[1])
+	}
+}
+
+func TestToggleMenuOpensClosesThenOpensAgain(t *testing.T) {
+	popupVisible := false
+	popupOpenCount := 0
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "display-message":
+				switch args[2] {
+				case "#{session_name}":
+					return "otter-temp", nil
+				case "#{client_id}":
+					return "@2", nil
+				default:
+					return "", fmt.Errorf("unexpected display-message format: %v", args)
+				}
+			case "show-environment":
+				if popupVisible {
+					return popupEnvKey("@2") + "=1\n", nil
+				}
+				return "", nil
+			case "set-environment":
+				if len(args) >= 4 && args[1] == "-gh" && args[2] == popupEnvKey("@2") {
+					popupVisible = true
+				}
+				if len(args) >= 3 && args[1] == "-gu" && args[2] == popupEnvKey("@2") {
+					popupVisible = false
+				}
+				return "", nil
+			case "display-popup":
+				if len(args) >= 2 && args[1] == "-C" {
+					popupVisible = false
+					return "", nil
+				}
+				popupOpenCount++
+				return "", nil
+			default:
+				return "", fmt.Errorf("unexpected command: %v", args)
+			}
+		},
+	}
+
+	for _, label := range []string{"open", "close", "reopen"} {
+		if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
+			t.Fatalf("%s toggle returned error: %v", label, err)
+		}
+	}
+
+	if popupOpenCount != 2 {
+		t.Fatalf("popupOpenCount = %d, want 2", popupOpenCount)
+	}
+	if !popupVisible {
+		t.Fatal("popupVisible = false, want true after reopen")
 	}
 }
 
@@ -277,7 +332,7 @@ func TestToggleMenuClearsStalePopupMarkerOnCloseError(t *testing.T) {
 				switch args[2] {
 				case "#{session_name}":
 					return "otter-temp", nil
-				case "#{client_name}":
+				case "#{client_id}":
 					return "@2", nil
 				default:
 					return "", fmt.Errorf("unexpected display-message format: %v", args)
