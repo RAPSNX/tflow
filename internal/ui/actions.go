@@ -20,7 +20,7 @@ func (m model) switchSelectedSession() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, func() tea.Msg {
-		return menuActionMsg{err: m.tmux.SwitchClient(s.Name)}
+		return menuActionMsg{switchSession: s.Name}
 	}
 }
 
@@ -130,13 +130,13 @@ func (m model) confirmDelete() (tea.Model, tea.Cmd) {
 
 func (m model) closeMenuCmd() tea.Cmd {
 	return func() tea.Msg {
-		return menuActionMsg{err: m.tmux.CloseMenu()}
+		return menuActionMsg{}
 	}
 }
 
 func (m model) quitAllCmd() tea.Cmd {
 	return func() tea.Msg {
-		return menuActionMsg{err: m.tmux.QuitAll()}
+		return menuActionMsg{quitAll: true}
 	}
 }
 

@@ -68,8 +68,18 @@ type projectDeletedMsg struct {
 }
 
 type menuActionMsg struct {
-	err error
+	err           error
+	switchSession string
+	quitAll       bool
 }
+
+type menuExitAction int
+
+const (
+	menuExitNone menuExitAction = iota
+	menuExitSwitchSession
+	menuExitQuitAll
+)
 
 type renameTarget struct {
 	project string
@@ -107,8 +117,10 @@ type model struct {
 	cwd       string
 	statePath string
 
-	status string
-	err    error
+	exitAction      menuExitAction
+	exitSessionName string
+	status          string
+	err             error
 }
 
 type sessionKind int
@@ -159,8 +171,11 @@ func OpenMenu() error {
 	if err != nil {
 		return err
 	}
-	_, err = tea.NewProgram(menu, tea.WithAltScreen()).Run()
-	return err
+	finalModel, err := tea.NewProgram(menu, tea.WithAltScreen()).Run()
+	if err != nil {
+		return err
+	}
+	return runMenuExitAction(newSessionManager(), finalModel)
 }
 
 func prepareStartup(manager tmuxController, binaryPath, cwd string) (string, error) {
@@ -241,4 +256,36 @@ func buildModel(manager tmuxController, current string, _ ...string) (model, err
 
 func (m model) Init() tea.Cmd {
 	return m.loadSessionsCmd()
+}
+
+func runMenuExitAction(manager tmuxController, final tea.Model) error {
+	menu, ok := unwrapMenuModel(final)
+	if !ok {
+		return nil
+	}
+	switch menu.exitAction {
+	case menuExitSwitchSession:
+		if strings.TrimSpace(menu.exitSessionName) == "" {
+			return nil
+		}
+		return manager.SwitchClient(menu.exitSessionName)
+	case menuExitQuitAll:
+		return manager.QuitAll()
+	default:
+		return nil
+	}
+}
+
+func unwrapMenuModel(value tea.Model) (model, bool) {
+	switch typed := value.(type) {
+	case model:
+		return typed, true
+	case *model:
+		if typed == nil {
+			return model{}, false
+		}
+		return *typed, true
+	default:
+		return model{}, false
+	}
 }
