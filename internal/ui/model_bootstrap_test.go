@@ -126,7 +126,7 @@ func TestStartWithManagerCleansUpInstanceVolatileSessionsAfterAttach(t *testing.
 			return nil
 		},
 		attachCommand: func(name string) (*exec.Cmd, error) {
-			return exec.Command("sh", "-lc", ":"), nil
+			return exec.Command("sh", "-c", ":"), nil
 		},
 		cleanupVolatile: func(instanceID string) error {
 			cleaned = append(cleaned, instanceID)
