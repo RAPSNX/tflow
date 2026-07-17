@@ -118,6 +118,27 @@ func TestLoadAppStateFailsOnInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestLoadAppStateAcceptsNullProjectsField(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	if err := os.WriteFile(path, []byte("{\"projects\":null}"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	state, err := LoadAppState(path)
+	if err != nil {
+		t.Fatalf("LoadAppState returned error: %v", err)
+	}
+	if len(state.Projects) != 0 {
+		t.Fatalf("projects = %#v, want none", state.Projects)
+	}
+	if len(state.SessionProjects) != 0 {
+		t.Fatalf("sessionProjects = %#v, want none", state.SessionProjects)
+	}
+	if len(state.ProjectConfigs) != 0 {
+		t.Fatalf("projectConfigs = %#v, want none", state.ProjectConfigs)
+	}
+}
+
 func TestLoadAppStateSupportsLegacyStringListState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	data, err := json.Marshal(legacyStringListState{
