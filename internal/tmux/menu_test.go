@@ -365,3 +365,36 @@ func TestToggleMenuClearsStalePopupMarkerOnCloseError(t *testing.T) {
 		t.Fatalf("missing cleanup call %v in %#v", wantUnset, calls)
 	}
 }
+
+func TestToggleMenuIgnoresMissingPopupMarkerOnClose(t *testing.T) {
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "display-message":
+				switch args[2] {
+				case "#{session_name}":
+					return "otter-temp", nil
+				case "#{client_name}":
+					return "/dev/pts/0", nil
+				default:
+					return "", fmt.Errorf("unexpected display-message format: %v", args)
+				}
+			case "show-environment":
+				return popupEnvKey("/dev/pts/0") + "=1\n", nil
+			case "display-popup":
+				return "", nil
+			case "set-environment":
+				if len(args) >= 3 && args[1] == "-gu" {
+					return "", fmt.Errorf("exit status 1")
+				}
+				return "", nil
+			default:
+				return "", fmt.Errorf("unexpected command: %v", args)
+			}
+		},
+	}
+
+	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
+		t.Fatalf("ToggleMenu returned error: %v", err)
+	}
+}
