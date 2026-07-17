@@ -22,7 +22,7 @@
 
 ## Dead / unreachable behavior
 
-- [ ] Either wire `Ctrl+Q` to `quitAllCmd()` in `updateNormal`, or remove `quitAllCmd`/`menuActionMsg.quitAll` handling until implemented (overlaps with the still-open "Quit flow" section in `.codex/TASK.md`).
+- [ ] Remove `quitAllCmd`/`menuActionMsg.quitAll` handling until implemented (overlaps with the still-open "Quit flow" section in `.codex/TASK.md`).
 
 # Alpha implementation checklist
 
