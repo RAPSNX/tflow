@@ -137,11 +137,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cfg.Name = msg.newName
 		m.setProjectConfig(cfg)
 		m.projects = replaceProject(m.projects, msg.oldName, msg.newName)
-		if err := removeProjectConfigFile(m.statePath, msg.oldName); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
-		}
 		if m.selectedProject == msg.oldName {
 			m.selectedProject = msg.newName
 		}
@@ -161,13 +156,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.status = ""
 		return m, nil
-	case projectEditedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.status = msg.err.Error()
-			return m, nil
-		}
-		return m.applyProjectEdit(msg.oldName, msg.config)
 	case projectDeletedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -216,21 +204,11 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
-	case "q":
-		return m, m.closeMenuCmd()
 	case "j", "down":
 		m.shiftSession(1)
 		return m, nil
 	case "k", "up":
 		m.shiftSession(-1)
-		return m, nil
-	case ":":
-		m.mode = inputCommand
-		m.input.Prompt = ":"
-		m.input.SetValue("")
-		m.input.Focus()
-		m.err = nil
-		m.status = ""
 		return m, nil
 	case "enter":
 		return m.switchSelectedSession()
@@ -360,23 +338,12 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "y":
 			return m.confirmProjectSwitch()
 		}
-	case inputCommand:
+	case inputEditProject:
 		switch msg.Type {
 		case tea.KeyEsc:
-			m.mode = inputNone
-			m.input.Blur()
-			m.input.Prompt = ""
-			m.input.SetValue("")
-			m.err = nil
-			m.status = ""
-			return m, nil
+			return m.cancelProjectEdit()
 		case tea.KeyEnter:
-			command := strings.TrimSpace(strings.ToLower(m.input.Value()))
-			m.mode = inputNone
-			m.input.Blur()
-			m.input.Prompt = ""
-			m.input.SetValue("")
-			return m.executeCommand(command)
+			return m.commitProjectEditField()
 		}
 		next, cmd := m.input.Update(msg)
 		m.input = next

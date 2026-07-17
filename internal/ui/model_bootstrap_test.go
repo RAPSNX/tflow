@@ -291,9 +291,9 @@ func TestCtrlFClosesMenuFromNormalMode(t *testing.T) {
 
 func TestCtrlFClosesMenuFromModalMode(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
-	m.mode = inputCommand
-	m.input.Prompt = ":"
-	m.input.SetValue("qa!")
+	m.mode = inputRename
+	m.input.Prompt = "session: "
+	m.input.SetValue("dev")
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
 	if cmd == nil {
@@ -305,22 +305,6 @@ func TestCtrlFClosesMenuFromModalMode(t *testing.T) {
 	}
 	if msg.switchSession != "" || msg.quitAll {
 		t.Fatalf("close msg = %#v, want plain close", msg)
-	}
-}
-
-func TestColonEntersCommandMode(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "", "%3").(model)
-
-	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
-	got := updated.(model)
-	if cmd != nil {
-		t.Fatal("expected no command")
-	}
-	if got.mode != inputCommand {
-		t.Fatalf("mode = %v, want inputCommand", got.mode)
-	}
-	if got.input.Prompt != ":" {
-		t.Fatalf("prompt = %q, want :", got.input.Prompt)
 	}
 }
 
@@ -419,25 +403,6 @@ func TestNewPrefixUnknownKeyShowsHint(t *testing.T) {
 	}
 }
 
-func TestCommandModeQAQuitsAll(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "").(model)
-	m.mode = inputCommand
-	m.input.Prompt = ":"
-	m.input.SetValue("qa!")
-
-	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("expected quit-all command")
-	}
-	msg := cmd().(menuActionMsg)
-	if msg.err != nil {
-		t.Fatalf("quit all returned error: %v", msg.err)
-	}
-	if !msg.quitAll {
-		t.Fatalf("quitAll = false, want true")
-	}
-}
-
 func TestRunMenuExitActionSwitchesClientAfterExit(t *testing.T) {
 	var switched []string
 	err := runMenuExitAction(fakeTmuxController{
@@ -467,24 +432,5 @@ func TestRunMenuExitActionQuitsAllAfterExit(t *testing.T) {
 	}
 	if quitAllCalls != 1 {
 		t.Fatalf("quitAllCalls = %d, want 1", quitAllCalls)
-	}
-}
-
-func TestCommandModeUnknownCommandShowsError(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "", "%7").(model)
-	m.mode = inputCommand
-	m.input.Prompt = ":"
-	m.input.SetValue("bogus")
-
-	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	got := updated.(model)
-	if cmd != nil {
-		t.Fatal("expected no command")
-	}
-	if got.err == nil {
-		t.Fatal("expected error")
-	}
-	if got.status != "Unknown command: bogus" {
-		t.Fatalf("status = %q", got.status)
 	}
 }

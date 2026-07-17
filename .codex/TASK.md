@@ -21,20 +21,21 @@
 - [x] Remove code paths that read or write `config.yaml`.
 - [x] Remove code paths that read or write project config files.
 - [x] Remove tests that only cover the deleted config behavior.
-- [ ] Remove temp YAML-based project settings edit flow.
-- [ ] Remove YAML marshal and parse helpers kept only for project settings editing.
-- [ ] Keep project settings backed directly by `$XDG_STATE_HOME/tflow/store.json`.
+- [x] Remove temp YAML-based project settings edit flow.
+- [x] Remove YAML marshal and parse helpers kept only for project settings editing.
+- [x] Keep project settings backed directly by `$XDG_STATE_HOME/tflow/store.json`.
+- [x] Update the Home Manager module to render `$XDG_STATE_HOME/tflow/store.json` instead of `config.yaml` plus project YAML files.
 
 ## Remove obsolete UI and interaction behavior
 
 - [x] Remove project and session tree behavior and replace it with a flat session-list assumption.
 - [x] Remove session move-to-project behavior.
 - [x] Remove key handling and prompts that exist only for the deleted move flow.
-- [ ] Remove UI states and rendering paths that no longer match the architecture.
-- [ ] Remove `:` command mode.
-- [ ] Remove `q` / `qa` command-style quit handling.
-- [ ] Remove rendering and status paths kept only for command mode.
-- [ ] Remove project-settings interaction that still depends on temp YAML editing.
+- [x] Remove UI states and rendering paths that no longer match the architecture.
+- [x] Remove `:` command mode.
+- [x] Remove `q` / `qa` command-style quit handling.
+- [x] Remove rendering and status paths kept only for command mode.
+- [x] Remove project-settings interaction that still depends on temp YAML editing.
 
 ## Introduce the new store foundation
 

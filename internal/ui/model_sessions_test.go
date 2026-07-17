@@ -223,18 +223,6 @@ func TestCreateAgentSessionDefaultsToCodexBinary(t *testing.T) {
 	}
 }
 
-func TestProjectEditorCommandSplitsEditorArgs(t *testing.T) {
-	t.Setenv("EDITOR", "code --wait")
-
-	cmd, err := projectEditorCommand("/tmp/project.yaml")
-	if err != nil {
-		t.Fatalf("projectEditorCommand returned error: %v", err)
-	}
-	if got, want := fmt.Sprint(cmd.Args), fmt.Sprint([]string{"code", "--wait", "/tmp/project.yaml"}); got != want {
-		t.Fatalf("args = %s, want %s", got, want)
-	}
-}
-
 func TestSanitizeSessionName(t *testing.T) {
 	if got, want := sanitizeSessionName(" Prod/Main 01 "), "prod-main-01"; got != want {
 		t.Fatalf("sanitizeSessionName = %q, want %q", got, want)

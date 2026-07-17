@@ -18,6 +18,8 @@ func (m model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Session"))
 	case inputCreateProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Project"))
+	case inputEditProject:
+		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("Project Settings"))
 	case inputConfirmDelete:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderDeleteOverlay())
 	case inputConfirmProjectSwitch:
@@ -100,9 +102,6 @@ func (m model) renderFooter(width int) string {
 		}
 	default:
 		lines = append(lines, hintStyle.Render("[j/k] move  [enter] switch  [n] new  [p] project  [r] rename  [d] delete  [e] edit project"))
-	}
-	if m.mode == inputCommand {
-		lines = append(lines, inputStyle.Render(m.input.View()), hintStyle.Render("Enter runs. Esc cancels."))
 	}
 	if status := m.statusView(); status != "" {
 		if len(lines) > 0 {

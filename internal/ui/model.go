@@ -20,7 +20,7 @@ const (
 	inputConfirmDelete
 	inputConfirmProjectSwitch
 	inputRename
-	inputCommand
+	inputEditProject
 )
 
 type sessionsLoadedMsg struct {
@@ -53,12 +53,6 @@ type sessionRenamedMsg struct {
 type projectRenamedMsg struct {
 	oldName string
 	newName string
-	err     error
-}
-
-type projectEditedMsg struct {
-	oldName string
-	config  projectConfig
 	err     error
 }
 
@@ -113,6 +107,8 @@ type model struct {
 	deleteTarget        deleteTarget
 	switchProjectTarget string
 	createSessionKind   sessionKind
+	projectEditConfig   projectConfig
+	projectEditField    projectEditField
 
 	cwd       string
 	statePath string
@@ -232,18 +228,13 @@ func buildModel(manager tmuxController, current string, _ ...string) (model, err
 		return model{}, fmt.Errorf("load state %q: %w", statePath, err)
 	}
 	state = normalizeAppState(state)
-	projectConfigs, err := loadProjectConfigs(statePath, state)
-	if err != nil {
-		return model{}, fmt.Errorf("load project settings %q: %w", statePath, err)
-	}
-
 	return model{
 		tmux:            manager,
 		mode:            inputNone,
 		projects:        state.Projects,
 		sessionProjects: state.SessionProjects,
 		sessionTypes:    normalizeSessionTypes(state.SessionTypes),
-		projectConfigs:  projectConfigs,
+		projectConfigs:  state.ProjectConfigs,
 		selectedProject: "",
 		currentSession:  current,
 		input:           input,
