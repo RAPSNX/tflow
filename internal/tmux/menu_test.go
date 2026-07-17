@@ -149,7 +149,7 @@ func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
 	}
 
 	got := strings.Join(popupArgs, " ")
-	for _, want := range []string{"display-popup", "-c @2", "-E", "-w " + menuWidth, "-h " + menuHeight, "-x R", "-y C", "-e " + CurrentSessionEnv + "=otter-temp", "-e " + CurrentClientEnv + "=@2"} {
+	for _, want := range []string{"display-popup", "-c @2", "-E", "-w " + menuWidth, "-h " + menuHeight, "-x #{popup_pane_left}", "-y C", "-e " + CurrentSessionEnv + "=otter-temp", "-e " + CurrentClientEnv + "=@2"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("display-popup command = %q, want %q", got, want)
 		}
@@ -158,6 +158,9 @@ func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("display-popup command = %q, want popup script to contain %q", got, want)
 		}
+	}
+	if strings.Contains(got, "exec /tmp/tflow menu") || strings.Contains(got, "exec '/tmp/tflow' menu") {
+		t.Fatalf("display-popup command = %q, want popup script to keep shell cleanup active", got)
 	}
 }
 
@@ -261,5 +264,49 @@ func TestToggleMenuUsesBoundContextEnv(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("display-popup call = %q, want %q", got, want)
 		}
+	}
+}
+
+func TestToggleMenuClearsStalePopupMarkerOnCloseError(t *testing.T) {
+	var calls [][]string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
+			switch args[0] {
+			case "display-message":
+				switch args[2] {
+				case "#{session_name}":
+					return "otter-temp", nil
+				case "#{client_name}":
+					return "@2", nil
+				default:
+					return "", fmt.Errorf("unexpected display-message format: %v", args)
+				}
+			case "show-environment":
+				return popupEnvKey("@2") + "=1\n", nil
+			case "display-popup":
+				return "", fmt.Errorf("exit status 1")
+			case "set-environment":
+				return "", nil
+			default:
+				return "", fmt.Errorf("unexpected command: %v", args)
+			}
+		},
+	}
+
+	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
+		t.Fatalf("ToggleMenu returned error: %v", err)
+	}
+
+	wantUnset := []string{"set-environment", "-gu", popupEnvKey("@2")}
+	found := false
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join(wantUnset, "\x00") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("missing cleanup call %v in %#v", wantUnset, calls)
 	}
 }

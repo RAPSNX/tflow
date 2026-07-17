@@ -74,7 +74,7 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 		"-E",
 		"-w", menuWidth,
 		"-h", menuHeight,
-		"-x", "R",
+		"-x", "#{popup_pane_left}",
 		"-y", "C",
 		"-e", fmt.Sprintf("%s=%s", CurrentSessionEnv, currentSession),
 		"-e", fmt.Sprintf("%s=%s", CurrentClientEnv, currentClient),
@@ -165,17 +165,25 @@ func (m Manager) closeMenuPopup(clientID string) error {
 	if strings.TrimSpace(clientID) == "" {
 		return nil
 	}
-	if _, err := m.runner()("display-popup", "-C", "-c", clientID); err != nil {
-		return err
+	_, closeErr := m.runner()("display-popup", "-C", "-c", clientID)
+	unmarkErr := m.unmarkMenuPopup(clientID)
+	if closeErr != nil {
+		if isMissingPopup(closeErr) {
+			return unmarkErr
+		}
+		if unmarkErr != nil {
+			return fmt.Errorf("close popup: %w; cleanup popup marker: %v", closeErr, unmarkErr)
+		}
+		return closeErr
 	}
-	return m.unmarkMenuPopup(clientID)
+	return unmarkErr
 }
 
 func popupShellCommand(binaryPath, clientID string) string {
 	script := strings.Join([]string{
 		"cleanup() { " + popupUnsetScript(clientID) + "; }",
 		"trap cleanup EXIT HUP INT TERM",
-		"exec " + ShellQuote(binaryPath) + " menu",
+		ShellQuote(binaryPath) + " menu",
 	}, "; ")
 	return "sh -lc " + ShellQuote(script)
 }
@@ -204,4 +212,12 @@ func popupEnvKey(clientID string) string {
 		}
 	}
 	return key.String()
+}
+
+func isMissingPopup(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.TrimSpace(err.Error())
+	return msg == "exit status 1" || strings.Contains(msg, "no popup")
 }

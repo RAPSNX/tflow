@@ -1,6 +1,10 @@
 package ui
 
-import "os/exec"
+import (
+	"os"
+	"os/exec"
+	"testing"
+)
 
 const defaultProjectName = "default"
 
@@ -109,4 +113,26 @@ func cloneStringMap(src map[string]string) map[string]string {
 		dst[k] = v
 	}
 	return dst
+}
+
+func TestMain(m *testing.M) {
+	stateHome, err := os.MkdirTemp("", "tflow-ui-state-")
+	if err != nil {
+		panic(err)
+	}
+	configHome, err := os.MkdirTemp("", "tflow-ui-config-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(stateHome)
+	defer os.RemoveAll(configHome)
+
+	if err := os.Setenv("XDG_STATE_HOME", stateHome); err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("XDG_CONFIG_HOME", configHome); err != nil {
+		panic(err)
+	}
+
+	os.Exit(m.Run())
 }
