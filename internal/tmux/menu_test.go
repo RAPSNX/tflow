@@ -40,7 +40,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"set-option", "-g", "window-status-current-format", ""},
 		{"set-option", "-g", "default-shell", "/bin/zsh"},
 		{"set-option", "-g", "default-command", "exec '/bin/zsh' -l"},
-		{"bind-key", "-n", "C-f", "run-shell", "exec '/tmp/tflow' toggle-menu"},
+		{"bind-key", "-n", "C-f", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
 	}
 	for _, want := range wants {
 		found := false
@@ -56,28 +56,25 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 	}
 }
 
-func TestToggleMenuKillsExistingPane(t *testing.T) {
+func TestToggleMenuClosesExistingPopup(t *testing.T) {
+	var calls [][]string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
 			switch args[0] {
 			case "display-message":
 				switch args[2] {
-				case "#{window_id}":
-					return "@1", nil
 				case "#{session_name}":
 					return "otter-temp", nil
-				case "#{client_id}":
+				case "#{client_name}":
 					return "@2", nil
 				default:
 					t.Fatalf("unexpected display-message format: %v", args)
 					return "", fmt.Errorf("unexpected display-message format: %v", args)
 				}
-			case "list-panes":
-				return "%5\t1\n", nil
-			case "kill-pane":
-				if args[2] != "%5" {
-					t.Fatalf("kill-pane target = %q", args[2])
-				}
+			case "show-environment":
+				return popupEnvKey("@2") + "=1\n", nil
+			case "display-popup", "set-environment":
 				return "", nil
 			default:
 				return "", fmt.Errorf("unexpected command: %v", args)
@@ -88,30 +85,45 @@ func TestToggleMenuKillsExistingPane(t *testing.T) {
 	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
 		t.Fatalf("ToggleMenu returned error: %v", err)
 	}
+
+	wantClose := []string{"display-popup", "-C", "-c", "@2"}
+	wantUnset := []string{"set-environment", "-gu", popupEnvKey("@2")}
+	for _, want := range [][]string{wantClose, wantUnset} {
+		found := false
+		for _, call := range calls {
+			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing call %v in %#v", want, calls)
+		}
+	}
 }
 
-func TestToggleMenuPassesCurrentClientToMenuProcess(t *testing.T) {
-	var splitWindow []string
+func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
+	var popupArgs []string
+	var calls [][]string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
 			switch args[0] {
 			case "display-message":
 				switch args[2] {
-				case "#{window_id}":
-					return "@1", nil
 				case "#{session_name}":
 					return "otter-temp", nil
-				case "#{client_id}":
+				case "#{client_name}":
 					return "@2", nil
 				default:
 					t.Fatalf("unexpected display-message format: %v", args)
 				}
-			case "list-panes":
+			case "show-environment":
 				return "", nil
-			case "split-window":
-				splitWindow = append([]string(nil), args...)
-				return "%7", nil
-			case "set-option":
+			case "set-environment":
+				return "", nil
+			case "display-popup":
+				popupArgs = append([]string(nil), args...)
 				return "", nil
 			default:
 				t.Fatalf("unexpected command: %v", args)
@@ -124,14 +136,70 @@ func TestToggleMenuPassesCurrentClientToMenuProcess(t *testing.T) {
 		t.Fatalf("ToggleMenu returned error: %v", err)
 	}
 
-	got := strings.Join(splitWindow, " ")
-	for _, want := range []string{"split-window", "-h", "-b", "-f", "-l", menuWidth} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("split-window command = %q, want %q", got, want)
+	wantMark := []string{"set-environment", "-gh", popupEnvKey("@2"), "1"}
+	found := false
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join(wantMark, "\x00") {
+			found = true
+			break
 		}
 	}
-	if !strings.Contains(got, "TFLOW_CURRENT_CLIENT='@2'") {
-		t.Fatalf("split-window command = %q, want current client env", got)
+	if !found {
+		t.Fatalf("missing call %v in %#v", wantMark, calls)
+	}
+
+	got := strings.Join(popupArgs, " ")
+	for _, want := range []string{"display-popup", "-c @2", "-E", "-w " + menuWidth, "-h " + menuHeight, "-x R", "-y C", "-e " + CurrentSessionEnv + "=otter-temp", "-e " + CurrentClientEnv + "=@2"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("display-popup command = %q, want %q", got, want)
+		}
+	}
+	for _, want := range []string{"trap cleanup EXIT HUP INT TERM", "set-environment -gu " + popupEnvKey("@2"), "/tmp/tflow", " menu"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("display-popup command = %q, want popup script to contain %q", got, want)
+		}
+	}
+}
+
+func TestToggleMenuUnmarksPopupIfOpenFails(t *testing.T) {
+	var calls [][]string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
+			switch args[0] {
+			case "display-message":
+				switch args[2] {
+				case "#{session_name}":
+					return "otter-temp", nil
+				case "#{client_name}":
+					return "@2", nil
+				default:
+					return "", fmt.Errorf("unexpected display-message format: %v", args)
+				}
+			case "show-environment", "set-environment":
+				return "", nil
+			case "display-popup":
+				return "", fmt.Errorf("popup failed")
+			default:
+				return "", fmt.Errorf("unexpected command: %v", args)
+			}
+		},
+	}
+
+	if err := manager.ToggleMenu("/tmp/tflow"); err == nil {
+		t.Fatal("ToggleMenu returned nil error, want failure")
+	}
+
+	wantUnset := []string{"set-environment", "-gu", popupEnvKey("@2")}
+	found := false
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join(wantUnset, "\x00") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("missing cleanup call %v in %#v", wantUnset, calls)
 	}
 }
 
@@ -153,7 +221,45 @@ func TestQuitAllDetachesExplicitClientWhenAvailable(t *testing.T) {
 	if len(got) != 2 || got[0] != "run-shell" {
 		t.Fatalf("run command = %#v, want run-shell", got)
 	}
-	if !strings.Contains(got[1], "detach-client -t '@2'") {
-		t.Fatalf("run-shell script = %q, want explicit client detach", got[1])
+	for _, want := range []string{"display-popup -C -c '@2'", "set-environment -gu " + popupEnvKey("@2"), "detach-client -t '@2'"} {
+		if !strings.Contains(got[1], want) {
+			t.Fatalf("run-shell script = %q, want %q", got[1], want)
+		}
+	}
+	if strings.Contains(got[1], "kill-pane") {
+		t.Fatalf("run-shell script = %q, should not kill the active pane when closing a popup", got[1])
+	}
+}
+
+func TestToggleMenuUsesBoundContextEnv(t *testing.T) {
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	t.Setenv(CurrentClientEnv, "@2")
+
+	var calls [][]string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
+			switch args[0] {
+			case "show-environment", "set-environment", "display-popup":
+				return "", nil
+			case "display-message":
+				t.Fatalf("display-message should not be used when bound context env is present: %v", args)
+				return "", nil
+			default:
+				t.Fatalf("unexpected command: %v", args)
+				return "", nil
+			}
+		},
+	}
+
+	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
+		t.Fatalf("ToggleMenu returned error: %v", err)
+	}
+
+	got := strings.Join(calls[len(calls)-1], " ")
+	for _, want := range []string{"-c @2", "-e " + CurrentSessionEnv + "=otter-temp", "-e " + CurrentClientEnv + "=@2"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("display-popup call = %q, want %q", got, want)
+		}
 	}
 }
