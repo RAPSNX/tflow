@@ -1,7 +1,10 @@
 package ui
 
 import (
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -311,5 +314,21 @@ func unwrapMenuModel(value tea.Model) (model, bool) {
 }
 
 func newInstanceID() string {
-	return "tflow-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	return newInstanceIDWithEntropy(time.Now(), cryptorand.Reader, os.Getpid())
+}
+
+func newInstanceIDWithEntropy(now time.Time, entropy io.Reader, pid int) string {
+	token, err := randomInstanceToken(entropy, 6)
+	if err != nil {
+		token = strconv.Itoa(pid)
+	}
+	return "tflow-" + strconv.FormatInt(now.UnixNano(), 36) + "-" + token
+}
+
+func randomInstanceToken(entropy io.Reader, size int) (string, error) {
+	buf := make([]byte, size)
+	if _, err := io.ReadFull(entropy, buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
 }

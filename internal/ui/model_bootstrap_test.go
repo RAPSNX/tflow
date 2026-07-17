@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -140,6 +142,22 @@ func TestStartWithManagerCleansUpInstanceVolatileSessionsAfterAttach(t *testing.
 	}
 	if got := os.Getenv(menuInstanceEnv); got != "instance-2" {
 		t.Fatalf("%s = %q, want instance-2", menuInstanceEnv, got)
+	}
+}
+
+func TestNewInstanceIDWithEntropyUsesRandomToken(t *testing.T) {
+	now := time.Unix(0, 123456789)
+	got := newInstanceIDWithEntropy(now, bytes.NewReader([]byte{0, 1, 2, 3, 4, 5}), 99)
+	if want := "tflow-21i3v9-000102030405"; got != want {
+		t.Fatalf("newInstanceIDWithEntropy = %q, want %q", got, want)
+	}
+}
+
+func TestNewInstanceIDWithEntropyFallsBackToPID(t *testing.T) {
+	now := time.Unix(0, 123456789)
+	got := newInstanceIDWithEntropy(now, bytes.NewReader([]byte{0, 1}), 4242)
+	if want := "tflow-21i3v9-4242"; got != want {
+		t.Fatalf("newInstanceIDWithEntropy = %q, want %q", got, want)
 	}
 }
 
