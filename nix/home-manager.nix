@@ -2,56 +2,37 @@
 
 let
   cfg = config.programs.tflow;
+  storePath = "${config.xdg.stateHome}/tflow/store.json";
+  storeFile = lib.removePrefix "${config.home.homeDirectory}/" storePath;
 
-  yamlString = value: builtins.toJSON value;
-
-  projectFileName = name:
-    let
-      normalized = lib.replaceStrings [ " " "/" "_" "." ] [ "-" "-" "-" "-" ] (lib.toLower name);
-    in
-    "${normalized}.yaml";
-
-  renderProject = name: project:
+  projectEntries = lib.mapAttrsToList (
+    name: project:
     let
       projectName = project.name or name;
+      cluster =
+        lib.filterAttrs (_: value: value != null) {
+          path = project.cluster.path;
+          connection_cmd = project.cluster.connectionCmd;
+        };
     in
-    lib.concatStrings [
-      "name: ${yamlString projectName}\n"
-      (lib.optionalString (project.workdir != null) "workdir: ${yamlString project.workdir}\n")
-      (lib.optionalString project.protect "protect: true\n")
-      (lib.optionalString (project.agentBinary != null) "agent-binary: ${yamlString project.agentBinary}\n")
-      (lib.optionalString (project.cluster.path != null || project.cluster.connectionCmd != null) (
-        "cluster:\n"
-        + lib.optionalString (project.cluster.path != null) "  path: ${yamlString project.cluster.path}\n"
-        + lib.optionalString (project.cluster.connectionCmd != null) "  connection-cmd: ${yamlString project.cluster.connectionCmd}\n"
-      ))
-    ];
+    {
+      name = projectName;
+      value =
+        lib.filterAttrs (_: value: value != null) {
+          workdir = project.workdir;
+          agent_binary = project.agentBinary;
+        }
+        // lib.optionalAttrs project.protect { protect = true; }
+        // lib.optionalAttrs (cluster != { }) { inherit cluster; };
+    }
+  ) cfg.settings.projects;
 
-  projectsDirDefault = "${config.xdg.configHome}/tflow/projects";
-  configPath = "tflow/config.yaml";
-  projectFiles =
-    lib.mapAttrs'
-      (
-        name: project:
-        lib.nameValuePair
-          (lib.removePrefix "${config.home.homeDirectory}/" "${cfg.settings.projectsDir}/${projectFileName name}")
-          { text = renderProject name project; }
-      )
-      cfg.settings.projects;
-
-  renderConfig = ''
-    projects-dir: ${yamlString cfg.settings.projectsDir}
-    theme: ${yamlString cfg.settings.theme}
-  ''
-  + lib.optionalString (cfg.settings.colors != { }) (
-    "colors:\n"
-    + lib.concatStrings (
-      lib.mapAttrsToList (
-        key: value:
-        lib.optionalString (value != null) "  ${key}: ${yamlString value}\n"
-      ) cfg.settings.colors
-    )
-  );
+  renderStore = builtins.toJSON {
+    project_order = map (entry: entry.name) projectEntries;
+    projects = builtins.listToAttrs projectEntries;
+    session_projects = { };
+    session_types = { };
+  };
 in
 {
   options.programs.tflow = {
@@ -68,24 +49,6 @@ in
     };
 
     settings = {
-      projectsDir = lib.mkOption {
-        type = lib.types.str;
-        default = projectsDirDefault;
-        description = "Absolute path to the project YAML directory written into tflow config.yaml.";
-      };
-
-      theme = lib.mkOption {
-        type = lib.types.enum [ "catppuccin" "forest" ];
-        default = "catppuccin";
-        description = "Theme name written into tflow config.yaml.";
-      };
-
-      colors = lib.mkOption {
-        type = lib.types.attrsOf (lib.types.nullOr lib.types.str);
-        default = { };
-        description = "Optional color overrides for config.yaml.";
-      };
-
       projects = lib.mkOption {
         default = { };
         type = lib.types.attrsOf (
@@ -120,7 +83,7 @@ in
             };
           }
         );
-        description = "Project YAMLs to render for tflow.";
+        description = "Project metadata to render into tflow store.json.";
       };
     };
   };
@@ -128,14 +91,12 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = lib.hasPrefix "${config.home.homeDirectory}/" cfg.settings.projectsDir;
-        message = "programs.tflow.settings.projectsDir must live under the home directory when managed by Home Manager.";
+        assertion = lib.hasPrefix "${config.home.homeDirectory}/" config.xdg.stateHome;
+        message = "programs.tflow requires xdg.stateHome to live under the home directory when managed by Home Manager.";
       }
     ];
 
     home.packages = [ cfg.package ];
-
-    xdg.configFile.${configPath}.text = renderConfig;
-    home.file = projectFiles;
+    home.file.${storeFile}.text = renderStore;
   };
 }

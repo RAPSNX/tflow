@@ -275,11 +275,6 @@ func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
 	if m.selectedProject == project {
 		m.selectedProject = ""
 	}
-	if err := removeProjectConfigFile(m.statePath, project); err != nil {
-		m.err = err
-		m.status = err.Error()
-		return m, nil
-	}
 	if err := m.saveState(); err != nil {
 		m.err = err
 		m.status = err.Error()

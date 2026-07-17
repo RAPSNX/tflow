@@ -6,26 +6,6 @@ type appState = store.AppState
 type clusterConfig = store.ClusterConfig
 type projectConfig = store.ProjectConfig
 
-func loadProjectConfigs(statePath string, state appState) (map[string]projectConfig, error) {
-	return store.LoadProjectConfigs(statePath, state)
-}
-
-func saveProjectConfigs(statePath string, configs map[string]projectConfig) error {
-	return store.SaveProjectConfigs(statePath, configs)
-}
-
-func removeProjectConfigFile(statePath, project string) error {
-	return store.RemoveProjectConfigFile(statePath, project)
-}
-
-func marshalProjectConfig(cfg projectConfig) []byte {
-	return store.MarshalProjectConfig(cfg)
-}
-
-func parseProjectConfig(data []byte) (projectConfig, error) {
-	return store.ParseProjectConfig(data)
-}
-
 func loadAppState(path string) (appState, error) {
 	return store.LoadAppState(path)
 }

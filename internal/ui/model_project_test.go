@@ -236,3 +236,121 @@ func TestEditProjectRequiresProjectContext(t *testing.T) {
 		t.Fatalf("status = %q", got.status)
 	}
 }
+
+func TestEditProjectStartsInlineSettingsFlow(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "", "").(model)
+	m.projects = []string{"small"}
+	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{
+		"small": {Name: "small", Workdir: "/tmp/small"},
+	}
+
+	updated, cmd := m.editProject()
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if got.mode != inputEditProject {
+		t.Fatalf("mode = %v, want inputEditProject", got.mode)
+	}
+	if got.input.Prompt != "workdir: " {
+		t.Fatalf("prompt = %q", got.input.Prompt)
+	}
+	if got.input.Value() != "/tmp/small" {
+		t.Fatalf("value = %q", got.input.Value())
+	}
+}
+
+func TestEditProjectSavesSettingsToStoreState(t *testing.T) {
+	tmp := t.TempDir()
+	m := newModel(fakeTmuxController{}, "", "").(model)
+	m.statePath = tmp + "/store.json"
+	m.projects = []string{"small"}
+	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{
+		"small": {Name: "small"},
+	}
+
+	updated, _ := m.editProject()
+	step := updated.(model)
+
+	step.input.SetValue("/tmp/small")
+	updated, _ = step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	step = *(updated.(*model))
+	step.input.SetValue("true")
+	updated, _ = step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	step = *(updated.(*model))
+	step.input.SetValue("aider")
+	updated, _ = step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	step = *(updated.(*model))
+	step.input.SetValue("/tmp/kubeconfig")
+	updated, _ = step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	step = *(updated.(*model))
+	step.input.SetValue("aws eks update-kubeconfig --name prod")
+	updated, cmd := step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	final := *(updated.(*model))
+
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if final.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone", final.mode)
+	}
+
+	cfg := final.projectConfigs["small"]
+	if cfg.Workdir != "/tmp/small" {
+		t.Fatalf("workdir = %q", cfg.Workdir)
+	}
+	if !cfg.Protect {
+		t.Fatal("protect = false, want true")
+	}
+	if cfg.AgentBinary != "aider" {
+		t.Fatalf("agentBinary = %q", cfg.AgentBinary)
+	}
+	if cfg.Cluster.Path != "/tmp/kubeconfig" {
+		t.Fatalf("cluster path = %q", cfg.Cluster.Path)
+	}
+	if cfg.Cluster.ConnectionCmd != "aws eks update-kubeconfig --name prod" {
+		t.Fatalf("connectionCmd = %q", cfg.Cluster.ConnectionCmd)
+	}
+
+	state, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatalf("loadAppState returned error: %v", err)
+	}
+	saved := state.ProjectConfigs["small"]
+	if saved.Workdir != "/tmp/small" || !saved.Protect || saved.AgentBinary != "aider" {
+		t.Fatalf("saved project config = %#v", saved)
+	}
+	if saved.Cluster.Path != "/tmp/kubeconfig" || saved.Cluster.ConnectionCmd != "aws eks update-kubeconfig --name prod" {
+		t.Fatalf("saved cluster config = %#v", saved.Cluster)
+	}
+}
+
+func TestEditProjectRejectsInvalidProtectValue(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "", "").(model)
+	m.projects = []string{"small"}
+	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{
+		"small": {Name: "small"},
+	}
+
+	updated, _ := m.editProject()
+	step := updated.(model)
+	step.input.SetValue("")
+	updated, _ = step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	step = *(updated.(*model))
+	step.input.SetValue("maybe")
+	updated, cmd := step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	got := *(updated.(*model))
+
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if got.mode != inputEditProject {
+		t.Fatalf("mode = %v, want inputEditProject", got.mode)
+	}
+	if got.status != "Protect must be true or false." {
+		t.Fatalf("status = %q", got.status)
+	}
+}
