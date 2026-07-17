@@ -3,8 +3,8 @@
 ## Bug fixes [primary-agent]
 
 - [x] Fix `Ctrl+F` sidebar toggle so opening and closing the sidebar does not shift the active terminal prompt.
-- [x] Keep the active terminal pane stable while the sidebar opens as a real tmux pane.
-- [x] Add regression coverage for the tmux sidebar split behavior so the active pane is not split directly.
+- [x] Keep the active terminal stable while the sidebar opens as a real tmux popup.
+- [x] Add regression coverage for the tmux popup sidebar behavior so the active terminal is not resized directly.
 
 ## Package split and file-size baseline [primary-agent]
 
@@ -21,6 +21,9 @@
 - [x] Remove code paths that read or write `config.yaml`.
 - [x] Remove code paths that read or write project config files.
 - [x] Remove tests that only cover the deleted config behavior.
+- [ ] Remove temp YAML-based project settings edit flow.
+- [ ] Remove YAML marshal and parse helpers kept only for project settings editing.
+- [ ] Keep project settings backed directly by `$XDG_STATE_HOME/tflow/store.json`.
 
 ## Remove obsolete UI and interaction behavior [primary-agent]
 
@@ -28,6 +31,10 @@
 - [x] Remove session move-to-project behavior.
 - [x] Remove key handling and prompts that exist only for the deleted move flow.
 - [ ] Remove UI states and rendering paths that no longer match the architecture.
+- [ ] Remove `:` command mode.
+- [ ] Remove `q` / `qa` command-style quit handling.
+- [ ] Remove rendering and status paths kept only for command mode.
+- [ ] Remove project-settings interaction that still depends on temp YAML editing.
 
 ## Introduce the new store foundation [sub-agent]
 
@@ -43,11 +50,12 @@
 - [x] Start with one volatile tmux session and attach the user to it.
 - [x] Keep the active terminal as a real tmux terminal.
 - [x] Keep persistent sessions as ordinary tmux sessions grouped by metadata.
-- [ ] Remove volatile sessions on normal exit or confirmed `Ctrl+Q`.
+- [ ] Track volatile sessions per `tflow` instance.
+- [ ] Remove only the current instance's volatile sessions on normal exit or confirmed `Ctrl+Q`.
 
-## Sidebar pane and top badges [primary-agent]
+## Sidebar popup and top badges [primary-agent]
 
-- [ ] Toggle the sidebar as a real tmux pane with `Ctrl+F`.
+- [ ] Toggle the sidebar as a real tmux popup with `Ctrl+F`.
 - [ ] Show current project and session in the top UI.
 - [ ] Keep the project badge empty in volatile mode.
 - [ ] Render the sidebar with a `TFLOW` header, a flat session list, and a command/status area.
@@ -91,7 +99,7 @@
 
 ## Cleanup and verification [primary-agent]
 
-- [ ] Remove dead code and tests left behind by the deleted config and move flows.
+- [ ] Remove dead YAML/config and command-mode code and tests left behind by the deleted flows.
 - [ ] Keep production files small and focused after the refactor.
 - [ ] Run `gofmt` on changed Go files.
 - [ ] Run `go test ./...`.

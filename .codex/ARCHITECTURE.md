@@ -5,7 +5,7 @@
 The goal is a simple, tmux-native design:
 
 - the active terminal stays a real `tmux` terminal
-- the sidebar is opened as a real `tmux` pane
+- the sidebar is opened as a real `tmux` popup
 - the top UI shows the current project and session
 - persistent metadata lives in one state file
 
@@ -30,8 +30,10 @@ On startup, the user should see a normal live terminal session.
 The primary interaction model is:
 
 - the active terminal runs directly inside `tmux`
-- `Ctrl+F` toggles a slim sidebar by splitting the current `tmux` window
+- `Ctrl+F` toggles a slim sidebar as a `tmux` popup overlay anchored to the left edge of the active client
 - switching sessions closes the sidebar and returns focus to the selected session
+- toggling or closing the sidebar does not resize or move the active terminal
+- closing the sidebar does not surface tmux error text to the user
 
 The top UI shows two badges:
 
