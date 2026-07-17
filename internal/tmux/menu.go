@@ -15,9 +15,6 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		fmt.Sprintf("%s=%s", CurrentSessionEnv, ShellQuote("#{session_name}")),
 		fmt.Sprintf("%s=%s", CurrentClientEnv, ShellQuote("#{client_name}")),
 	}
-	if instanceID := strings.TrimSpace(os.Getenv(CurrentInstanceEnv)); instanceID != "" {
-		parts = append(parts, fmt.Sprintf("%s=%s", CurrentInstanceEnv, ShellQuote(instanceID)))
-	}
 	parts = append(parts, "exec "+ShellQuote(binaryPath)+" toggle-menu")
 	runShell := strings.Join(parts, " ")
 	commands := [][]string{
@@ -68,6 +65,14 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 	if visible {
 		return m.closeMenuPopup(currentClient)
 	}
+
+	instanceID, err := m.resolveInstanceID(currentSession, currentClient)
+	if err != nil {
+		return err
+	}
+	if err := m.rememberClientInstance(currentClient, instanceID); err != nil {
+		return err
+	}
 	if err := m.markMenuPopup(currentClient); err != nil {
 		return err
 	}
@@ -83,7 +88,7 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 		"-e", fmt.Sprintf("%s=%s", CurrentSessionEnv, currentSession),
 		"-e", fmt.Sprintf("%s=%s", CurrentClientEnv, currentClient),
 	}
-	args = append(args, popupInstanceEnvArgs()...)
+	args = append(args, popupInstanceEnvArgs(instanceID)...)
 	args = append(args, popupShellCommand(binaryPath, currentClient))
 	_, err = m.runner()(args...)
 	if err != nil {
@@ -113,18 +118,37 @@ func (m Manager) QuitAll() error {
 	if err != nil {
 		return err
 	}
-	if err := m.cleanupVolatileSessions(os.Getenv(CurrentInstanceEnv), currentSession); err != nil {
+	instanceID, err := m.resolveInstanceID(currentSession, clientID)
+	if err != nil {
+		return err
+	}
+	if err := m.cleanupVolatileSessions(instanceID, currentSession); err != nil {
 		return err
 	}
 	script := []string{}
 	if strings.TrimSpace(clientID) != "" {
 		script = append(script, popupCloseScript(clientID))
+		script = append(script, instanceUnsetScript(clientID))
 		script = append(script, shellTmuxCommand("detach-client", "-t", clientID)+" >/dev/null 2>&1")
 	} else {
 		script = append(script, shellTmuxCommand("detach-client")+" >/dev/null 2>&1")
 	}
 	_, runErr := m.runner()("run-shell", strings.Join(script, "; "))
 	return runErr
+}
+
+func (m Manager) resolveInstanceID(currentSession, currentClient string) (string, error) {
+	if instanceID := strings.TrimSpace(os.Getenv(CurrentInstanceEnv)); instanceID != "" {
+		return instanceID, nil
+	}
+	instanceID, err := m.sessionInstanceID(currentSession)
+	if err != nil {
+		return "", err
+	}
+	if instanceID != "" {
+		return instanceID, nil
+	}
+	return m.clientInstanceID(currentClient)
 }
 
 func (m Manager) currentValue(format string) (string, error) {
@@ -157,6 +181,50 @@ func (m Manager) menuPopupVisible(clientID string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func (m Manager) sessionInstanceID(sessionName string) (string, error) {
+	sessionName = strings.TrimSpace(sessionName)
+	if sessionName == "" {
+		return "", nil
+	}
+	out, err := m.runner()("show-options", "-qv", "-t", sessionName, instanceMarker)
+	if err != nil {
+		if isNoSession(err) || IsNoServer(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+func (m Manager) clientInstanceID(clientID string) (string, error) {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return "", nil
+	}
+	out, err := m.runner()("show-environment", "-gh")
+	if err != nil {
+		return "", err
+	}
+	key := instanceEnvKey(clientID) + "="
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, key) {
+			return strings.TrimPrefix(line, key), nil
+		}
+	}
+	return "", nil
+}
+
+func (m Manager) rememberClientInstance(clientID, instanceID string) error {
+	clientID = strings.TrimSpace(clientID)
+	instanceID = strings.TrimSpace(instanceID)
+	if clientID == "" || instanceID == "" {
+		return nil
+	}
+	_, err := m.runner()("set-environment", "-gh", instanceEnvKey(clientID), instanceID)
+	return err
 }
 
 func (m Manager) markMenuPopup(clientID string) error {
@@ -205,12 +273,16 @@ func popupShellCommand(binaryPath, clientID string) string {
 	return "sh -lc " + ShellQuote(script)
 }
 
-func popupInstanceEnvArgs() []string {
-	instanceID := strings.TrimSpace(os.Getenv(CurrentInstanceEnv))
+func popupInstanceEnvArgs(instanceID string) []string {
+	instanceID = strings.TrimSpace(instanceID)
 	if instanceID == "" {
 		return nil
 	}
 	return []string{"-e", fmt.Sprintf("%s=%s", CurrentInstanceEnv, instanceID)}
+}
+
+func instanceUnsetScript(clientID string) string {
+	return shellTmuxCommand("set-environment", "-gu", instanceEnvKey(clientID)) + " >/dev/null 2>&1"
 }
 
 func popupUnsetScript(clientID string) string {
@@ -222,8 +294,16 @@ func popupCloseScript(clientID string) string {
 }
 
 func popupEnvKey(clientID string) string {
+	return clientScopedEnvKey(menuPopupEnvPrefix, clientID)
+}
+
+func instanceEnvKey(clientID string) string {
+	return clientScopedEnvKey(menuInstancePrefix, clientID)
+}
+
+func clientScopedEnvKey(prefix, clientID string) string {
 	var key strings.Builder
-	key.WriteString(menuPopupEnvPrefix)
+	key.WriteString(prefix)
 	for _, r := range clientID {
 		switch {
 		case r >= 'a' && r <= 'z':

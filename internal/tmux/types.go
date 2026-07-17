@@ -9,6 +9,7 @@ import (
 const (
 	socketName         = "tflow"
 	menuPopupEnvPrefix = "TFLOW_MENU_POPUP_"
+	menuInstancePrefix = "TFLOW_MENU_INSTANCE_"
 	projectMarker      = "@tflow-project"
 	tempMarker         = "@tflow-temp"
 	instanceMarker     = "@tflow-instance"
