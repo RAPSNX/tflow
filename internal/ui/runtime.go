@@ -24,8 +24,8 @@ type tmuxController interface {
 	EnsureControlMode(binaryPath string) error
 	SyncSessionProjects(sessionProjects map[string]string) error
 	ToggleMenu(binaryPath string) error
-	ClosePane(paneID string) error
-	QuitAll(paneID string) error
+	CloseMenu() error
+	QuitAll() error
 }
 
 type sessionManager struct {
@@ -88,12 +88,12 @@ func (m sessionManager) ToggleMenu(binaryPath string) error {
 	return m.inner.ToggleMenu(binaryPath)
 }
 
-func (m sessionManager) ClosePane(paneID string) error {
-	return m.inner.ClosePane(paneID)
+func (m sessionManager) CloseMenu() error {
+	return m.inner.CloseMenu()
 }
 
-func (m sessionManager) QuitAll(paneID string) error {
-	return m.inner.QuitAll(paneID)
+func (m sessionManager) QuitAll() error {
+	return m.inner.QuitAll()
 }
 
 func normalizeCWD(cwd string) string {

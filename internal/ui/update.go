@@ -181,10 +181,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
+		if strings.TrimSpace(msg.switchSession) != "" {
+			m.exitAction = menuExitSwitchSession
+			m.exitSessionName = msg.switchSession
+		} else if msg.quitAll {
+			m.exitAction = menuExitQuitAll
+			m.exitSessionName = ""
+		} else {
+			m.exitAction = menuExitNone
+			m.exitSessionName = ""
+		}
 		m.err = nil
 		m.status = ""
 		return m, tea.Quit
 	case tea.KeyMsg:
+		if msg.Type == tea.KeyCtrlF {
+			return m, m.closeMenuCmd()
+		}
 		if m.mode != inputNone {
 			return m.updateModal(msg)
 		}

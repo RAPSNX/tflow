@@ -73,19 +73,8 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 	}
 }
 
-func TestMenuEnterSwitchesSessionAndClosesPane(t *testing.T) {
-	var switched []string
-	var closed []string
-	m := newModel(fakeTmuxController{
-		switchClient: func(name string) error {
-			switched = append(switched, name)
-			return nil
-		},
-		closePane: func(paneID string) error {
-			closed = append(closed, paneID)
-			return nil
-		},
-	}, "dev", "%3").(model)
+func TestMenuEnterSwitchesSessionAndClosesMenu(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "dev").(model)
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}}
 	m.sessionProjects = map[string]string{"dev": defaultProjectName}
@@ -100,11 +89,8 @@ func TestMenuEnterSwitchesSessionAndClosesPane(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("menu action returned error: %v", msg.err)
 	}
-	if got, want := fmt.Sprint(switched), fmt.Sprint([]string{"dev"}); got != want {
-		t.Fatalf("switches = %s, want %s", got, want)
-	}
-	if got, want := fmt.Sprint(closed), fmt.Sprint([]string{"%3"}); got != want {
-		t.Fatalf("closed = %s, want %s", got, want)
+	if msg.switchSession != "dev" {
+		t.Fatalf("switchSession = %q, want dev", msg.switchSession)
 	}
 }
 
@@ -127,19 +113,8 @@ func TestPStartsProjectSwitchMode(t *testing.T) {
 	}
 }
 
-func TestProjectSwitchUsesUniquePrefixAndClosesPane(t *testing.T) {
-	var switched []string
-	var closed []string
-	m := newModel(fakeTmuxController{
-		switchClient: func(name string) error {
-			switched = append(switched, name)
-			return nil
-		},
-		closePane: func(paneID string) error {
-			closed = append(closed, paneID)
-			return nil
-		},
-	}, "dev", "%3").(model)
+func TestProjectSwitchUsesUniquePrefixAndClosesMenu(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "dev").(model)
 	m.projects = []string{"small", "storage"}
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}, {Name: "keep"}}
 	m.sessionProjects = map[string]string{"dev": "small", "api": "small", "keep": "storage"}
@@ -168,11 +143,8 @@ func TestProjectSwitchUsesUniquePrefixAndClosesPane(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("menu action returned error: %v", msg.err)
 	}
-	if gotCalls, want := fmt.Sprint(switched), fmt.Sprint([]string{"keep"}); gotCalls != want {
-		t.Fatalf("switches = %s, want %s", gotCalls, want)
-	}
-	if gotCalls, want := fmt.Sprint(closed), fmt.Sprint([]string{"%3"}); gotCalls != want {
-		t.Fatalf("closed = %s, want %s", gotCalls, want)
+	if msg.switchSession != "keep" {
+		t.Fatalf("switchSession = %q, want keep", msg.switchSession)
 	}
 }
 
@@ -285,14 +257,8 @@ func TestJFromLastSessionWrapsToFirstSession(t *testing.T) {
 	}
 }
 
-func TestCtrlCClosesMenuPane(t *testing.T) {
-	closed := ""
-	m := newModel(fakeTmuxController{
-		closePane: func(paneID string) error {
-			closed = paneID
-			return nil
-		},
-	}, "", "%3").(model)
+func TestCtrlCClosesMenu(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
 
 	_, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyCtrlC})
 	if cmd == nil {
@@ -302,8 +268,43 @@ func TestCtrlCClosesMenuPane(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("close returned error: %v", msg.err)
 	}
-	if closed != "%3" {
-		t.Fatalf("closed = %q, want %%3", closed)
+	if msg.switchSession != "" || msg.quitAll {
+		t.Fatalf("close msg = %#v, want plain close", msg)
+	}
+}
+
+func TestCtrlFClosesMenuFromNormalMode(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
+	if cmd == nil {
+		t.Fatal("expected close command")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("close returned error: %v", msg.err)
+	}
+	if msg.switchSession != "" || msg.quitAll {
+		t.Fatalf("close msg = %#v, want plain close", msg)
+	}
+}
+
+func TestCtrlFClosesMenuFromModalMode(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.mode = inputCommand
+	m.input.Prompt = ":"
+	m.input.SetValue("qa!")
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
+	if cmd == nil {
+		t.Fatal("expected close command")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("close returned error: %v", msg.err)
+	}
+	if msg.switchSession != "" || msg.quitAll {
+		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
 }
 
@@ -419,13 +420,7 @@ func TestNewPrefixUnknownKeyShowsHint(t *testing.T) {
 }
 
 func TestCommandModeQAQuitsAll(t *testing.T) {
-	quitAllPane := ""
-	m := newModel(fakeTmuxController{
-		quitAll: func(paneID string) error {
-			quitAllPane = paneID
-			return nil
-		},
-	}, "", "%7").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 	m.mode = inputCommand
 	m.input.Prompt = ":"
 	m.input.SetValue("qa!")
@@ -438,8 +433,40 @@ func TestCommandModeQAQuitsAll(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("quit all returned error: %v", msg.err)
 	}
-	if quitAllPane != "%7" {
-		t.Fatalf("quitAllPane = %q, want %%7", quitAllPane)
+	if !msg.quitAll {
+		t.Fatalf("quitAll = false, want true")
+	}
+}
+
+func TestRunMenuExitActionSwitchesClientAfterExit(t *testing.T) {
+	var switched []string
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error {
+			switched = append(switched, name)
+			return nil
+		},
+	}, model{exitAction: menuExitSwitchSession, exitSessionName: "dev"})
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if got, want := fmt.Sprint(switched), fmt.Sprint([]string{"dev"}); got != want {
+		t.Fatalf("switches = %s, want %s", got, want)
+	}
+}
+
+func TestRunMenuExitActionQuitsAllAfterExit(t *testing.T) {
+	quitAllCalls := 0
+	err := runMenuExitAction(fakeTmuxController{
+		quitAll: func() error {
+			quitAllCalls++
+			return nil
+		},
+	}, model{exitAction: menuExitQuitAll})
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if quitAllCalls != 1 {
+		t.Fatalf("quitAllCalls = %d, want 1", quitAllCalls)
 	}
 }
 

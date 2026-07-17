@@ -7,14 +7,15 @@ import (
 )
 
 const (
-	socketName        = "tflow"
-	menuMarker        = "@tflow-menu"
-	projectMarker     = "@tflow-project"
-	tempMarker        = "@tflow-temp"
-	menuWidth         = "36"
-	menuToggleKey     = "C-f"
-	CurrentSessionEnv = "TFLOW_CURRENT_SESSION"
-	CurrentClientEnv  = "TFLOW_CURRENT_CLIENT"
+	socketName         = "tflow"
+	menuPopupEnvPrefix = "TFLOW_MENU_POPUP_"
+	projectMarker      = "@tflow-project"
+	tempMarker         = "@tflow-temp"
+	menuWidth          = "36"
+	menuHeight         = "100%"
+	menuToggleKey      = "C-f"
+	CurrentSessionEnv  = "TFLOW_CURRENT_SESSION"
+	CurrentClientEnv   = "TFLOW_CURRENT_CLIENT"
 )
 
 type Session struct {
@@ -35,8 +36,8 @@ type Controller interface {
 	EnsureControlMode(binaryPath string, palette Palette) error
 	SyncSessionProjects(sessionProjects map[string]string) error
 	ToggleMenu(binaryPath string) error
-	ClosePane(paneID string) error
-	QuitAll(paneID string) error
+	CloseMenu() error
+	QuitAll() error
 }
 
 type Runner func(args ...string) (string, error)

@@ -68,8 +68,18 @@ type projectDeletedMsg struct {
 }
 
 type menuActionMsg struct {
-	err error
+	err           error
+	switchSession string
+	quitAll       bool
 }
+
+type menuExitAction int
+
+const (
+	menuExitNone menuExitAction = iota
+	menuExitSwitchSession
+	menuExitQuitAll
+)
 
 type renameTarget struct {
 	project string
@@ -97,7 +107,6 @@ type model struct {
 	selectedProject string
 	selectedSession string
 	currentSession  string
-	paneID          string
 
 	input               textinput.Model
 	renameTarget        renameTarget
@@ -108,8 +117,10 @@ type model struct {
 	cwd       string
 	statePath string
 
-	status string
-	err    error
+	exitAction      menuExitAction
+	exitSessionName string
+	status          string
+	err             error
 }
 
 type sessionKind int
@@ -129,7 +140,7 @@ const (
 )
 
 func NewMenu() tea.Model {
-	return newModel(newSessionManager(), os.Getenv(menuCurrentEnv), os.Getenv("TMUX_PANE"))
+	return newModel(newSessionManager(), os.Getenv(menuCurrentEnv))
 }
 
 func Start() error {
@@ -156,12 +167,15 @@ func Start() error {
 }
 
 func OpenMenu() error {
-	menu, err := buildModel(newSessionManager(), os.Getenv(menuCurrentEnv), os.Getenv("TMUX_PANE"))
+	menu, err := buildModel(newSessionManager(), os.Getenv(menuCurrentEnv))
 	if err != nil {
 		return err
 	}
-	_, err = tea.NewProgram(menu, tea.WithAltScreen()).Run()
-	return err
+	finalModel, err := tea.NewProgram(menu, tea.WithAltScreen()).Run()
+	if err != nil {
+		return err
+	}
+	return runMenuExitAction(newSessionManager(), finalModel)
 }
 
 func prepareStartup(manager tmuxController, binaryPath, cwd string) (string, error) {
@@ -195,8 +209,8 @@ func defaultSessionDir() string {
 	return "."
 }
 
-func newModel(manager tmuxController, current, paneID string) tea.Model {
-	menu, err := buildModel(manager, current, paneID)
+func newModel(manager tmuxController, current string, _ ...string) tea.Model {
+	menu, err := buildModel(manager, current)
 	if err != nil {
 		menu.err = err
 		menu.status = err.Error()
@@ -204,7 +218,7 @@ func newModel(manager tmuxController, current, paneID string) tea.Model {
 	return menu
 }
 
-func buildModel(manager tmuxController, current, paneID string) (model, error) {
+func buildModel(manager tmuxController, current string, _ ...string) (model, error) {
 	cwd, _ := os.Getwd()
 
 	input := textinput.New()
@@ -232,7 +246,6 @@ func buildModel(manager tmuxController, current, paneID string) (model, error) {
 		projectConfigs:  projectConfigs,
 		selectedProject: "",
 		currentSession:  current,
-		paneID:          paneID,
 		input:           input,
 		cwd:             cwd,
 		statePath:       statePath,
@@ -243,4 +256,36 @@ func buildModel(manager tmuxController, current, paneID string) (model, error) {
 
 func (m model) Init() tea.Cmd {
 	return m.loadSessionsCmd()
+}
+
+func runMenuExitAction(manager tmuxController, final tea.Model) error {
+	menu, ok := unwrapMenuModel(final)
+	if !ok {
+		return nil
+	}
+	switch menu.exitAction {
+	case menuExitSwitchSession:
+		if strings.TrimSpace(menu.exitSessionName) == "" {
+			return nil
+		}
+		return manager.SwitchClient(menu.exitSessionName)
+	case menuExitQuitAll:
+		return manager.QuitAll()
+	default:
+		return nil
+	}
+}
+
+func unwrapMenuModel(value tea.Model) (model, bool) {
+	switch typed := value.(type) {
+	case model:
+		return typed, true
+	case *model:
+		if typed == nil {
+			return model{}, false
+		}
+		return *typed, true
+	default:
+		return model{}, false
+	}
 }

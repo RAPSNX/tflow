@@ -1,6 +1,10 @@
 package ui
 
-import "os/exec"
+import (
+	"os"
+	"os/exec"
+	"testing"
+)
 
 const defaultProjectName = "default"
 
@@ -14,8 +18,8 @@ type fakeTmuxController struct {
 	switchClient        func(name string) error
 	ensureControlMode   func(binaryPath string) error
 	toggleMenu          func(binaryPath string) error
-	closePane           func(paneID string) error
-	quitAll             func(paneID string) error
+	closeMenu           func() error
+	quitAll             func() error
 	syncSessionProjects func(sessionProjects map[string]string) error
 }
 
@@ -82,16 +86,16 @@ func (f fakeTmuxController) ToggleMenu(binaryPath string) error {
 	return nil
 }
 
-func (f fakeTmuxController) ClosePane(paneID string) error {
-	if f.closePane != nil {
-		return f.closePane(paneID)
+func (f fakeTmuxController) CloseMenu() error {
+	if f.closeMenu != nil {
+		return f.closeMenu()
 	}
 	return nil
 }
 
-func (f fakeTmuxController) QuitAll(paneID string) error {
+func (f fakeTmuxController) QuitAll() error {
 	if f.quitAll != nil {
-		return f.quitAll(paneID)
+		return f.quitAll()
 	}
 	return nil
 }
@@ -109,4 +113,26 @@ func cloneStringMap(src map[string]string) map[string]string {
 		dst[k] = v
 	}
 	return dst
+}
+
+func TestMain(m *testing.M) {
+	stateHome, err := os.MkdirTemp("", "tflow-ui-state-")
+	if err != nil {
+		panic(err)
+	}
+	configHome, err := os.MkdirTemp("", "tflow-ui-config-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(stateHome)
+	defer os.RemoveAll(configHome)
+
+	if err := os.Setenv("XDG_STATE_HOME", stateHome); err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("XDG_CONFIG_HOME", configHome); err != nil {
+		panic(err)
+	}
+
+	os.Exit(m.Run())
 }

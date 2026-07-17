@@ -241,7 +241,7 @@ func decodeAppState(data []byte) (AppState, error) {
 	}
 
 	projectsValue := bytes.TrimSpace(envelope.Projects)
-	if len(projectsValue) == 0 || projectsValue[0] == '{' {
+	if len(projectsValue) == 0 || bytes.Equal(projectsValue, []byte("null")) || projectsValue[0] == '{' {
 		return decodeStoredState(data)
 	}
 	if projectsValue[0] != '[' {
