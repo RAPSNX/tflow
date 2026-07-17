@@ -138,9 +138,6 @@ func (m Manager) QuitAll() error {
 }
 
 func (m Manager) resolveInstanceID(currentSession, currentClient string) (string, error) {
-	if instanceID := strings.TrimSpace(os.Getenv(CurrentInstanceEnv)); instanceID != "" {
-		return instanceID, nil
-	}
 	instanceID, err := m.sessionInstanceID(currentSession)
 	if err != nil {
 		return "", err
@@ -148,7 +145,14 @@ func (m Manager) resolveInstanceID(currentSession, currentClient string) (string
 	if instanceID != "" {
 		return instanceID, nil
 	}
-	return m.clientInstanceID(currentClient)
+	instanceID, err = m.clientInstanceID(currentClient)
+	if err != nil {
+		return "", err
+	}
+	if instanceID != "" {
+		return instanceID, nil
+	}
+	return strings.TrimSpace(os.Getenv(CurrentInstanceEnv)), nil
 }
 
 func (m Manager) currentValue(format string) (string, error) {
