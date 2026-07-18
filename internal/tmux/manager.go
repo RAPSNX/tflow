@@ -126,7 +126,7 @@ func (m Manager) KillSession(name string) error {
 }
 
 func (m Manager) RenameSession(oldName, newName string) error {
-	oldName = SanitizeSessionName(oldName)
+	oldName = strings.TrimSpace(oldName)
 	newName = SanitizeSessionName(newName)
 	if oldName == "" || newName == "" {
 		return fmt.Errorf("session name is empty")

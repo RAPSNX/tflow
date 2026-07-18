@@ -259,11 +259,11 @@ func TestRenameSessionUsesTmuxRenameSession(t *testing.T) {
 		},
 	}
 
-	if err := manager.RenameSession("dev", "lala"); err != nil {
+	if err := manager.RenameSession("legacy_code", "lala"); err != nil {
 		t.Fatalf("RenameSession returned error: %v", err)
 	}
 
-	want := []string{"rename-session", "-t", "dev", "lala"}
+	want := []string{"rename-session", "-t", "legacy_code", "lala"}
 	found := false
 	for _, call := range calls {
 		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
