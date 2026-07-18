@@ -2,17 +2,36 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func TestDefaultSessionDirPrefersHome(t *testing.T) {
+func TestDefaultSessionDirUsesCurrentDirectory(t *testing.T) {
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get current directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(original); err != nil {
+			t.Errorf("restore current directory: %v", err)
+		}
+	})
+
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	cwd := filepath.Join(t.TempDir(), "project")
+	if err := os.Mkdir(cwd, 0o755); err != nil {
+		t.Fatalf("create current directory: %v", err)
+	}
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatalf("change current directory: %v", err)
+	}
 
-	if got := defaultSessionDir(); got != home {
-		t.Fatalf("defaultSessionDir = %q, want %q", got, home)
+	if got := defaultSessionDir(); got != cwd {
+		t.Fatalf("defaultSessionDir = %q, want %q", got, cwd)
 	}
 }
 

@@ -257,10 +257,8 @@ func rollbackStartupSession(manager tmuxController, name string, startupErr erro
 }
 
 func defaultSessionDir() string {
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		if info, err := os.Stat(home); err == nil && info.IsDir() {
-			return home
-		}
+	if cwd, err := os.Getwd(); err == nil && strings.TrimSpace(cwd) != "" {
+		return cwd
 	}
 	return runtmux.NormalizeCWD("")
 }
