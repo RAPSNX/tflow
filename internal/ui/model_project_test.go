@@ -246,6 +246,16 @@ func TestRenderMenuIncludesBrandSessionPanelAndStatusArea(t *testing.T) {
 	}
 }
 
+func TestRenderFooterIncludesDirectProjectShortcut(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 72
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderFooter(60), "")
+	if !strings.Contains(strings.Join(strings.Fields(plain), " "), "[N] new project") {
+		t.Fatalf("renderFooter missing direct project shortcut in %q", plain)
+	}
+}
+
 func TestRenderFooterListsProjectsOnSeparateLinesDuringProjectSwitch(t *testing.T) {
 	m := NewMenu().(model)
 	m.width = 48

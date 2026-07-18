@@ -228,6 +228,8 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = inputNew
 		m.status = "New: p project, t terminal, k k9s, c agent."
 		return m, nil
+	case "N":
+		return m.beginProjectCreate()
 	case "p":
 		return m.beginProjectSwitch()
 	case "d":
@@ -375,12 +377,7 @@ func (m model) updateNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "p":
-		m.mode = inputCreateProject
-		m.input.Prompt = "project: "
-		m.input.SetValue("")
-		m.input.Focus()
-		m.status = "Create a new project."
-		return m, nil
+		return m.beginProjectCreate()
 	case "t":
 		return m.startSessionCreate(sessionKindTerminal)
 	case "k":

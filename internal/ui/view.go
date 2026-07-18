@@ -101,7 +101,7 @@ func (m model) renderFooter(width int) string {
 			}
 		}
 	default:
-		lines = append(lines, hintStyle.Render("[j/k] move  [enter] switch  [n] new  [p] project  [r] rename  [d] delete  [e] edit project"))
+		lines = append(lines, hintStyle.Render("[j/k] move  [enter] switch  [n] new session  [N] new project  [p] project  [r] rename  [d] delete  [e] edit project"))
 	}
 	if status := m.statusView(); status != "" {
 		if len(lines) > 0 {
