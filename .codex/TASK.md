@@ -11,13 +11,13 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 - [x] Keep persistent project sessions alive when the current instance exits.
 - [x] Open the sidebar as a left-anchored tmux popup without resizing the active terminal.
 - [x] Suppress benign tmux errors while toggling or closing the popup.
-- [ ] Validate or create `store.json` before creating the startup tmux session.
-- [ ] Roll back a newly created startup session if temporary tagging, control-mode setup, or later startup preparation fails.
-- [ ] Mark every session created outside a project as volatile and owned by the current instance.
-- [ ] Show and manage only the current instance's volatile sessions while outside a project.
-- [ ] Ensure normal exit and confirmed `Ctrl+Q` remove every volatile session created by that instance.
-- [ ] Bind `Ctrl+Q` in tmux so quit confirmation opens from the live terminal while the sidebar is closed.
-- [ ] Add an internal `open-quit` command that opens the popup directly in quit-confirmation mode.
+- [x] Validate or create `store.json` before creating the startup tmux session.
+- [x] Roll back a newly created startup session if temporary tagging, control-mode setup, or later startup preparation fails.
+- [x] Mark every session created outside a project as volatile and owned by the current instance.
+- [x] Show and manage only the current instance's volatile sessions while outside a project.
+- [x] Ensure normal exit and confirmed `Ctrl+Q` remove every volatile session created by that instance.
+- [x] Bind `Ctrl+Q` in tmux so quit confirmation opens from the live terminal while the sidebar is closed.
+- [x] Add an internal `open-quit` command that opens the popup directly in quit-confirmation mode.
 
 ## Top UI and sidebar
 
@@ -90,15 +90,15 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 
 ## Verification
 
-- [ ] Add regression tests for global quit invocation and instance-scoped volatile session creation and cleanup.
+- [x] Add regression tests for global quit invocation and instance-scoped volatile session creation and cleanup.
 - [ ] Add rendering tests for the centered header, metadata-free default sidebar, and one-shortcut-per-row help view.
 - [ ] Add context tests covering volatile startup with existing projects and project creation without implicit switching.
 - [ ] Add tests for persisted project workdirs and final-session project deletion.
 - [ ] Add strict-store tests for every removed field, unknown fields, and the canonical round trip.
-- [ ] Add startup rollback tests for state validation and tmux setup failures.
+- [x] Add startup rollback tests for state validation and tmux setup failures.
 - [ ] Add Home Manager evaluation coverage confirming it does not manage `store.json`.
-- [ ] Run `gofmt` on every changed Go file.
-- [ ] Run `go test ./...`.
-- [ ] Run `go build ./...`.
-- [ ] Run `go vet ./...`.
+- [x] Run `gofmt` on every changed Go file.
+- [x] Run `go test ./...`.
+- [x] Run `go build ./...`.
+- [x] Run `go vet ./...`.
 - [ ] Run `nix build --no-link .#tflow` and verify the output contains `bin/tflow`.
