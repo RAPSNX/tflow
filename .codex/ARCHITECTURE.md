@@ -23,6 +23,12 @@ Volatile sessions belong only to the current `tflow` instance. They are used for
 
 Sessions created outside a project are volatile, belong to the current `tflow` instance, and follow the same cleanup rules.
 
+`tflow` contains a reviewed, compiled list of exactly 25 animal names. The list is fetched once from a public animal API during development and is never requested at runtime.
+
+The startup volatile session and the initial session of every newly created project receive a randomly selected animal name from that list. A single-animal session name is exactly the selected animal name.
+
+When all single-animal names are in use for volatile sessions, `tflow` uses an unused two-animal name from the same list. It adds a numeric suffix only after all such combinations are in use.
+
 Persistent sessions are ordinary `tmux` sessions grouped into projects by `tflow` metadata. They are not restored from a complex runtime snapshot.
 
 ## Terminal UI
@@ -66,6 +72,26 @@ The sidebar handles the core management actions:
 - quit the current `tflow` instance
 - typing `?` will open a help list, with all available shortcuts, one per row
 
+## Design
+
+The sidebar uses Charmbracelet Bubble Tea for interaction and Lip Gloss for terminal-native layout and styling. Visual design is limited to terminal-safe text, color, padding, and borders.
+
+Badges share a compact, filled style with bold text and horizontal padding:
+
+- `TFLOW` is the centered sidebar brand badge, with a blue background and dark foreground.
+- `live` is a green badge shown immediately before the label of the actually active session.
+
+The `live` badge appears exactly once in the session list. It represents the active terminal session, not merely the keyboard-selected row, and remains legible when that row is selected.
+
+Every input, rename, settings, and confirmation dialog uses the same centered structured-card layout:
+
+- a dark rounded card with a subtle border
+- an accent badge and clear title in the header, followed by a divider
+- muted context text and, where needed, a bordered focused input field
+- a footer of keyboard keycaps: the primary action on `Enter` and cancellation on `Esc`
+
+Create, rename, settings, and normal confirmations use the blue and teal interface accents. Deletion confirmations use a red header badge and red `Enter` action keycap; `Esc` remains neutral.
+
 ## Projects and Sessions
 
 Projects are lightweight groups over `tmux` sessions.
@@ -75,7 +101,7 @@ A project contains:
 - a unique project name
 - a default `workdir`
 
-Creating a project stores the current working directory as its default `workdir` and creates a first default session named `code` there. The `code` session is an ordinary session and may be renamed at any time.
+Creating a project stores the current working directory as its default `workdir` and creates its initial session there with a random animal name.
 
 A session belongs to at most one project.
 
