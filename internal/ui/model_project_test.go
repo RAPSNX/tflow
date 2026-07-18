@@ -203,7 +203,12 @@ func TestSessionLoadMigratesProjectSessionsToScopedNames(t *testing.T) {
 func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	tmp := t.TempDir()
 	var renamed []string
+	var syncedProjects map[string]string
 	m := newModel(fakeTmuxController{
+		syncSessionProjects: func(projects map[string]string) error {
+			syncedProjects = cloneStringMap(projects)
+			return nil
+		},
 		renameSession: func(oldName, newName string) error {
 			renamed = []string{oldName, newName}
 			return nil
@@ -252,6 +257,18 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	}
 	if final.sessionLabel("default--lala") != "lala" {
 		t.Fatalf("session label = %q, want lala", final.sessionLabel("default--lala"))
+	}
+	if _, found := final.findSession("default--lala"); !found {
+		t.Fatalf("renamed session missing from sessions: %#v", final.sessions)
+	}
+	if _, found := final.findSession("default--dev"); found {
+		t.Fatalf("old session remains in sessions: %#v", final.sessions)
+	}
+	if got := syncedProjects["default--lala"]; got != defaultProjectName {
+		t.Fatalf("synced project = %q, want %q", got, defaultProjectName)
+	}
+	if _, found := syncedProjects["default--dev"]; found {
+		t.Fatalf("old session was synced: %#v", syncedProjects)
 	}
 	if _, ok := final.sessionProjects["default--dev"]; ok {
 		t.Fatalf("old session project still present: %#v", final.sessionProjects)

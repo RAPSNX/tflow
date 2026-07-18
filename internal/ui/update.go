@@ -258,6 +258,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.currentSession == msg.oldName {
 			m.currentSession = msg.newName
 		}
+		for index := range m.sessions {
+			if m.sessions[index].Name == msg.oldName {
+				m.sessions[index].Name = msg.newName
+			}
+		}
 		m.mode = inputNone
 		m.renameTarget = renameTarget{}
 		if err := m.saveState(); err != nil {
