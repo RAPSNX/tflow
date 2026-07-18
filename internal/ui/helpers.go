@@ -38,6 +38,17 @@ func projectSessionName(project, name string) string {
 	return sanitizeSessionName(project) + "--" + sanitizeSessionName(name)
 }
 
+func (m model) sessionDisplayName(name string) string {
+	if normalizeProjectName(m.sessionProjects[name]) == "" {
+		return name
+	}
+	_, label, ok := strings.Cut(name, "--")
+	if !ok || label == "" {
+		return name
+	}
+	return label
+}
+
 func projectAccentColor(project string) string {
 	palette := []string{
 		"#89b4fa",

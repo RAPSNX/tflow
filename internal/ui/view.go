@@ -42,7 +42,7 @@ func (m model) renderMenu() string {
 func (m model) renderHeader(width int) string {
 	left := brandBadgeStyle.Render("TFLOW")
 	project := countBadgeStyle.Render("project " + fallbackText(m.currentProject(), ""))
-	session := countBadgeStyle.Render("session " + fallbackText(m.currentSession, ""))
+	session := countBadgeStyle.Render("session " + fallbackText(m.sessionDisplayName(m.currentSession), ""))
 	right := lipgloss.JoinHorizontal(lipgloss.Left, project, " ", session)
 	gap := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
 	return headerStyle.Width(width).Render(left + strings.Repeat(" ", gap) + right)
@@ -71,7 +71,7 @@ func (m model) renderSessionRow(index int, s session) string {
 	if sessionType := m.sessionType(s.Name); sessionType != sessionTypeTerminal {
 		parts = append(parts, m.sessionTypeBadge(sessionType), " ")
 	}
-	parts = append(parts, s.Name)
+	parts = append(parts, m.sessionDisplayName(s.Name))
 	content := strings.Join(parts, "")
 	if s.Name == m.currentSession {
 		badge := "[live]"

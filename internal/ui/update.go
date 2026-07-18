@@ -89,7 +89,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.assignSessionProject(msg.session.Name, msg.config.Name)
 			m.setSessionType(msg.session.Name, sessionTypeTerminal)
-			m.selectedSession = msg.session.Name
+			if current, ok := m.currentSessionInfo(); !ok || !current.Temporary {
+				m.selectedSession = msg.session.Name
+			}
 		}
 		m.mode = inputNone
 		if err := m.saveState(); err != nil {
