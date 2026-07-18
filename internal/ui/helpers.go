@@ -109,8 +109,8 @@ func (m model) statusView() string {
 	if strings.TrimSpace(m.status) == "" {
 		return ""
 	}
-	style := statusStyle
-	if m.err != nil {
+	style := warningStatusStyle
+	if m.err != nil && m.status == m.err.Error() {
 		style = errorStatusStyle
 	}
 	return style.Width(max(20, m.width-6)).Render(m.status)

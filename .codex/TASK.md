@@ -102,3 +102,15 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 - [x] Run `go build ./...`.
 - [x] Run `go vet ./...`.
 - [ ] Run `nix build --no-link .#tflow` and verify the output contains `bin/tflow`.
+
+
+## Dialog, status, and lifecycle follow-up
+
+- [x] Replace inline project switching with a searchable dialog that supports `j`/`k` selection and `Enter` activation.
+- [x] Render management flows as dialogs and keep the conditional bottom status row visible while a dialog is open.
+- [x] Render recoverable action problems as yellow warnings and operation failures as red errors.
+- [x] Start every new project with a renameable `code` session.
+- [x] Explain in the final-session confirmation that the entire project will be deleted.
+- [x] After a deletion, activate the next project's first session, wrapping by project order, or create a volatile fallback session when none remain.
+- [x] Close the sidebar and restore terminal focus after successful actions, after synchronizing the top project and session badges.
+- [ ] Add regression coverage for dialog project switching, persistent status rendering, deletion navigation, volatile fallback, and focus restoration.

@@ -244,7 +244,7 @@ func TestNStartsProjectCreateMode(t *testing.T) {
 	if got.input.Prompt != "project: " {
 		t.Fatalf("prompt = %q, want project prompt", got.input.Prompt)
 	}
-	if got.status != "Create a new project." {
+	if got.status != "" {
 		t.Fatalf("status = %q", got.status)
 	}
 }
@@ -509,9 +509,9 @@ func TestDDeletesSelectedSession(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected kill command")
 	}
-	msg := cmd().(sessionKilledMsg)
+	msg := cmd().(projectDeletedMsg)
 	if msg.err != nil {
-		t.Fatalf("kill returned error: %v", msg.err)
+		t.Fatalf("delete returned error: %v", msg.err)
 	}
 	if got, want := fmt.Sprint(killed), fmt.Sprint([]string{"dev"}); got != want {
 		t.Fatalf("killed = %s, want %s", got, want)
@@ -1046,7 +1046,10 @@ func TestDeletingFinalProjectSessionRemovesProjectMetadata(t *testing.T) {
 	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}}
 
 	updated, _ := m.Update(sessionKilledMsg{name: "small--code"})
-	got := updated.(model)
+	got, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatalf("updated model = %T", updated)
+	}
 	if len(got.projects) != 0 || len(got.projectConfigs) != 0 {
 		t.Fatal("final session left project metadata")
 	}

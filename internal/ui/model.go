@@ -46,8 +46,9 @@ type sessionCreatedMsg struct {
 }
 
 type sessionKilledMsg struct {
-	name string
-	err  error
+	name    string
+	project string
+	err     error
 }
 
 type projectCreatedMsg struct {
@@ -133,6 +134,7 @@ type model struct {
 	renameTarget        renameTarget
 	deleteTarget        deleteTarget
 	switchProjectTarget string
+	projectSwitchIndex  int
 	projectEditConfig   projectConfig
 
 	cwd       string
