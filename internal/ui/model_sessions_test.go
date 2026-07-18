@@ -300,6 +300,29 @@ func TestCreateUnscopedSessionIsVolatileAndDoesNotPersistMetadata(t *testing.T) 
 	}
 }
 
+func TestCreateVolatileSessionClearsStaleMetadata(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "scratch-temp").(model)
+	m.sessionProjects = map[string]string{"notes": "old-project"}
+	m.sessionTypes = map[string]sessionType{"notes": sessionTypeAgent}
+	m.sessionLabels = map[string]string{"notes": "old label"}
+
+	updated, _ := m.Update(sessionCreatedMsg{
+		session:  session{Name: "notes", Temporary: true, Instance: "instance-1"},
+		volatile: true,
+	})
+	got := updated.(model)
+
+	if _, ok := got.sessionProjects["notes"]; ok {
+		t.Fatalf("stale project metadata remains: %#v", got.sessionProjects)
+	}
+	if _, ok := got.sessionTypes["notes"]; ok {
+		t.Fatalf("stale type metadata remains: %#v", got.sessionTypes)
+	}
+	if _, ok := got.sessionLabels["notes"]; ok {
+		t.Fatalf("stale label metadata remains: %#v", got.sessionLabels)
+	}
+}
+
 func TestVolatileContextShowsOnlyCurrentInstanceSessions(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "scratch-temp").(model)
 	m.instanceID = "instance-1"

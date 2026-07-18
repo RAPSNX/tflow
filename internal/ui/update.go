@@ -77,6 +77,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.volatile {
+			delete(m.sessionProjects, msg.session.Name)
+			delete(m.sessionTypes, msg.session.Name)
+			delete(m.sessionLabels, msg.session.Name)
 			m.selectedProject = ""
 			m.selectedSession = msg.session.Name
 		} else {
