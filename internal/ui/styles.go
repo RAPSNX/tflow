@@ -36,16 +36,10 @@ var (
 	appStyle               lipgloss.Style
 	headerStyle            lipgloss.Style
 	titleStyle             lipgloss.Style
-	subtitleStyle          lipgloss.Style
 	brandBadgeStyle        lipgloss.Style
 	mutedStyle             lipgloss.Style
-	hintStyle              lipgloss.Style
 	panelStyle             lipgloss.Style
 	sectionTitleStyle      lipgloss.Style
-	statsValueStyle        lipgloss.Style
-	statsLabelStyle        lipgloss.Style
-	projectStyle           lipgloss.Style
-	selectedProjectStyle   lipgloss.Style
 	sessionStyle           lipgloss.Style
 	selectedSessionStyle   lipgloss.Style
 	currentBadgeStyle      lipgloss.Style
@@ -132,9 +126,6 @@ func applyTheme(p themePalette) {
 		Bold(true).
 		Foreground(textColor)
 
-	subtitleStyle = lipgloss.NewStyle().
-		Foreground(subtextColor)
-
 	brandBadgeStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(badgeTextColor).
@@ -142,9 +133,6 @@ func applyTheme(p themePalette) {
 		Padding(0, 1)
 
 	mutedStyle = lipgloss.NewStyle().
-		Foreground(subtextColor)
-
-	hintStyle = lipgloss.NewStyle().
 		Foreground(subtextColor)
 
 	panelStyle = lipgloss.NewStyle().
@@ -156,24 +144,6 @@ func applyTheme(p themePalette) {
 	sectionTitleStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(textColor)
-
-	statsValueStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(textColor)
-
-	statsLabelStyle = lipgloss.NewStyle().
-		Foreground(subtextColor)
-
-	projectStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(textColor).
-		Padding(0, 1)
-
-	selectedProjectStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(selectedTextColor).
-		Background(blueColor).
-		Padding(0, 1)
 
 	sessionStyle = lipgloss.NewStyle().
 		Foreground(textColor).
