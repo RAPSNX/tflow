@@ -132,7 +132,10 @@ Project settings contain only the project `workdir`.
 
 All persistent metadata lives in one JSON file:
 
-- `$XDG_STATE_HOME/tflow/store.json`
+- `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set
+- `~/.config/tflow/store.json` when `XDG_STATE_HOME` is unset or empty
+
+`tflow` never stores state in `~/.local/share`.
 
 The store keeps only the metadata needed for `tflow` to rebuild project and sidebar state:
 

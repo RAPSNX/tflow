@@ -113,7 +113,8 @@ Every previously open task is grouped below for a dedicated implementation sessi
 
 ## State
 
-- [x] Store persistent metadata at `$XDG_STATE_HOME/tflow/store.json`.
+- [x] Store persistent metadata at `$XDG_STATE_HOME/tflow/store.json` when set, otherwise at `~/.config/tflow/store.json`; never use `~/.local/share`.
+
 - [x] Create an empty state file when none exists.
 - [x] Fail startup with a path-qualified error when the state file contains invalid JSON.
 - [x] Persist project order, session membership, display labels, and project workdirs.
