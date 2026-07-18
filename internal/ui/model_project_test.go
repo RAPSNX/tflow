@@ -278,6 +278,20 @@ func TestRenderHeaderUsesLiveSessionProject(t *testing.T) {
 	}
 }
 
+func TestRenderHeaderUsesDisplayLabel(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.currentSession = "small--code"
+	m.sessions = []session{{Name: "small--code"}}
+	m.sessionProjects = map[string]string{"small--code": "small"}
+	m.sessionLabels = map[string]string{"small--code": "code"}
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHeader(40), "")
+	if !strings.Contains(plain, "session code") || strings.Contains(plain, "small--code") {
+		t.Fatalf("header = %q", plain)
+	}
+}
+
 func TestRenderSessionRowUsesDisplayLabel(t *testing.T) {
 	m := NewMenu().(model)
 	m.width = 48

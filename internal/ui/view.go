@@ -44,7 +44,7 @@ func (m model) renderMenu() string {
 func (m model) renderHeader(width int) string {
 	left := brandBadgeStyle.Render("TFLOW")
 	project := countBadgeStyle.Render("project " + fallbackText(m.currentProject(), ""))
-	session := countBadgeStyle.Render("session " + fallbackText(m.currentSession, ""))
+	session := countBadgeStyle.Render("session " + fallbackText(m.sessionLabel(m.currentSession), ""))
 	right := lipgloss.JoinHorizontal(lipgloss.Left, project, " ", session)
 	gap := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
 	return headerStyle.Width(width).Render(left + strings.Repeat(" ", gap) + right)

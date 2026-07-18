@@ -108,7 +108,7 @@ func (f fakeTmuxController) CleanupVolatileSessions(instanceID string) error {
 	return nil
 }
 
-func (f fakeTmuxController) SyncSessionProjects(sessionProjects map[string]string) error {
+func (f fakeTmuxController) SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error {
 	if f.syncSessionProjects != nil {
 		return f.syncSessionProjects(sessionProjects)
 	}

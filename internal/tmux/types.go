@@ -39,7 +39,7 @@ type Controller interface {
 	RenameSession(oldName, newName string) error
 	SwitchClient(name string) error
 	EnsureControlMode(binaryPath string, palette Palette) error
-	SyncSessionProjects(sessionProjects map[string]string) error
+	SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error
 	ToggleMenu(binaryPath string) error
 	CloseMenu() error
 	QuitAll() error

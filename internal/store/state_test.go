@@ -268,6 +268,12 @@ func TestEnsureStartupStateMigratesLegacySessionSnapshot(t *testing.T) {
 	if got := state.SessionTypes["bug-iowait_agent"]; got != "agent" {
 		t.Fatalf("sessionTypes[bug-iowait_agent] = %q", got)
 	}
+	if got := state.SessionLabels["atze_code"]; got != "code" {
+		t.Fatalf("sessionLabels[atze_code] = %q, want code", got)
+	}
+	if got := state.SessionLabels["bug-iowait_agent"]; got != "agent" {
+		t.Fatalf("sessionLabels[bug-iowait_agent] = %q, want agent", got)
+	}
 	if _, ok := state.SessionProjects["agent"]; ok {
 		t.Fatal("sessionProjects unexpectedly used display session name key")
 	}

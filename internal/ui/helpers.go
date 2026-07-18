@@ -38,21 +38,6 @@ func sanitizeProjectName(name string) string {
 	return normalizeProjectName(name)
 }
 
-func projectSessionName(project, name string) string {
-	return sanitizeSessionName(project) + "--" + sanitizeSessionName(name)
-}
-
-func (m model) sessionDisplayName(name string) string {
-	if normalizeProjectName(m.sessionProjects[name]) == "" {
-		return name
-	}
-	_, label, ok := strings.Cut(name, "--")
-	if !ok || label == "" {
-		return name
-	}
-	return label
-}
-
 func projectAccentColor(project string) string {
 	palette := []string{
 		"#89b4fa",
@@ -133,11 +118,13 @@ func (m model) statusView() string {
 
 func (m model) syncTmuxSessionProjects() error {
 	sessionProjects := make(map[string]string, len(m.sessions))
+	sessionLabels := make(map[string]string, len(m.sessions))
 	for _, s := range m.sessions {
 		project := normalizeProjectName(m.sessionProjects[s.Name])
 		sessionProjects[s.Name] = project
+		sessionLabels[s.Name] = m.sessionLabel(s.Name)
 	}
-	return m.tmux.SyncSessionProjects(sessionProjects)
+	return m.tmux.SyncSessionProjects(sessionProjects, sessionLabels)
 }
 
 func max(a, b int) int {

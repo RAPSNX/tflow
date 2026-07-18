@@ -387,6 +387,9 @@ func decodeLegacySessionSnapshotState(data []byte) (AppState, error) {
 				continue
 			}
 			state.SessionProjects[sessionKey] = name
+			if label := strings.TrimSpace(session.Name); label != "" {
+				state.SessionLabels[sessionKey] = label
+			}
 			if strings.TrimSpace(session.Type) == "" {
 				state.SessionTypes[sessionKey] = "terminal"
 				continue

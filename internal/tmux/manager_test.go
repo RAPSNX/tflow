@@ -50,6 +50,8 @@ func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 		"dev":   "small",
 		"api":   "",
 		"blank": "  ",
+	}, map[string]string{
+		"dev": "development",
 	})
 	if err != nil {
 		t.Fatalf("SyncSessionProjects returned error: %v", err)
@@ -59,6 +61,9 @@ func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 		{"set-option", "-t", "dev", "@tflow-project", "small"},
 		{"set-option", "-t", "api", "@tflow-project", ""},
 		{"set-option", "-t", "blank", "@tflow-project", ""},
+		{"set-option", "-t", "dev", "@tflow-session-label", "development"},
+		{"set-option", "-t", "api", "@tflow-session-label", "api"},
+		{"set-option", "-t", "blank", "@tflow-session-label", "blank"},
 	}
 	for _, want := range wants {
 		found := false

@@ -148,7 +148,7 @@ func (m Manager) SwitchClient(name string) error {
 	return err
 }
 
-func (m Manager) SyncSessionProjects(sessionProjects map[string]string) error {
+func (m Manager) SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error {
 	for name, project := range sessionProjects {
 		name = strings.TrimSpace(name)
 		if name == "" {
@@ -161,11 +161,9 @@ func (m Manager) SyncSessionProjects(sessionProjects map[string]string) error {
 			}
 			return err
 		}
-		label := name
-		if project != "" {
-			if _, suffix, ok := strings.Cut(name, "--"); ok && suffix != "" {
-				label = suffix
-			}
+		label := strings.TrimSpace(sessionLabels[name])
+		if label == "" {
+			label = name
 		}
 		if _, err := m.runner()("set-option", "-t", name, sessionLabelMarker, label); err != nil {
 			if isNoSession(err) || IsNoServer(err) {
