@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,6 +20,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.status = msg.err.Error()
 			return m, nil
+		}
+		if m.instanceID == "" {
+			if current, ok := m.currentSessionInfo(); ok && current.Temporary {
+				m.instanceID = current.Instance
+			}
 		}
 		changed := m.ensureSessionProjects()
 		m.syncSelection()
@@ -70,17 +76,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
-		m.assignSessionProject(msg.session.Name, msg.project)
-		m.setSessionType(msg.session.Name, msg.kind)
-		m.setSessionLabel(msg.session.Name, msg.label)
-		m.selectedProject = msg.project
-		m.selectedSession = msg.session.Name
-		m.mode = inputNone
-		if err := m.saveState(); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
+		if msg.volatile {
+			if m.clearSessionMetadata(msg.session.Name) {
+				if err := m.saveState(); err != nil {
+					m.err = err
+					m.status = err.Error()
+					return m, nil
+				}
+			}
+			m.selectedProject = ""
+			m.selectedSession = msg.session.Name
+		} else {
+			m.assignSessionProject(msg.session.Name, msg.project)
+			m.setSessionType(msg.session.Name, msg.kind)
+			m.setSessionLabel(msg.session.Name, msg.label)
+			m.selectedProject = msg.project
+			m.selectedSession = msg.session.Name
+			if err := m.saveState(); err != nil {
+				m.err = err
+				m.status = err.Error()
+				return m, nil
+			}
 		}
+		m.mode = inputNone
 		m.err = nil
 		m.status = ""
 		return m, m.loadSessionsCmd()
@@ -90,16 +108,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
+		deleted, wasVolatile := m.findSession(msg.name)
 		delete(m.sessionProjects, msg.name)
 		delete(m.sessionTypes, msg.name)
 		delete(m.sessionLabels, msg.name)
 		if m.selectedSession == msg.name {
 			m.selectedSession = ""
 		}
-		if err := m.saveState(); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
+		if !wasVolatile || !deleted.Temporary {
+			if err := m.saveState(); err != nil {
+				m.err = err
+				m.status = err.Error()
+				return m, nil
+			}
 		}
 		m.err = nil
 		m.status = ""
@@ -145,6 +166,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 			m.status = msg.err.Error()
 			return m, nil
+		}
+		oldSession, wasVolatile := m.findSession(msg.oldName)
+		if wasVolatile && oldSession.Temporary {
+			if m.clearSessionMetadata(msg.oldName, msg.newName) {
+				if err := m.saveState(); err != nil {
+					m.err = err
+					m.status = err.Error()
+					return m, nil
+				}
+			}
+			for index := range m.sessions {
+				if m.sessions[index].Name == msg.oldName {
+					m.sessions[index].Name = msg.newName
+				}
+			}
+			if m.selectedSession == msg.oldName {
+				m.selectedSession = msg.newName
+			}
+			if m.currentSession == msg.oldName {
+				m.currentSession = msg.newName
+			}
+			m.mode = inputNone
+			m.renameTarget = renameTarget{}
+			m.err = nil
+			m.status = ""
+			return m, m.loadSessionsCmd()
 		}
 		project := normalizeProjectName(m.sessionProjects[msg.oldName])
 		delete(m.sessionProjects, msg.oldName)
@@ -365,6 +412,13 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				s, err := m.tmux.CreateSession(name, dir, command)
 				if err != nil {
 					return sessionCreatedMsg{err: err}
+				}
+				if project == "" {
+					if err := m.tmux.SetSessionTemporary(s.Name, true, m.instanceID); err != nil {
+						_ = m.tmux.KillSession(s.Name)
+						return sessionCreatedMsg{err: fmt.Errorf("mark volatile session: %w", err)}
+					}
+					return sessionCreatedMsg{session: s, volatile: true, kind: kind, label: label}
 				}
 				return sessionCreatedMsg{session: s, kind: kind, project: project, label: label}
 			}

@@ -41,6 +41,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"set-option", "-g", "default-shell", "/bin/zsh"},
 		{"set-option", "-g", "default-command", "exec '/bin/zsh' -l"},
 		{"bind-key", "-n", "C-f", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
+		{"bind-key", "-n", "C-q", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' open-quit"},
 	}
 	for _, want := range wants {
 		found := false
@@ -656,5 +657,35 @@ func TestToggleMenuIgnoresMissingPopupMarkerOnClose(t *testing.T) {
 
 	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
 		t.Fatalf("ToggleMenu returned error: %v", err)
+	}
+}
+
+func TestOpenQuitOpensQuitConfirmationPopup(t *testing.T) {
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	t.Setenv(CurrentClientEnv, "@2")
+
+	var popupArgs []string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		switch args[0] {
+		case "show-environment", "set-environment":
+			return "", nil
+		case "show-options":
+			return "instance-1", nil
+		case "display-popup":
+			popupArgs = append([]string(nil), args...)
+			return "", nil
+		default:
+			return "", fmt.Errorf("unexpected command: %v", args)
+		}
+	}}
+
+	if err := manager.OpenQuit("/tmp/tflow"); err != nil {
+		t.Fatalf("OpenQuit returned error: %v", err)
+	}
+	got := strings.Join(popupArgs, " ")
+	for _, want := range []string{"-c @2", "-e " + CurrentInstanceEnv + "=instance-1", "-e " + MenuModeEnv + "=" + MenuModeQuit} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("display-popup command = %q, want %q", got, want)
+		}
 	}
 }

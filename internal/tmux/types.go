@@ -17,9 +17,12 @@ const (
 	menuWidth          = "36"
 	menuHeight         = "100%"
 	menuToggleKey      = "C-f"
+	quitKey            = "C-q"
 	CurrentSessionEnv  = "TFLOW_CURRENT_SESSION"
 	CurrentClientEnv   = "TFLOW_CURRENT_CLIENT"
 	CurrentInstanceEnv = "TFLOW_INSTANCE_ID"
+	MenuModeEnv        = "TFLOW_MENU_MODE"
+	MenuModeQuit       = "quit"
 )
 
 type Session struct {
@@ -41,6 +44,7 @@ type Controller interface {
 	EnsureControlMode(binaryPath string, palette Palette) error
 	SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error
 	ToggleMenu(binaryPath string) error
+	OpenQuit(binaryPath string) error
 	CloseMenu() error
 	QuitAll() error
 	CleanupVolatileSessions(instanceID string) error

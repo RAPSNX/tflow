@@ -20,6 +20,8 @@ func run() error {
 		switch args[0] {
 		case "menu":
 			return ui.OpenMenu()
+		case "open-quit":
+			return ui.OpenQuit()
 		case "toggle-menu":
 			return ui.ToggleMenu()
 		default:

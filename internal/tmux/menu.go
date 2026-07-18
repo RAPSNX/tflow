@@ -15,8 +15,8 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		fmt.Sprintf("%s=%s", CurrentSessionEnv, ShellQuote("#{session_name}")),
 		fmt.Sprintf("%s=%s", CurrentClientEnv, ShellQuote("#{client_name}")),
 	}
-	parts = append(parts, "exec "+ShellQuote(binaryPath)+" toggle-menu")
-	runShell := strings.Join(parts, " ")
+	toggleShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" toggle-menu"), " ")
+	quitShell := strings.Join(append(parts, "exec "+ShellQuote(binaryPath)+" open-quit"), " ")
 	commands := [][]string{
 		{"set-option", "-g", "status", "on"},
 		{"set-option", "-g", "status-position", "top"},
@@ -34,7 +34,8 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		{"set-option", "-g", "detach-on-destroy", "off"},
 		{"set-option", "-g", "default-shell", userShell()},
 		{"set-option", "-g", "default-command", loginShellCommand()},
-		{"bind-key", "-n", menuToggleKey, "run-shell", runShell},
+		{"bind-key", "-n", menuToggleKey, "run-shell", toggleShell},
+		{"bind-key", "-n", quitKey, "run-shell", quitShell},
 	}
 	for _, args := range commands {
 		if _, err := m.runner()(args...); err != nil && !IsNoServer(err) {
@@ -45,6 +46,14 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 }
 
 func (m Manager) ToggleMenu(binaryPath string) error {
+	return m.openMenu(binaryPath, "")
+}
+
+func (m Manager) OpenQuit(binaryPath string) error {
+	return m.openMenu(binaryPath, MenuModeQuit)
+}
+
+func (m Manager) openMenu(binaryPath, mode string) error {
 	if strings.TrimSpace(binaryPath) == "" {
 		return fmt.Errorf("tflow binary path is empty")
 	}
@@ -63,7 +72,12 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 		return err
 	}
 	if visible {
-		return m.closeMenuPopup(currentClient)
+		if mode == "" {
+			return m.closeMenuPopup(currentClient)
+		}
+		if err := m.closeMenuPopup(currentClient); err != nil {
+			return err
+		}
 	}
 
 	instanceID, err := m.resolveInstanceID(currentSession, currentClient)
@@ -89,6 +103,9 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 		"-e", fmt.Sprintf("%s=%s", CurrentClientEnv, currentClient),
 	}
 	args = append(args, popupInstanceEnvArgs(instanceID)...)
+	if mode != "" {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", MenuModeEnv, mode))
+	}
 	args = append(args, popupShellCommand(binaryPath, currentClient))
 	_, err = m.runner()(args...)
 	if err != nil {

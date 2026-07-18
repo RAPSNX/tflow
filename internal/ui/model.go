@@ -12,6 +12,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+
+	runtmux "tflow/internal/tmux"
 )
 
 type inputMode int
@@ -35,11 +37,12 @@ type sessionsLoadedMsg struct {
 }
 
 type sessionCreatedMsg struct {
-	session session
-	kind    sessionType
-	project string
-	label   string
-	err     error
+	session  session
+	volatile bool
+	kind     sessionType
+	project  string
+	label    string
+	err      error
 }
 
 type sessionKilledMsg struct {
@@ -108,6 +111,8 @@ type deleteTarget struct {
 
 type model struct {
 	tmux tmuxController
+
+	instanceID string
 
 	width  int
 	height int
@@ -183,6 +188,10 @@ func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string
 
 	cmd, err := manager.AttachCommand(sessionName)
 	if err != nil {
+		cleanupErr := manager.CleanupVolatileSessions(instanceID)
+		if cleanupErr != nil {
+			return fmt.Errorf("attach command: %w; cleanup volatile sessions: %v", err, cleanupErr)
+		}
 		return err
 	}
 	cmd.Stdin = os.Stdin
@@ -204,6 +213,10 @@ func OpenMenu() error {
 	if err != nil {
 		return err
 	}
+	if os.Getenv(runtmux.MenuModeEnv) == runtmux.MenuModeQuit {
+		menu.mode = inputConfirmQuit
+		menu.status = "Confirm shutdown of this tflow instance."
+	}
 	finalModel, err := tea.NewProgram(menu, tea.WithAltScreen()).Run()
 	if err != nil {
 		return err
@@ -212,6 +225,10 @@ func OpenMenu() error {
 }
 
 func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) (string, error) {
+	if err := ensureStartupState(); err != nil {
+		return "", fmt.Errorf("initialize state %q: %w", appStatePath(), err)
+	}
+
 	existing, err := manager.ListSessions()
 	if err != nil {
 		return "", err
@@ -234,15 +251,19 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 		return "", fmt.Errorf("allocate startup session after %d retries", startupSessionRetryLimit)
 	}
 	if err := manager.SetSessionTemporary(name, true, instanceID); err != nil {
-		return "", err
+		return "", rollbackStartupSession(manager, name, fmt.Errorf("tag startup session: %w", err))
 	}
 	if err := manager.EnsureControlMode(binaryPath); err != nil {
-		return "", err
-	}
-	if err := ensureStartupState(); err != nil {
-		return "", err
+		return "", rollbackStartupSession(manager, name, fmt.Errorf("prepare tmux control mode: %w", err))
 	}
 	return name, nil
+}
+
+func rollbackStartupSession(manager tmuxController, name string, startupErr error) error {
+	if err := manager.KillSession(name); err != nil {
+		return fmt.Errorf("%w; rollback startup session %q: %v", startupErr, name, err)
+	}
+	return startupErr
 }
 
 func defaultSessionDir() string {
@@ -280,6 +301,7 @@ func buildModel(manager tmuxController, current string) (model, error) {
 	state = normalizeAppState(state)
 	return model{
 		tmux:            manager,
+		instanceID:      os.Getenv(menuInstanceEnv),
 		mode:            inputNone,
 		projects:        state.Projects,
 		sessionProjects: state.SessionProjects,

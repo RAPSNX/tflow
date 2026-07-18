@@ -56,6 +56,9 @@ func (m model) findSession(name string) (session, bool) {
 }
 
 func (m model) contextProject() string {
+	if m.volatileContext() {
+		return ""
+	}
 	if m.selectedProject != "" {
 		return m.selectedProject
 	}
@@ -67,16 +70,20 @@ func (m model) contextProject() string {
 
 func (m *model) syncSelection() {
 	m.projects = normalizeProjectList(m.projects)
-	if !containsString(m.projects, m.selectedProject) {
+	if m.volatileContext() {
 		m.selectedProject = ""
-	}
-	if m.selectedProject == "" {
-		if current, ok := m.currentSessionInfo(); ok && !current.Temporary {
-			m.selectedProject = normalizeProjectName(m.sessionProjects[current.Name])
+	} else {
+		if !containsString(m.projects, m.selectedProject) {
+			m.selectedProject = ""
 		}
-	}
-	if m.selectedProject == "" && len(m.projects) > 0 {
-		m.selectedProject = m.projects[0]
+		if m.selectedProject == "" {
+			if current, ok := m.currentSessionInfo(); ok && !current.Temporary {
+				m.selectedProject = normalizeProjectName(m.sessionProjects[current.Name])
+			}
+		}
+		if m.selectedProject == "" && len(m.projects) > 0 {
+			m.selectedProject = m.projects[0]
+		}
 	}
 
 	sessions := m.contextSessions()
@@ -84,12 +91,16 @@ func (m *model) syncSelection() {
 		m.selectedSession = ""
 	}
 	if m.selectedSession == "" {
-		if current, ok := m.currentSessionInfo(); ok && !current.Temporary {
-			currentProject := normalizeProjectName(m.sessionProjects[current.Name])
-			if m.selectedProject == "" || currentProject == m.selectedProject {
+		if current, ok := m.currentSessionInfo(); ok {
+			if current.Temporary && m.isCurrentInstanceVolatile(current) {
 				m.selectedSession = current.Name
-				if currentProject != "" {
-					m.selectedProject = currentProject
+			} else if !current.Temporary {
+				currentProject := normalizeProjectName(m.sessionProjects[current.Name])
+				if m.selectedProject == "" || currentProject == m.selectedProject {
+					m.selectedSession = current.Name
+					if currentProject != "" {
+						m.selectedProject = currentProject
+					}
 				}
 			}
 		}
@@ -97,6 +108,21 @@ func (m *model) syncSelection() {
 	if m.selectedSession == "" && len(sessions) > 0 {
 		m.selectedSession = sessions[0].Name
 	}
+}
+
+func (m model) volatileContext() bool {
+	current, ok := m.currentSessionInfo()
+	return ok && current.Temporary
+}
+
+func (m model) isCurrentInstanceVolatile(s session) bool {
+	if !s.Temporary {
+		return false
+	}
+	if instanceID := strings.TrimSpace(m.instanceID); instanceID != "" {
+		return s.Instance == instanceID
+	}
+	return s.Name == m.currentSession
 }
 
 func (m *model) ensureSessionProjects() bool {
@@ -199,16 +225,18 @@ func (m model) projectSessions(project string) []session {
 }
 
 func (m model) contextSessions() []session {
-	project := m.selectedProject
-	if project == "" {
+	if m.volatileContext() {
 		result := make([]session, 0, len(m.sessions))
 		for _, s := range m.sessions {
-			if s.Temporary {
-				continue
+			if m.isCurrentInstanceVolatile(s) {
+				result = append(result, s)
 			}
-			result = append(result, s)
 		}
 		return result
+	}
+	project := m.selectedProject
+	if project == "" {
+		return nil
 	}
 	return m.projectSessions(project)
 }

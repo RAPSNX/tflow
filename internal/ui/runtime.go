@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"os/exec"
 
 	runtmux "tflow/internal/tmux"
@@ -40,6 +41,14 @@ func newSessionManager() tmuxController {
 
 func ToggleMenu() error {
 	return runtmux.ToggleMenu()
+}
+
+func OpenQuit() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return runtmux.New().OpenQuit(exe)
 }
 
 func (m sessionManager) ListSessions() ([]session, error) {
