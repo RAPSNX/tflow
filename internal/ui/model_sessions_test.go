@@ -184,10 +184,25 @@ func TestCreateUnscopedSessionIsVolatileAndDoesNotPersistMetadata(t *testing.T) 
 		t.Fatalf("temporary tags = %s, want %s", got, want)
 	}
 	got := updated.(model)
-	updated, _ = got.Update(msg)
+	updated, followUp := got.Update(msg)
 	got = updated.(model)
 	if got.selectedProject != "" || got.selectedSession != "notes" {
 		t.Fatalf("selection = project %q session %q, want volatile notes", got.selectedProject, got.selectedSession)
+	}
+	if sessions := got.contextSessions(); len(sessions) != 2 {
+		t.Fatalf("volatile sessions = %#v, want startup and new session", sessions)
+	}
+	for _, name := range []string{"scratch-temp", "notes"} {
+		session, found := got.findSession(name)
+		if !found || !session.Temporary || session.Instance != "instance-1" {
+			t.Fatalf("session %q = %#v, want instance-owned volatile session", name, session)
+		}
+	}
+	if followUp == nil {
+		t.Fatal("expected switch command")
+	}
+	if action := followUp().(menuActionMsg); action.switchSession != "notes" {
+		t.Fatalf("switch session = %q, want notes", action.switchSession)
 	}
 	if _, ok := got.sessionProjects["notes"]; ok {
 		t.Fatalf("volatile session metadata persisted: %#v", got.sessionProjects)

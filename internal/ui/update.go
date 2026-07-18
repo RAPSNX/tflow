@@ -78,6 +78,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if !containsSessionName(m.sessions, msg.session.Name) {
 			msg.session.Temporary = msg.volatile
+			if msg.volatile {
+				msg.session.Instance = m.instanceID
+			}
 			m.sessions = append(m.sessions, msg.session)
 		}
 		if msg.volatile {
