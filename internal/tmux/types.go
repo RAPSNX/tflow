@@ -11,6 +11,7 @@ const (
 	menuPopupEnvPrefix = "TFLOW_MENU_POPUP_"
 	menuInstancePrefix = "TFLOW_MENU_INSTANCE_"
 	projectMarker      = "@tflow-project"
+	sessionLabelMarker = "@tflow-session-label"
 	tempMarker         = "@tflow-temp"
 	instanceMarker     = "@tflow-instance"
 	menuWidth          = "36"
@@ -84,7 +85,7 @@ func (p Palette) statusLeft() string {
 		"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] project #[fg=" + p.Blue + "]#{@tflow-project} " +
 		"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]" +
 		"  #[bg=" + p.Surface0 + ",fg=" + p.Subtext + "]" +
-		"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] session #[fg=" + p.Teal + "]#S " +
+		"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] session #[fg=" + p.Teal + "]#{?@tflow-session-label,#{@tflow-session-label},#S} " +
 		"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]"
 }
 

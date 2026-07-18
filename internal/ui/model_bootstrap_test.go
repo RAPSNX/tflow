@@ -265,6 +265,41 @@ func TestProjectSwitchUsesUniquePrefixAndClosesMenu(t *testing.T) {
 	}
 }
 
+func TestProjectSwitchSelectsFirstSessionInTargetProject(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "dev").(model)
+	m.projects = []string{"small", "storage"}
+	m.sessions = []session{{Name: "dev"}, {Name: "keep"}, {Name: "ops"}}
+	m.sessionProjects = map[string]string{"dev": "small", "keep": "storage", "ops": "storage"}
+	m.selectedProject = "small"
+	m.selectedSession = "dev"
+
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	pending := *(updated.(*model))
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	pending.input.SetValue("sto")
+
+	updated, cmd = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(model)
+	if cmd == nil {
+		t.Fatal("expected switch command")
+	}
+	if got.selectedProject != "storage" {
+		t.Fatalf("selectedProject = %q, want storage", got.selectedProject)
+	}
+	if got.selectedSession != "keep" {
+		t.Fatalf("selectedSession = %q, want keep", got.selectedSession)
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("menu action returned error: %v", msg.err)
+	}
+	if msg.switchSession != "keep" {
+		t.Fatalf("switchSession = %q, want keep", msg.switchSession)
+	}
+}
+
 func TestProjectSwitchFromVolatileSessionRequiresConfirmation(t *testing.T) {
 	var switched []string
 	m := newModel(fakeTmuxController{
@@ -297,6 +332,105 @@ func TestProjectSwitchFromVolatileSessionRequiresConfirmation(t *testing.T) {
 	}
 	if len(switched) != 0 {
 		t.Fatalf("switches before confirmation = %#v", switched)
+	}
+}
+
+func TestCreateProjectCreatesDefaultCodeSession(t *testing.T) {
+	tmp := t.TempDir()
+	var createdName, createdDir, createdCommand string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			createdName = name
+			createdDir = cwd
+			createdCommand = command
+			return session{Name: name, Windows: 1}, nil
+		},
+		listSessions: func() ([]session, error) {
+			return []session{{Name: projectSessionName("small", defaultProjectSessionName), Windows: 1}}, nil
+		},
+	}, "").(model)
+	m.statePath = tmp + "/store.json"
+	m.cwd = "/tmp/workspace"
+	m.mode = inputCreateProject
+	m.input.Prompt = "project: "
+	m.input.SetValue("Small")
+
+	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	pending := *(updated.(*model))
+	if cmd == nil {
+		t.Fatal("expected create project command")
+	}
+	msg := cmd().(projectCreatedMsg)
+	if msg.err != nil {
+		t.Fatalf("project create returned error: %v", msg.err)
+	}
+	if createdName != projectSessionName("small", defaultProjectSessionName) {
+		t.Fatalf("created session name = %q, want %q", createdName, projectSessionName("small", defaultProjectSessionName))
+	}
+	if createdDir != "/tmp/workspace" {
+		t.Fatalf("created session dir = %q, want /tmp/workspace", createdDir)
+	}
+	if createdCommand != "" {
+		t.Fatalf("created session command = %q, want empty", createdCommand)
+	}
+
+	updated, followUp := pending.Update(msg)
+	got := updated.(model)
+	if followUp == nil {
+		t.Fatal("expected reload command")
+	}
+	if got.selectedProject != "small" {
+		t.Fatalf("selectedProject = %q, want small", got.selectedProject)
+	}
+	if got.selectedSession != projectSessionName("small", defaultProjectSessionName) {
+		t.Fatalf("selectedSession = %q, want %q", got.selectedSession, projectSessionName("small", defaultProjectSessionName))
+	}
+	if !containsString(got.projects, "small") {
+		t.Fatalf("projects = %#v, want small project", got.projects)
+	}
+	if got.sessionProjects[projectSessionName("small", defaultProjectSessionName)] != "small" {
+		t.Fatalf("sessionProjects[%q] = %q, want small", projectSessionName("small", defaultProjectSessionName), got.sessionProjects[projectSessionName("small", defaultProjectSessionName)])
+	}
+	if got.sessionTypes[projectSessionName("small", defaultProjectSessionName)] != sessionTypeTerminal {
+		t.Fatalf("sessionTypes[%q] = %q, want %q", projectSessionName("small", defaultProjectSessionName), got.sessionTypes[projectSessionName("small", defaultProjectSessionName)], sessionTypeTerminal)
+	}
+	state, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatalf("loadAppState returned error: %v", err)
+	}
+	if state.SessionProjects[projectSessionName("small", defaultProjectSessionName)] != "small" {
+		t.Fatalf("saved sessionProjects[%q] = %q, want small", projectSessionName("small", defaultProjectSessionName), state.SessionProjects[projectSessionName("small", defaultProjectSessionName)])
+	}
+	if state.ProjectConfigs["small"].Name != "small" {
+		t.Fatalf("saved project config = %#v", state.ProjectConfigs["small"])
+	}
+}
+
+func TestProjectDefaultSessionNamesAreScoped(t *testing.T) {
+	created := map[string]bool{}
+	m := newModel(fakeTmuxController{
+		createSession: func(name, _ string, _ string) (session, error) {
+			if created[name] {
+				return session{}, fmt.Errorf("duplicate session %q", name)
+			}
+			created[name] = true
+			return session{Name: name}, nil
+		},
+	}, "").(model)
+
+	for _, project := range []string{"one", "two"} {
+		m.input.SetValue(project)
+		_, cmd := m.commitProjectCreate()
+		msg := cmd().(projectCreatedMsg)
+		if msg.err != nil {
+			t.Fatalf("create project %q: %v", project, msg.err)
+		}
+	}
+
+	for _, name := range []string{"one--code", "two--code"} {
+		if !created[name] {
+			t.Fatalf("created sessions = %#v, missing %q", created, name)
+		}
 	}
 }
 

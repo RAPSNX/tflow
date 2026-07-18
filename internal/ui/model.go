@@ -45,8 +45,9 @@ type sessionKilledMsg struct {
 }
 
 type projectCreatedMsg struct {
-	config projectConfig
-	err    error
+	config  projectConfig
+	session session
+	err     error
 }
 
 type sessionRenamedMsg struct {
@@ -133,10 +134,11 @@ const (
 type sessionType string
 
 const (
-	sessionTypeTerminal      sessionType = "terminal"
-	sessionTypeK9s           sessionType = "k9s"
-	sessionTypeAgent         sessionType = "agent"
-	startupSessionRetryLimit             = 128
+	sessionTypeTerminal       sessionType = "terminal"
+	sessionTypeK9s            sessionType = "k9s"
+	sessionTypeAgent          sessionType = "agent"
+	defaultProjectSessionName             = "code"
+	startupSessionRetryLimit              = 128
 )
 
 func NewMenu() tea.Model {

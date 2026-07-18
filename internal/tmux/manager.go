@@ -161,6 +161,18 @@ func (m Manager) SyncSessionProjects(sessionProjects map[string]string) error {
 			}
 			return err
 		}
+		label := name
+		if project != "" {
+			if _, suffix, ok := strings.Cut(name, "--"); ok && suffix != "" {
+				label = suffix
+			}
+		}
+		if _, err := m.runner()("set-option", "-t", name, sessionLabelMarker, label); err != nil {
+			if isNoSession(err) || IsNoServer(err) {
+				continue
+			}
+			return err
+		}
 	}
 	return nil
 }

@@ -158,6 +158,19 @@ func TestRenderHeaderLeavesProjectBadgeEmptyForVolatileSession(t *testing.T) {
 	}
 }
 
+func TestRenderHeaderUsesProjectLocalSessionName(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.currentSession = "small--code"
+	m.sessions = []session{{Name: "small--code"}}
+	m.sessionProjects = map[string]string{"small--code": "garden"}
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHeader(40), "")
+	if !strings.Contains(plain, "session code") || strings.Contains(plain, "small--code") {
+		t.Fatalf("header = %q", plain)
+	}
+}
+
 func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 	m := NewMenu().(model)
 	m.width = 48
@@ -230,6 +243,30 @@ func TestRenderMenuIncludesBrandSessionPanelAndStatusArea(t *testing.T) {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("renderMenu missing %q in %q", want, plain)
 		}
+	}
+}
+
+func TestRenderFooterListsProjectsOnSeparateLinesDuringProjectSwitch(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.projects = []string{"small", "storage"}
+	m.mode = inputSwitchProject
+	m.input.Prompt = "project: "
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderFooter(40), "")
+	lines := strings.Split(plain, "\n")
+	foundSmall := false
+	foundStorage := false
+	for _, line := range lines {
+		switch strings.TrimSpace(line) {
+		case "small":
+			foundSmall = true
+		case "storage":
+			foundStorage = true
+		}
+	}
+	if !foundSmall || !foundStorage {
+		t.Fatalf("renderFooter missing newline-separated project list in %q", plain)
 	}
 }
 

@@ -83,15 +83,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setProjectConfig(msg.config)
 		m.selectedProject = msg.config.Name
 		m.selectedSession = ""
+		if msg.session.Name != "" {
+			if !containsSessionName(m.sessions, msg.session.Name) {
+				m.sessions = append(m.sessions, msg.session)
+			}
+			m.assignSessionProject(msg.session.Name, msg.config.Name)
+			m.setSessionType(msg.session.Name, sessionTypeTerminal)
+			if current, ok := m.currentSessionInfo(); !ok || !current.Temporary {
+				m.selectedSession = msg.session.Name
+			}
+		}
 		m.mode = inputNone
 		if err := m.saveState(); err != nil {
 			m.err = err
 			m.status = err.Error()
 			return m, nil
 		}
+		if err := m.syncTmuxSessionProjects(); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
 		m.err = nil
 		m.status = ""
-		return m, nil
+		return m, m.loadSessionsCmd()
 	case sessionRenamedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -273,21 +288,7 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.status = "Project creation cancelled."
 			return m, nil
 		case tea.KeyEnter:
-			name := sanitizeProjectName(m.input.Value())
-			if name == "" {
-				m.status = "Project name is empty."
-				return m, nil
-			}
-			if containsString(m.projects, name) {
-				m.status = "Project already exists."
-				return m, nil
-			}
-			m.mode = inputNone
-			m.input.Blur()
-			m.input.Prompt = ""
-			return m, func() tea.Msg {
-				return projectCreatedMsg{config: projectConfig{Name: name}}
-			}
+			return m.commitProjectCreate()
 		}
 		next, cmd := m.input.Update(msg)
 		m.input = next
