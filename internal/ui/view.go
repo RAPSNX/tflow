@@ -2,6 +2,7 @@ package ui
 
 import (
 	"charm.land/lipgloss/v2"
+	"strings"
 )
 
 func (m model) View() string {
@@ -13,7 +14,7 @@ func (m model) View() string {
 	case inputHelp:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderHelp())
 	case inputSwitchProject:
-		return appStyle.Width(m.width).Height(m.height).Render(m.renderMenu())
+		return appStyle.Width(m.width).Height(m.height).Render(m.renderProjectSwitchOverlay())
 	case inputCreateSession:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Session"))
 	case inputCreateProject:
@@ -35,10 +36,13 @@ func (m model) View() string {
 
 func (m model) renderMenu() string {
 	innerWidth := max(28, m.width-4)
-	header := m.renderHeader(innerWidth)
-	sessions := m.renderSessionPanel(innerWidth)
+	body := lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(innerWidth), m.renderSessionPanel(innerWidth))
 	footer := m.renderFooter(innerWidth)
-	return lipgloss.JoinVertical(lipgloss.Left, header, sessions, footer)
+	if footer == "" {
+		return body
+	}
+	spacer := strings.Repeat("\n", max(0, m.height-lipgloss.Height(body)-lipgloss.Height(footer)))
+	return lipgloss.JoinVertical(lipgloss.Left, body, spacer, footer)
 }
 
 func (m model) renderHeader(width int) string {
@@ -78,26 +82,11 @@ func (m model) renderSessionRow(index int, s session) string {
 }
 
 func (m model) renderFooter(width int) string {
-	lines := []string{}
-	switch m.mode {
-	case inputSwitchProject:
-		lines = append(lines, inputStyle.Render(m.input.View()), hintStyle.Render("Enter switches. Esc cancels."))
-		matches := m.matchingProjects(m.input.Value())
-		if len(matches) == 0 {
-			lines = append(lines, mutedStyle.Render("No matching projects."))
-		} else {
-			for _, project := range matches {
-				lines = append(lines, sessionStyle.Render("  "+project))
-			}
-		}
+	status := m.statusView()
+	if status == "" {
+		return ""
 	}
-	if status := m.statusView(); status != "" {
-		if len(lines) > 0 {
-			lines = append(lines, "")
-		}
-		lines = append(lines, status)
-	}
-	return footerStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+	return footerStyle.Width(width).Render(status)
 }
 
 func (m model) renderHelp() string {
@@ -123,6 +112,43 @@ func (m model) renderHelp() string {
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
+func (m model) renderDialog(box string) string {
+	status := m.statusView()
+	height := m.height
+	if status != "" {
+		height--
+	}
+	dialog := lipgloss.Place(m.width, height, lipgloss.Center, lipgloss.Center, box)
+	if status == "" {
+		return dialog
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, dialog, footerStyle.Width(m.width).Render(status))
+}
+
+func (m model) renderProjectSwitchOverlay() string {
+	lines := []string{
+		titleStyle.Render("Switch Project"),
+		"",
+		inputStyle.Render(m.input.View()),
+		"",
+	}
+	matches := m.matchingProjects(m.input.Value())
+	if len(matches) == 0 {
+		lines = append(lines, mutedStyle.Render("No matching projects."))
+	} else {
+		for index, project := range matches {
+			style := sessionStyle
+			if index == m.projectSwitchIndex {
+				style = selectedSessionStyle
+			}
+			lines = append(lines, style.Render(project))
+		}
+	}
+	lines = append(lines, "", hintStyle.Render("j/k selects. Enter switches. Esc cancels."))
+	box := overlayStyle.Width(max(24, min(42, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+	return m.renderDialog(box)
+}
+
 func (m model) renderInputOverlay(title string) string {
 	lines := []string{
 		titleStyle.Render(title),
@@ -133,7 +159,7 @@ func (m model) renderInputOverlay(title string) string {
 		hintStyle.Render("Enter saves. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(36, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	return m.renderDialog(box)
 }
 
 func (m model) renderDeleteOverlay() string {
@@ -144,14 +170,21 @@ func (m model) renderDeleteOverlay() string {
 	case m.deleteTarget.session != "":
 		target = "session " + m.deleteTarget.session
 	}
+	message := "Delete " + target + "?"
+	if m.deleteTarget.session != "" {
+		project := normalizeProjectName(m.sessionProjects[m.deleteTarget.session])
+		if project != "" && len(m.projectSessions(project)) == 1 {
+			message = "This will delete the whole project " + project + "."
+		}
+	}
 	lines := []string{
 		titleStyle.Render("Confirm Delete"),
-		mutedStyle.Render("Delete " + target + "?"),
+		mutedStyle.Render(message),
 		"",
 		hintStyle.Render("Enter confirms. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(42, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	return m.renderDialog(box)
 }
 
 func (m model) renderProjectSwitchConfirmOverlay() string {
@@ -162,7 +195,7 @@ func (m model) renderProjectSwitchConfirmOverlay() string {
 		hintStyle.Render("Enter confirms. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(48, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	return m.renderDialog(box)
 }
 
 func (m model) renderQuitConfirmOverlay() string {
@@ -173,7 +206,7 @@ func (m model) renderQuitConfirmOverlay() string {
 		hintStyle.Render("Enter confirms. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(48, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	return m.renderDialog(box)
 }
 
 func (m model) renderRenameOverlay() string {
@@ -196,5 +229,5 @@ func (m model) renderRenameOverlay() string {
 		hintStyle.Render("Enter saves. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(36, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	return m.renderDialog(box)
 }

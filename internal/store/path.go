@@ -7,19 +7,41 @@ import (
 )
 
 func NormalizeCWD(cwd string) string {
-	if strings.TrimSpace(cwd) == "" {
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" {
 		if wd, err := os.Getwd(); err == nil {
 			cwd = wd
 		}
 	}
-	if strings.TrimSpace(cwd) == "" {
-		cwd = "."
-	}
 	cwd = expandHomeDir(cwd)
+	if cwd == "" {
+		return fallbackCWD()
+	}
 	if abs, err := filepath.Abs(cwd); err == nil {
 		return abs
 	}
-	return cwd
+	return fallbackCWD()
+}
+
+func fallbackCWD() string {
+	for _, path := range []string{userHomeDir(), os.TempDir()} {
+		if path == "" || !filepath.IsAbs(path) {
+			continue
+		}
+		info, err := os.Stat(path)
+		if err == nil && info.IsDir() {
+			return filepath.Clean(path)
+		}
+	}
+	return string(os.PathSeparator)
+}
+
+func userHomeDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(home)
 }
 
 func expandHomeDir(path string) string {
@@ -30,8 +52,8 @@ func expandHomeDir(path string) string {
 	if len(path) > 1 && path[1] != '/' {
 		return path
 	}
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
+	home := userHomeDir()
+	if home == "" {
 		return path
 	}
 	if path == "~" {

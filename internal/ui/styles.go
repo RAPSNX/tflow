@@ -51,7 +51,7 @@ var (
 	currentBadgeStyle    lipgloss.Style
 	countBadgeStyle      lipgloss.Style
 	footerStyle          lipgloss.Style
-	statusStyle          lipgloss.Style
+	warningStatusStyle   lipgloss.Style
 	errorStatusStyle     lipgloss.Style
 	inputStyle           lipgloss.Style
 	overlayStyle         lipgloss.Style
@@ -193,8 +193,9 @@ func applyTheme(p themePalette) {
 		Background(baseBG).
 		Padding(0, 1, 0, 1)
 
-	statusStyle = lipgloss.NewStyle().
-		Foreground(subtextColor)
+	warningStatusStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(yellowColor)
 
 	errorStatusStyle = lipgloss.NewStyle().
 		Bold(true).

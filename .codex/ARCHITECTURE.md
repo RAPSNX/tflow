@@ -39,7 +39,7 @@ The primary interaction model is:
 
 - the active terminal runs directly inside `tmux`
 - `Ctrl+F` toggles a slim sidebar as a `tmux` popup overlay anchored to the left edge of the active client
-- switching sessions closes the sidebar and returns focus to the selected session
+- every successful sidebar action closes the sidebar and returns focus to the active terminal session
 - toggling or closing the sidebar does not resize or move the active terminal
 - closing the sidebar does not surface tmux error text to the user
 - `Ctrl+Q` opens the quit confirmation from the live terminal even when the sidebar is closed
@@ -49,14 +49,18 @@ The top UI shows two badges:
 - `project`
 - `session`
 
-In volatile mode, the project badge value is empty.
+In volatile mode, the project badge value is empty. The project and session badges are synchronized before focus returns to the terminal after every successful action.
 
 The sidebar is shown on the left and contains:
 
 - a `TFLOW` header centered
 - a session list
-- an inline command and status area
-- there is no metadata or help displayed in the sidebar by default
+- a conditional status row anchored at the bottom
+- there is no metadata, help, or status row displayed by default
+
+All sidebar management workflows use centered dialog overlays. Dialogs never cover the bottom status row.
+
+The bottom status row is hidden unless feedback is needed. Recoverable user-action problems are yellow warnings; failed tmux, store, or other operations are red errors.
 
 The sidebar handles the core management actions:
 
@@ -108,11 +112,7 @@ When a new session is created:
 
 Switching to another project is always supported.
 
-Switching to a project uses the command line and shows all existing projects in a readable newline-separated list.
-
-Typing enough characters to uniquely match a project and pressing `Enter` switches to that project.
-
-For example, after starting project switch with `p`, typing `gar` switches to `gardener` and typing `gat` switches to `gate` when those are unique matches.
+Switching to a project opens a dialog with a focused search field and matching-project list. `Up` and `Down` select a match, and `Enter` switches to the selected project.
 
 Switching to a project selects that project's first session and closes the sidebar.
 
@@ -120,7 +120,9 @@ Switching from a volatile session to a project requires confirmation.
 
 Switching from one project to another is direct.
 
-Deleting the last session of a project requires confirmation. Confirming deletes both the session and the now-empty project.
+Deleting the last session of a project requires a confirmation dialog that explicitly states the whole project will be deleted. Confirming deletes both the session and project.
+
+After deleting a project or session, `tflow` activates the first session of the next project in project order, wrapping to the first project when needed. If no project remains, it creates and activates a volatile session.
 
 Project settings contain only the project `workdir`.
 

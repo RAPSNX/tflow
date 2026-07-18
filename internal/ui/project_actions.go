@@ -14,7 +14,7 @@ func (m *model) beginProjectDelete() (tea.Model, tea.Cmd) {
 	}
 	m.mode = inputConfirmDelete
 	m.deleteTarget = deleteTarget{project: project}
-	m.status = fmt.Sprintf("Confirm delete for project %s.", project)
+	m.status = ""
 	return m, nil
 }
 
@@ -30,7 +30,7 @@ func (m *model) beginProjectRename() (tea.Model, tea.Cmd) {
 	m.input.CursorEnd()
 	m.input.Prompt = "project: "
 	m.input.Focus()
-	m.status = "Rename the current project."
+	m.status = ""
 	return m, nil
 }
 
@@ -59,6 +59,7 @@ func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	nextProject := m.nextProjectAfter(project, true)
 	deletedSessions := m.projectSessions(project)
 	for _, s := range deletedSessions {
 		delete(m.sessionProjects, s.Name)
@@ -97,5 +98,8 @@ func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
 	}
 	m.err = nil
 	m.status = ""
-	return m, nil
+	if nextProject != "" {
+		return m.switchToProject(nextProject)
+	}
+	return m.createVolatileFallback()
 }

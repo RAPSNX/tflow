@@ -46,8 +46,9 @@ type sessionCreatedMsg struct {
 }
 
 type sessionKilledMsg struct {
-	name string
-	err  error
+	name    string
+	project string
+	err     error
 }
 
 type projectCreatedMsg struct {
@@ -133,6 +134,7 @@ type model struct {
 	renameTarget        renameTarget
 	deleteTarget        deleteTarget
 	switchProjectTarget string
+	projectSwitchIndex  int
 	projectEditConfig   projectConfig
 
 	cwd       string
@@ -257,13 +259,10 @@ func rollbackStartupSession(manager tmuxController, name string, startupErr erro
 }
 
 func defaultSessionDir() string {
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		return home
-	}
 	if cwd, err := os.Getwd(); err == nil && strings.TrimSpace(cwd) != "" {
 		return cwd
 	}
-	return "."
+	return runtmux.NormalizeCWD("")
 }
 
 func newModel(manager tmuxController, current string) tea.Model {
@@ -276,7 +275,7 @@ func newModel(manager tmuxController, current string) tea.Model {
 }
 
 func buildModel(manager tmuxController, current string) (model, error) {
-	cwd, _ := os.Getwd()
+	cwd := defaultSessionDir()
 
 	input := textinput.New()
 	input.CharLimit = 40

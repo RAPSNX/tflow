@@ -21,7 +21,7 @@ func (m model) editProject() (tea.Model, tea.Cmd) {
 	m.input.SetValue(m.projectEditConfig.Workdir)
 	m.input.Focus()
 	m.input.CursorEnd()
-	m.status = "Edit the project workdir. Leave empty to use the current directory."
+	m.status = ""
 	return m, nil
 }
 
@@ -59,5 +59,5 @@ func (m *model) commitProjectEditField() (tea.Model, tea.Cmd) {
 	}
 	m.err = nil
 	m.status = ""
-	return m, nil
+	return m, m.closeMenuCmd()
 }
