@@ -447,6 +447,9 @@ func TestCreateProjectCreatesDefaultCodeSession(t *testing.T) {
 	if state.ProjectConfigs["small"].Name != "small" {
 		t.Fatalf("saved project config = %#v", state.ProjectConfigs["small"])
 	}
+	if got := state.ProjectConfigs["small"].Workdir; got != "/tmp/workspace" {
+		t.Fatalf("saved project workdir = %q, want /tmp/workspace", got)
+	}
 }
 
 func TestCreateProjectsUseDistinctScopedDefaultSessions(t *testing.T) {

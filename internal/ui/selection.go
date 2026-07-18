@@ -173,7 +173,9 @@ func (m *model) assignSessionProject(name, project string) {
 	m.sessionProjects[name] = project
 	if project != "" {
 		m.addProject(project)
-		m.setProjectConfig(projectConfig{Name: project})
+		if _, exists := m.projectConfigs[project]; !exists {
+			m.setProjectConfig(projectConfig{Name: project})
+		}
 	}
 }
 
