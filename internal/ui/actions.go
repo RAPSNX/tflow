@@ -66,16 +66,17 @@ func (m *model) commitProjectCreate() (tea.Model, tea.Cmd) {
 	m.input.SetValue("")
 	cfg := projectConfig{Name: name, Workdir: m.cwd}
 	cwd := cfg.Workdir
-	tmuxName := projectSessionName(name, defaultProjectSessionName)
+	label := randomAnimalName()
+	tmuxName := projectSessionName(name, label)
 	return m, func() tea.Msg {
 		s, err := m.tmux.CreateSession(tmuxName, cwd, "")
 		if err != nil {
 			return projectCreatedMsg{
 				config: cfg,
-				err:    fmt.Errorf("create default project session %q: %w", defaultProjectSessionName, err),
+				err:    fmt.Errorf("create initial project session %q: %w", label, err),
 			}
 		}
-		return projectCreatedMsg{config: cfg, session: s}
+		return projectCreatedMsg{config: cfg, session: s, label: label}
 	}
 }
 

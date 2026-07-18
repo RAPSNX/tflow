@@ -92,7 +92,6 @@ func TestRRenamesProjectWithSelectedSession(t *testing.T) {
 	m.projects = []string{"small"}
 	m.sessions = []session{{Name: "small--code"}}
 	m.sessionProjects = map[string]string{"small--code": "small"}
-	m.sessionTypes = map[string]sessionType{"small--code": sessionTypeTerminal}
 	m.sessionLabels = map[string]string{"small--code": "code"}
 	m.selectedProject = "small"
 	m.selectedSession = "small--code"
@@ -179,7 +178,6 @@ func TestSessionLoadMigratesProjectSessionsToScopedNames(t *testing.T) {
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{"small"}
 	m.sessionProjects = map[string]string{"code": "small"}
-	m.sessionTypes = map[string]sessionType{"code": sessionTypeTerminal}
 
 	updated, cmd := m.Update(sessionsLoadedMsg{sessions: []session{{Name: "code"}}})
 	pending := updated.(model)
@@ -223,7 +221,6 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	m.selectedSession = "default--dev"
 	m.mode = inputRename
 	m.renameTarget = renameTarget{session: "default--dev"}
-	m.sessionTypes = map[string]sessionType{"default--dev": sessionTypeAgent}
 	m.input.SetValue("lala")
 
 	updated, cmd := m.commitRename()
@@ -251,9 +248,6 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	}
 	if final.sessionProjects["default--lala"] != defaultProjectName {
 		t.Fatalf("sessionProjects[default--lala] = %q, want %q", final.sessionProjects["default--lala"], defaultProjectName)
-	}
-	if final.sessionTypes["default--lala"] != sessionTypeAgent {
-		t.Fatalf("sessionTypes[default--lala] = %q, want %q", final.sessionTypes["default--lala"], sessionTypeAgent)
 	}
 	if final.sessionLabel("default--lala") != "lala" {
 		t.Fatalf("session label = %q, want lala", final.sessionLabel("default--lala"))
@@ -316,17 +310,13 @@ func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 		"dev": defaultProjectName,
 		"api": "small",
 	}
-	m.sessionTypes = map[string]sessionType{
-		"dev": sessionTypeAgent,
-		"api": sessionTypeK9s,
-	}
 	m.currentSession = "dev"
 	m.selectedProject = defaultProjectName
 	m.selectedSession = "dev"
 
 	view := m.renderSessionPanel(40)
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(view, "")
-	for _, want := range []string{"Sessions", "[live] dev"} {
+	for _, want := range []string{"Sessions", "live", "dev"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("renderSessionPanel missing %q in %q", want, plain)
 		}
@@ -435,8 +425,10 @@ func TestConfirmationOverlaysAdvertiseAcceptedKeys(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(render(), "")
-			if !strings.Contains(plain, "Enter confirms. Esc cancels.") {
-				t.Fatalf("confirmation hint = %q", plain)
+			for _, keycap := range []string{"Enter", "Esc", "Cancel"} {
+				if !strings.Contains(plain, keycap) {
+					t.Fatalf("confirmation missing %q in %q", keycap, plain)
+				}
 			}
 		})
 	}
@@ -466,6 +458,137 @@ func TestRenderProjectSwitchDialogListsMatchingProjects(t *testing.T) {
 	}
 }
 
+func TestRenderBadgesUseFilledContrastingStyles(t *testing.T) {
+	if brandBadgeStyle.GetBackground() != blueColor {
+		t.Fatalf("brand badge background = %v, want %v", brandBadgeStyle.GetBackground(), blueColor)
+	}
+	if currentBadgeStyle.GetBackground() != tealColor {
+		t.Fatalf("live badge background = %v, want %v", currentBadgeStyle.GetBackground(), tealColor)
+	}
+	if currentBadgeStyle.GetBackground() == selectedSessionStyle.GetBackground() {
+		t.Fatal("live badge and selected row use the same background")
+	}
+	m := NewMenu().(model)
+	m.width = 48
+	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
+	m.sessionProjects = map[string]string{"dev": "small", "api": "small"}
+	m.sessionLabels = map[string]string{"dev": "dev", "api": "api"}
+	m.selectedProject = "small"
+	m.currentSession = "dev"
+	m.selectedSession = "dev"
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderSessionPanel(40), "")
+	if strings.Count(plain, "live") != 1 || !strings.Contains(plain, "live  dev") {
+		t.Fatalf("active row = %q", plain)
+	}
+}
+
+func TestDialogsUseSharedStructuredCardLayout(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 64
+	m.height = 24
+	m.input.Prompt = "name: "
+	m.renameTarget = renameTarget{session: "small--otter"}
+	m.deleteTarget = deleteTarget{session: "small--otter"}
+	m.switchProjectTarget = "small"
+	tests := []struct {
+		name   string
+		render func() string
+		badge  string
+		title  string
+	}{
+		{"create", func() string { return m.renderInputOverlay("New Session") }, "CREATE", "New Session"},
+		{"settings", func() string { return m.renderInputOverlay("Project Settings") }, "SETTINGS", "Project Settings"},
+		{"rename", m.renderRenameOverlay, "RENAME", "Rename Session"},
+		{"switch", m.renderProjectSwitchOverlay, "SWITCH", "Switch Project"},
+		{"delete", m.renderDeleteOverlay, "DELETE", "Confirm Delete"},
+		{"confirm", m.renderProjectSwitchConfirmOverlay, "CONFIRM", "Confirm Project Switch"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(test.render(), "")
+			for _, want := range []string{test.badge, test.title, "──", "Enter", "Esc", "Cancel"} {
+				if !strings.Contains(plain, want) {
+					t.Fatalf("dialog missing %q in %q", want, plain)
+				}
+			}
+		})
+	}
+}
+
+func TestDeleteDialogUsesDestructiveAccentsOnly(t *testing.T) {
+	if destructiveBadgeStyle.GetBackground() != redColor || destructiveKeycapStyle.GetBackground() != redColor {
+		t.Fatal("delete accents do not use red")
+	}
+	if dialogHeaderBadgeStyle.GetBackground() == redColor || keycapStyle.GetBackground() == redColor {
+		t.Fatal("normal dialog accents use red")
+	}
+}
+
+func TestDialogKeepsStatusVisibleInFooter(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 64
+	m.height = 20
+	m.status = "Saved project settings."
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderInputOverlay("Project Settings"), "")
+	if !strings.Contains(plain, "Saved project settings.") {
+		t.Fatalf("dialog status missing from %q", plain)
+	}
+	if strings.LastIndex(plain, "Saved project settings.") < strings.LastIndex(plain, "Cancel") {
+		t.Fatalf("status was not rendered below the dialog: %q", plain)
+	}
+}
+
+func TestProjectSwitchReturnsFocusToFirstProjectSession(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "small--otter"}, {Name: "small--fox"}}
+	m.sessionProjects = map[string]string{"small--otter": "small", "small--fox": "small"}
+
+	updated, cmd := m.switchToProject("small")
+	if cmd == nil {
+		t.Fatal("expected session switch action")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.switchSession != "small--otter" {
+		t.Fatalf("switch session = %q", msg.switchSession)
+	}
+	updated, _ = updated.(model).Update(msg)
+	got := updated.(model)
+	if got.exitAction != menuExitSwitchSession || got.exitSessionName != "small--otter" {
+		t.Fatalf("focus restoration = %#v", got)
+	}
+}
+
+func TestDeletingFinalProjectSessionCreatesVolatileFallback(t *testing.T) {
+	var marked string
+	m := newModel(fakeTmuxController{
+		createSession:       func(name, cwd, command string) (session, error) { return session{Name: name}, nil },
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error { marked = name; return nil },
+	}, "").(model)
+	m.instanceID = "instance-1"
+	m.cwd = "/tmp/workspace"
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "small--otter"}}
+	m.sessionProjects = map[string]string{"small--otter": "small"}
+	m.sessionLabels = map[string]string{"small--otter": "otter"}
+	m.selectedProject = "small"
+	m.selectedSession = "small--otter"
+
+	updated, cmd := m.Update(sessionKilledMsg{name: "small--otter"})
+	if cmd == nil {
+		t.Fatal("expected volatile fallback command")
+	}
+	msg := cmd().(sessionCreatedMsg)
+	if msg.err != nil || !msg.volatile || marked == "" {
+		t.Fatalf("fallback = %#v, marked = %q", msg, marked)
+	}
+	updated, _ = updated.(model).Update(msg)
+	got := updated.(model)
+	if got.selectedProject != "" || got.selectedSession != msg.session.Name {
+		t.Fatalf("volatile fallback selection = %#v", got)
+	}
+}
+
 func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 	tmp := t.TempDir()
 	var killed []string
@@ -482,11 +605,6 @@ func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 		"dev":  "small",
 		"api":  "small",
 		"keep": "storage",
-	}
-	m.sessionTypes = map[string]sessionType{
-		"dev":  sessionTypeAgent,
-		"api":  sessionTypeK9s,
-		"keep": sessionTypeTerminal,
 	}
 	m.selectedProject = "small"
 
@@ -565,10 +683,7 @@ func TestEditProjectSavesOnlyWorkdirToStoreState(t *testing.T) {
 	m.projects = []string{"small"}
 	m.selectedProject = "small"
 	m.projectConfigs = map[string]projectConfig{"small": {
-		Name:        "small",
-		Protect:     true,
-		AgentBinary: "codex",
-		Cluster:     clusterConfig{Path: "/tmp/kubeconfig", ConnectionCmd: "connect"},
+		Name: "small",
 	}}
 
 	updated, _ := m.editProject()
@@ -582,17 +697,11 @@ func TestEditProjectSavesOnlyWorkdirToStoreState(t *testing.T) {
 	if got := final.projectConfigs["small"].Workdir; got != "/tmp/small" {
 		t.Fatalf("workdir = %q", got)
 	}
-	if got := final.projectConfigs["small"]; got.Protect || got.AgentBinary != "" || got.Cluster != (clusterConfig{}) {
-		t.Fatalf("legacy project fields remain: %#v", got)
-	}
 	state, err := loadAppState(m.statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := state.ProjectConfigs["small"].Workdir; got != "/tmp/small" {
 		t.Fatalf("saved workdir = %q", got)
-	}
-	if got := state.ProjectConfigs["small"]; got.Protect || got.AgentBinary != "" || got.Cluster != (clusterConfig{}) {
-		t.Fatalf("saved legacy project fields remain: %#v", got)
 	}
 }

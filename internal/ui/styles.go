@@ -33,28 +33,34 @@ var (
 	badgeTextColor    = lipgloss.Color("#1E1E2E")
 	selectedTextColor = lipgloss.Color("#11111B")
 
-	appStyle             lipgloss.Style
-	headerStyle          lipgloss.Style
-	titleStyle           lipgloss.Style
-	subtitleStyle        lipgloss.Style
-	brandBadgeStyle      lipgloss.Style
-	mutedStyle           lipgloss.Style
-	hintStyle            lipgloss.Style
-	panelStyle           lipgloss.Style
-	sectionTitleStyle    lipgloss.Style
-	statsValueStyle      lipgloss.Style
-	statsLabelStyle      lipgloss.Style
-	projectStyle         lipgloss.Style
-	selectedProjectStyle lipgloss.Style
-	sessionStyle         lipgloss.Style
-	selectedSessionStyle lipgloss.Style
-	currentBadgeStyle    lipgloss.Style
-	countBadgeStyle      lipgloss.Style
-	footerStyle          lipgloss.Style
-	warningStatusStyle   lipgloss.Style
-	errorStatusStyle     lipgloss.Style
-	inputStyle           lipgloss.Style
-	overlayStyle         lipgloss.Style
+	appStyle               lipgloss.Style
+	headerStyle            lipgloss.Style
+	titleStyle             lipgloss.Style
+	subtitleStyle          lipgloss.Style
+	brandBadgeStyle        lipgloss.Style
+	mutedStyle             lipgloss.Style
+	hintStyle              lipgloss.Style
+	panelStyle             lipgloss.Style
+	sectionTitleStyle      lipgloss.Style
+	statsValueStyle        lipgloss.Style
+	statsLabelStyle        lipgloss.Style
+	projectStyle           lipgloss.Style
+	selectedProjectStyle   lipgloss.Style
+	sessionStyle           lipgloss.Style
+	selectedSessionStyle   lipgloss.Style
+	currentBadgeStyle      lipgloss.Style
+	countBadgeStyle        lipgloss.Style
+	footerStyle            lipgloss.Style
+	warningStatusStyle     lipgloss.Style
+	errorStatusStyle       lipgloss.Style
+	inputStyle             lipgloss.Style
+	overlayStyle           lipgloss.Style
+	dialogHeaderBadgeStyle lipgloss.Style
+	destructiveBadgeStyle  lipgloss.Style
+	dialogDividerStyle     lipgloss.Style
+	dialogInputStyle       lipgloss.Style
+	keycapStyle            lipgloss.Style
+	destructiveKeycapStyle lipgloss.Style
 )
 
 func init() {
@@ -176,13 +182,14 @@ func applyTheme(p themePalette) {
 	selectedSessionStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(selectedTextColor).
-		Background(tealColor).
+		Background(blueColor).
 		Padding(0, 1)
 
 	currentBadgeStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(yellowColor).
-		Padding(0, 0)
+		Foreground(badgeTextColor).
+		Background(tealColor).
+		Padding(0, 1)
 
 	countBadgeStyle = lipgloss.NewStyle().
 		Foreground(textColor).
@@ -210,4 +217,11 @@ func applyTheme(p themePalette) {
 		Background(crustColor).
 		Foreground(textColor).
 		Padding(1, 2)
+
+	dialogHeaderBadgeStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(blueColor).Padding(0, 1)
+	destructiveBadgeStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(redColor).Padding(0, 1)
+	dialogDividerStyle = lipgloss.NewStyle().Foreground(surface1)
+	dialogInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(tealColor).Padding(0, 1)
+	keycapStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(tealColor).Padding(0, 1)
+	destructiveKeycapStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(redColor).Padding(0, 1)
 }

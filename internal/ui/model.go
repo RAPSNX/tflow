@@ -39,7 +39,6 @@ type sessionsLoadedMsg struct {
 type sessionCreatedMsg struct {
 	session  session
 	volatile bool
-	kind     sessionType
 	project  string
 	label    string
 	err      error
@@ -54,6 +53,7 @@ type sessionKilledMsg struct {
 type projectCreatedMsg struct {
 	config  projectConfig
 	session session
+	label   string
 	err     error
 }
 
@@ -123,7 +123,6 @@ type model struct {
 	sessions        []session
 	projects        []string
 	sessionProjects map[string]string
-	sessionTypes    map[string]sessionType
 	sessionLabels   map[string]string
 	projectConfigs  map[string]projectConfig
 	selectedProject string
@@ -146,15 +145,7 @@ type model struct {
 	err             error
 }
 
-type sessionType string
-
-const (
-	sessionTypeTerminal       sessionType = "terminal"
-	sessionTypeK9s            sessionType = "k9s"
-	sessionTypeAgent          sessionType = "agent"
-	defaultProjectSessionName             = "code"
-	startupSessionRetryLimit              = 128
-)
+const startupSessionRetryLimit = 128
 
 func NewMenu() tea.Model {
 	return newModel(newSessionManager(), os.Getenv(menuCurrentEnv))
@@ -294,7 +285,6 @@ func buildModel(manager tmuxController, current string) (model, error) {
 		mode:            inputNone,
 		projects:        state.Projects,
 		sessionProjects: state.SessionProjects,
-		sessionTypes:    normalizeSessionTypes(state.SessionTypes),
 		sessionLabels:   state.SessionLabels,
 		projectConfigs:  state.ProjectConfigs,
 		selectedProject: "",

@@ -127,6 +127,10 @@ func nextTempSessionName(existing []session) string {
 	return runtmux.NextTempSessionName(existing)
 }
 
+func randomAnimalName() string {
+	return runtmux.RandomAnimalName()
+}
+
 func isSessionExists(err error) bool {
 	return runtmux.IsSessionExists(err)
 }

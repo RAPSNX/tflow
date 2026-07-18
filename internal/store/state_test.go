@@ -1,7 +1,6 @@
 package store
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,107 +8,109 @@ import (
 )
 
 func TestLoadAppStateDefaultsToEmptyStoreWhenFileMissing(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "store.json")
-
-	state, err := LoadAppState(path)
+	state, err := LoadAppState(filepath.Join(t.TempDir(), "store.json"))
 	if err != nil {
-		t.Fatalf("LoadAppState returned error: %v", err)
+		t.Fatal(err)
 	}
-	if len(state.Projects) != 0 {
-		t.Fatalf("projects = %#v, want none", state.Projects)
-	}
-	if len(state.ProjectConfigs) != 0 {
-		t.Fatalf("projectConfigs = %#v, want none", state.ProjectConfigs)
+	if len(state.Projects) != 0 || len(state.ProjectConfigs) != 0 || len(state.SessionProjects) != 0 || len(state.SessionLabels) != 0 {
+		t.Fatalf("state = %#v, want empty", state)
 	}
 }
 
-func TestSaveAndLoadAppStateRoundTripsProjectSettings(t *testing.T) {
+func TestSaveAndLoadAppStateRoundTripsCanonicalSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "store.json")
-	state := AppState{
-		Projects:        []string{"small"},
-		SessionProjects: map[string]string{"dev": "small"},
-		SessionTypes:    map[string]string{"dev": "agent"},
-		SessionLabels:   map[string]string{"dev": "development"},
+	want := AppState{
+		Projects:        []string{"small", "garden"},
+		SessionProjects: map[string]string{"small--otter": "small"},
+		SessionLabels:   map[string]string{"small--otter": "otter"},
 		ProjectConfigs: map[string]ProjectConfig{
-			"small": {
-				Name:        "small",
-				Workdir:     "/tmp/project-small",
-				Protect:     true,
-				AgentBinary: "aider",
-				Cluster: ClusterConfig{
-					Path:          "/tmp/kubeconfig",
-					ConnectionCmd: "aws eks update-kubeconfig --name prod",
-				},
-			},
+			"small":  {Name: "small", Workdir: "/tmp/project-small"},
+			"garden": {Name: "garden", Workdir: "/tmp/project-garden"},
 		},
 	}
-
-	if err := SaveAppState(path, state); err != nil {
-		t.Fatalf("SaveAppState returned error: %v", err)
+	if err := SaveAppState(path, want); err != nil {
+		t.Fatal(err)
 	}
-
-	loaded, err := LoadAppState(path)
+	got, err := LoadAppState(path)
 	if err != nil {
-		t.Fatalf("LoadAppState returned error: %v", err)
+		t.Fatal(err)
 	}
-	cfg := loaded.ProjectConfigs["small"]
-	if cfg.Workdir != "/tmp/project-small" {
-		t.Fatalf("workdir = %q", cfg.Workdir)
+	if strings.Join(got.Projects, ",") != "small,garden" || got.ProjectConfigs["small"].Workdir != "/tmp/project-small" || got.SessionLabels["small--otter"] != "otter" {
+		t.Fatalf("round trip = %#v", got)
 	}
-	if !cfg.Protect {
-		t.Fatal("protect = false, want true")
-	}
-	if cfg.AgentBinary != "aider" {
-		t.Fatalf("agentBinary = %q", cfg.AgentBinary)
-	}
-	if cfg.Cluster.Path != "/tmp/kubeconfig" {
-		t.Fatalf("cluster path = %q", cfg.Cluster.Path)
-	}
-	if cfg.Cluster.ConnectionCmd != "aws eks update-kubeconfig --name prod" {
-		t.Fatalf("connectionCmd = %q", cfg.Cluster.ConnectionCmd)
-	}
-	if loaded.SessionLabels["dev"] != "development" {
-		t.Fatalf("session label = %q, want development", loaded.SessionLabels["dev"])
-	}
-
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("ReadFile returned error: %v", err)
+		t.Fatal(err)
 	}
 	plain := string(data)
-	for _, want := range []string{"\"project_order\"", "\"agent_binary\"", "\"cluster\"", "\"protect\""} {
+	for _, want := range []string{"project_order", "projects", "session_projects", "session_labels"} {
 		if !strings.Contains(plain, want) {
-			t.Fatalf("store.json missing %s: %s", want, plain)
+			t.Fatalf("missing canonical field %s in %s", want, plain)
 		}
+	}
+	for _, removed := range []string{"session_types", "protect", "agent_binary", "cluster"} {
+		if strings.Contains(plain, removed) {
+			t.Fatalf("removed field %q in %s", removed, plain)
+		}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode = %o, want 600", info.Mode().Perm())
 	}
 }
 
-func TestLoadAppStateMigratesMissingSessionLabels(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "store.json")
-	data := []byte(`{"project_order":["small"],"projects":{"small":{}},"session_projects":{"small--code":"small"},"session_types":{"small--code":"terminal"}}`)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+func TestLoadAppStateRejectsUnknownAndRemovedFields(t *testing.T) {
+	tests := []struct {
+		name  string
+		state string
+		field string
+	}{
+		{"unknown top-level", `{"project_order":[],"projects":{},"session_projects":{},"session_labels":{},"unexpected":true}`, "unexpected"},
+		{"session types", `{"project_order":[],"projects":{},"session_projects":{},"session_labels":{},"session_types":{}}`, "session_types"},
+		{"protect", `{"project_order":["small"],"projects":{"small":{"workdir":"/tmp","protect":true}},"session_projects":{},"session_labels":{}}`, "protect"},
+		{"agent binary", `{"project_order":["small"],"projects":{"small":{"workdir":"/tmp","agent_binary":"codex"}},"session_projects":{},"session_labels":{}}`, "agent_binary"},
+		{"cluster", `{"project_order":["small"],"projects":{"small":{"workdir":"/tmp","cluster":{}}},"session_projects":{},"session_labels":{}}`, "cluster"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "store.json")
+			if err := os.WriteFile(path, []byte(test.state), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadAppState(path)
+			if err == nil || !strings.Contains(err.Error(), test.field) {
+				t.Fatalf("error = %v, want offending field %q", err, test.field)
+			}
+		})
+	}
+}
+
+func TestLoadAppStateDoesNotReadLegacyConfigState(t *testing.T) {
+	stateHome := t.TempDir()
+	configHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	legacyPath := filepath.Join(configHome, "tflow", "state.json")
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
-
-	state, err := LoadAppState(path)
+	if err := os.WriteFile(legacyPath, []byte(`{"project_order":["legacy"],"projects":{"legacy":{"workdir":"/tmp"}},"session_projects":{},"session_labels":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state, err := LoadAppState(AppStatePath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.SessionLabels["small--code"] != "code" {
-		t.Fatalf("migrated label = %q, want code", state.SessionLabels["small--code"])
+	if len(state.Projects) != 0 {
+		t.Fatalf("legacy config state was loaded: %#v", state)
 	}
 }
 
 func TestNormalizeProjectListMatchesFormerCallSiteBehavior(t *testing.T) {
-	got := NormalizeProjectList([]string{
-		" Small ",
-		"default",
-		"Alpha/One",
-		"small",
-		"alpha.one",
-		"",
-		"alpha-one",
-	})
+	got := NormalizeProjectList([]string{" Small ", "default", "Alpha/One", "small", "alpha.one", "", "alpha-one"})
 	want := []string{"small", "default", "alpha-one"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("NormalizeProjectList = %#v, want %#v", got, want)
@@ -119,250 +120,24 @@ func TestNormalizeProjectListMatchesFormerCallSiteBehavior(t *testing.T) {
 func TestNormalizeCWDFallsBackToHomeWhenCurrentDirectoryIsUnavailable(t *testing.T) {
 	originalDir, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("get current directory: %v", err)
+		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := os.Chdir(originalDir); err != nil {
-			t.Errorf("restore current directory: %v", err)
-		}
-	})
-
+	t.Cleanup(func() { _ = os.Chdir(originalDir) })
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	missingDir := filepath.Join(t.TempDir(), "missing")
 	if err := os.Mkdir(missingDir, 0o755); err != nil {
-		t.Fatalf("create missing directory: %v", err)
+		t.Fatal(err)
 	}
 	if err := os.Chdir(missingDir); err != nil {
-		t.Fatalf("change to missing directory: %v", err)
+		t.Fatal(err)
 	}
 	if err := os.Remove(missingDir); err != nil {
-		t.Fatalf("remove current directory: %v", err)
+		t.Fatal(err)
 	}
-
 	for _, cwd := range []string{"", "."} {
 		if got := NormalizeCWD(cwd); got != home {
 			t.Fatalf("NormalizeCWD(%q) = %q, want %q", cwd, got, home)
 		}
 	}
-}
-
-func TestEnsureStartupStateCreatesEmptyStoreAtStatePath(t *testing.T) {
-	stateHome := t.TempDir()
-	configHome := t.TempDir()
-	setXDGEnv(t, stateHome, configHome)
-
-	if err := EnsureStartupState(); err != nil {
-		t.Fatalf("EnsureStartupState returned error: %v", err)
-	}
-
-	path := AppStatePath()
-	if path != filepath.Join(stateHome, "tflow", "store.json") {
-		t.Fatalf("AppStatePath = %q", path)
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("Stat returned error: %v", err)
-	}
-
-	state, err := LoadAppState(path)
-	if err != nil {
-		t.Fatalf("LoadAppState returned error: %v", err)
-	}
-	if len(state.Projects) != 0 {
-		t.Fatalf("projects = %#v, want none", state.Projects)
-	}
-}
-
-func TestLoadAppStateFailsOnInvalidJSON(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "store.json")
-	if err := os.WriteFile(path, []byte("{not-json"), 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-
-	_, err := LoadAppState(path)
-	if err == nil {
-		t.Fatal("LoadAppState returned nil error")
-	}
-}
-
-func TestLoadAppStateAcceptsNullProjectsField(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "store.json")
-	if err := os.WriteFile(path, []byte("{\"projects\":null}"), 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-
-	state, err := LoadAppState(path)
-	if err != nil {
-		t.Fatalf("LoadAppState returned error: %v", err)
-	}
-	if len(state.Projects) != 0 {
-		t.Fatalf("projects = %#v, want none", state.Projects)
-	}
-	if len(state.SessionProjects) != 0 {
-		t.Fatalf("sessionProjects = %#v, want none", state.SessionProjects)
-	}
-	if len(state.ProjectConfigs) != 0 {
-		t.Fatalf("projectConfigs = %#v, want none", state.ProjectConfigs)
-	}
-}
-
-func TestLoadAppStateSupportsLegacyStringListState(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.json")
-	data, err := json.Marshal(legacyStringListState{
-		Projects:         []string{"small", "default", "small"},
-		SessionProjects:  map[string]string{"dev": "small"},
-		SessionTypes:     map[string]string{"dev": "agent"},
-		ProjectDirs:      map[string]string{"small": "/tmp/project"},
-		ExpandedProjects: map[string]bool{"small": false},
-	})
-	if err != nil {
-		t.Fatalf("Marshal returned error: %v", err)
-	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-
-	state, err := LoadAppState(path)
-	if err != nil {
-		t.Fatalf("LoadAppState returned error: %v", err)
-	}
-	wantProjects := []string{"small", "default"}
-	if strings.Join(state.Projects, ",") != strings.Join(wantProjects, ",") {
-		t.Fatalf("projects = %#v, want %#v", state.Projects, wantProjects)
-	}
-	if got := state.SessionTypes["dev"]; got != "agent" {
-		t.Fatalf("sessionTypes[dev] = %q, want agent", got)
-	}
-	if got := state.ProjectConfigs["small"].Workdir; got != "/tmp/project" {
-		t.Fatalf("projectConfigs[small].workdir = %q", got)
-	}
-}
-
-func TestEnsureStartupStateMigratesLegacySessionSnapshot(t *testing.T) {
-	stateHome := t.TempDir()
-	configHome := t.TempDir()
-	setXDGEnv(t, stateHome, configHome)
-
-	legacyPath := filepath.Join(configHome, "tflow", "state.json")
-	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
-		t.Fatalf("MkdirAll returned error: %v", err)
-	}
-	legacy := []byte(`{
-  "current_project": "bug-iowait",
-  "projects": [
-    {
-      "name": "atze",
-      "persistent": true,
-      "sessions": [
-        {"name": "a", "tmux_name": "atze_a", "type": "terminal", "cwd": "/home/user"},
-        {"name": "code", "tmux_name": "atze_code", "type": "terminal", "cwd": "/home/user"}
-      ]
-    },
-    {
-      "name": "bug-iowait",
-      "persistent": true,
-      "sessions": [
-        {"name": "agent", "tmux_name": "bug-iowait_agent", "type": "agent", "cwd": "/home/user"},
-        {"name": "code", "tmux_name": "bug-iowait_code", "type": "terminal", "cwd": "/home/user"}
-      ]
-    }
-  ]
-}`)
-	if err := os.WriteFile(legacyPath, legacy, 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-
-	if err := EnsureStartupState(); err != nil {
-		t.Fatalf("EnsureStartupState returned error: %v", err)
-	}
-
-	state, err := LoadAppState(AppStatePath())
-	if err != nil {
-		t.Fatalf("LoadAppState returned error: %v", err)
-	}
-	wantProjects := []string{"atze", "bug-iowait"}
-	if strings.Join(state.Projects, ",") != strings.Join(wantProjects, ",") {
-		t.Fatalf("projects = %#v, want %#v", state.Projects, wantProjects)
-	}
-	if got := state.SessionProjects["atze_a"]; got != "atze" {
-		t.Fatalf("sessionProjects[atze_a] = %q", got)
-	}
-	if got := state.SessionProjects["atze_code"]; got != "atze" {
-		t.Fatalf("sessionProjects[atze_code] = %q", got)
-	}
-	if got := state.SessionProjects["bug-iowait_agent"]; got != "bug-iowait" {
-		t.Fatalf("sessionProjects[bug-iowait_agent] = %q", got)
-	}
-	if got := state.SessionProjects["bug-iowait_code"]; got != "bug-iowait" {
-		t.Fatalf("sessionProjects[bug-iowait_code] = %q", got)
-	}
-	if got := state.SessionTypes["bug-iowait_agent"]; got != "agent" {
-		t.Fatalf("sessionTypes[bug-iowait_agent] = %q", got)
-	}
-	if got := state.SessionLabels["atze_code"]; got != "code" {
-		t.Fatalf("sessionLabels[atze_code] = %q, want code", got)
-	}
-	if got := state.SessionLabels["bug-iowait_agent"]; got != "agent" {
-		t.Fatalf("sessionLabels[bug-iowait_agent] = %q, want agent", got)
-	}
-	if _, ok := state.SessionProjects["agent"]; ok {
-		t.Fatal("sessionProjects unexpectedly used display session name key")
-	}
-
-	data, err := os.ReadFile(AppStatePath())
-	if err != nil {
-		t.Fatalf("ReadFile returned error: %v", err)
-	}
-	plain := string(data)
-	if !strings.Contains(plain, `"project_order"`) {
-		t.Fatalf("store.json missing project_order: %s", plain)
-	}
-	if !strings.Contains(plain, `"projects": {`) {
-		t.Fatalf("store.json missing object-based projects map: %s", plain)
-	}
-}
-
-func TestLoadAppStateMigratesLegacySessionSnapshotWithoutTmuxNameFallbacksToSessionName(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.json")
-	legacy := []byte(`{
-  "projects": [
-    {
-      "name": "garden",
-      "sessions": [
-        {"name": "agent", "type": "agent"},
-        {"name": "code", "tmux_name": "garden_code", "type": "terminal"}
-      ]
-    }
-  ]
-}`)
-	if err := os.WriteFile(path, legacy, 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-
-	state, err := LoadAppState(path)
-	if err != nil {
-		t.Fatalf("LoadAppState returned error: %v", err)
-	}
-	if got := state.SessionProjects["agent"]; got != "garden" {
-		t.Fatalf("sessionProjects[agent] = %q", got)
-	}
-	if got := state.SessionProjects["garden_code"]; got != "garden" {
-		t.Fatalf("sessionProjects[garden_code] = %q", got)
-	}
-	if got := state.SessionTypes["agent"]; got != "agent" {
-		t.Fatalf("sessionTypes[agent] = %q", got)
-	}
-}
-
-func setXDGEnv(t *testing.T, stateHome, configHome string) {
-	t.Helper()
-
-	oldStateHome := os.Getenv("XDG_STATE_HOME")
-	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
-	t.Cleanup(func() {
-		_ = os.Setenv("XDG_STATE_HOME", oldStateHome)
-		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
-	})
-	_ = os.Setenv("XDG_STATE_HOME", stateHome)
-	_ = os.Setenv("XDG_CONFIG_HOME", configHome)
 }

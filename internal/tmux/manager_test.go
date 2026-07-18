@@ -277,8 +277,26 @@ func TestRenameSessionUsesTmuxRenameSession(t *testing.T) {
 }
 
 func TestNextTempSessionName(t *testing.T) {
-	existing := []Session{{Name: "otter-temp"}, {Name: "fox-temp"}}
-	if got, want := NextTempSessionName(existing), "lynx-temp"; got != want {
-		t.Fatalf("NextTempSessionName = %q, want %q", got, want)
+	existing := []Session{{Name: "otter"}, {Name: "fox"}}
+	got := NextTempSessionName(existing)
+	if !ContainsAnimalName(got) || got == "otter" || got == "fox" {
+		t.Fatalf("NextTempSessionName = %q, want an unused single animal", got)
+	}
+}
+
+func TestNextTempSessionNameUsesPairsThenSuffixes(t *testing.T) {
+	existing := make([]Session, 0, len(tempSessionAnimals)+len(tempSessionAnimals)*(len(tempSessionAnimals)-1))
+	for _, animal := range tempSessionAnimals {
+		existing = append(existing, Session{Name: animal})
+	}
+	for _, first := range tempSessionAnimals {
+		for _, second := range tempSessionAnimals {
+			if first != second {
+				existing = append(existing, Session{Name: first + "-" + second})
+			}
+		}
+	}
+	if got := NextTempSessionName(existing); got != "otter-fox-2" {
+		t.Fatalf("NextTempSessionName = %q, want otter-fox-2", got)
 	}
 }

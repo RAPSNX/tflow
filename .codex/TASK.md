@@ -8,34 +8,35 @@ Every previously open task is grouped below for a dedicated implementation sessi
 
 ### Session 1: Animal naming foundation
 
-- [ ] Fetch, review, and compile a fixed list of exactly 25 animal names; do not make runtime API requests.
-- [ ] Give the startup volatile session and every initial project session a random plain animal name without a `-temp` suffix.
-- [ ] Use unique two-animal volatile-session names after the single-name pool is exhausted, and numeric suffixes only after all combinations are exhausted.
-- [ ] Create a project-scoped initial session displayed with a random animal name.
-- [ ] Create the project's initial randomly named session in that persisted directory.
-- [ ] Add deterministic tests for startup and project-default animal names, collisions, two-animal fallback, and the absence of runtime HTTP usage.
+- [x] Fetch, review, and compile a fixed list of exactly 25 animal names; do not make runtime API requests.
+- [x] Give the startup volatile session and every initial project session a random plain animal name without a `-temp` suffix.
+- [x] Use unique two-animal volatile-session names after the single-name pool is exhausted, and numeric suffixes only after all combinations are exhausted.
+- [x] Create a project-scoped initial session displayed with a random animal name.
+- [x] Create the project's initial randomly named session in that persisted directory.
+- [x] Add deterministic tests for startup and project-default animal names, collisions, two-animal fallback, and the absence of runtime HTTP usage.
 
 ### Session 2: Canonical persistent state
 
-- [ ] Reduce the canonical schema to `project_order`, project `workdir` entries, `session_projects`, and `session_labels`.
-- [ ] Remove `session_types`, `protect`, `agent_binary`, and `cluster` from store types, normalization, encoding, and UI state.
-- [ ] Replace legacy format detection and migration with one strict canonical decoder.
-- [ ] Reject unknown fields and obsolete fields with a clear startup error that names the offending field.
-- [ ] Stop reading legacy state from `$XDG_CONFIG_HOME/tflow/state.json`.
-- [ ] Persist metadata only for project sessions; never store instance-owned volatile sessions.
-- [ ] Keep the state file writable and exclusively owned by the application.
-- [ ] Add strict-store tests for every removed field, unknown fields, and the canonical round trip.
+- [x] Reduce the canonical schema to `project_order`, project `workdir` entries, `session_projects`, and `session_labels`.
+- [x] Remove `session_types`, `protect`, `agent_binary`, and `cluster` from store types, normalization, encoding, and UI state.
+- [x] Replace legacy format detection and migration with one strict canonical decoder.
+- [x] Reject unknown fields and obsolete fields with a clear startup error that names the offending field.
+- [x] Stop reading legacy state from `$XDG_CONFIG_HOME/tflow/state.json`.
+- [x] Persist metadata only for project sessions; never store instance-owned volatile sessions.
+- [x] Add a newly created project session to the model before saving, so project-session metadata is retained by the persistence filter.
+- [x] Keep the state file writable and exclusively owned by the application.
+- [x] Add strict-store tests for every removed field, unknown fields, and the canonical round trip.
 
 ### Session 3: Terminal UI and lifecycle polish
 
-- [ ] Render the centered `TFLOW` badge using the documented blue filled badge style.
-- [ ] Render a green filled `live` badge immediately before the active session label, including in a selected row.
-- [ ] Apply the documented structured-card layout to every input, rename, settings, and confirmation dialog.
-- [ ] Add dialog headers, dividers, context or bordered input areas, and `Enter`/`Esc` keycap footers.
-- [ ] Use red header and primary-action keycaps exclusively for deletion confirmations.
-- [ ] Add rendering tests for the `TFLOW` and active-session `live` badges, including selected-row contrast.
-- [ ] Add rendering tests covering the shared dialog structure and destructive-confirmation red accents.
-- [ ] Add regression coverage for dialog project switching, persistent status rendering, deletion navigation, volatile fallback, and focus restoration.
+- [x] Render the centered `TFLOW` badge using the documented blue filled badge style.
+- [x] Render a green filled `live` badge immediately before the active session label, including in a selected row.
+- [x] Apply the documented structured-card layout to every input, rename, settings, and confirmation dialog.
+- [x] Add dialog headers, dividers, context or bordered input areas, and `Enter`/`Esc` keycap footers.
+- [x] Use red header and primary-action keycaps exclusively for deletion confirmations.
+- [x] Add rendering tests for the `TFLOW` and active-session `live` badges, including selected-row contrast.
+- [x] Add rendering tests covering the shared dialog structure and destructive-confirmation red accents.
+- [x] Add regression coverage for dialog project switching, persistent status rendering, deletion navigation, volatile fallback, and focus restoration.
 
 ### Session 4: Packaging and release verification
 
