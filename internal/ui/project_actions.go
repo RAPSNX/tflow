@@ -12,10 +12,6 @@ func (m *model) beginProjectDelete() (tea.Model, tea.Cmd) {
 		m.status = "No project selected."
 		return m, nil
 	}
-	if m.projectConfig(project).Protect {
-		m.status = fmt.Sprintf("Project %s is protected.", project)
-		return m, nil
-	}
 	m.mode = inputConfirmDelete
 	m.deleteTarget = deleteTarget{project: project}
 	m.status = fmt.Sprintf("Confirm delete for project %s.", project)

@@ -224,6 +224,15 @@ func (m model) projectSessions(project string) []session {
 	return result
 }
 
+func (m model) isLastProjectSession(project, deletedName string) bool {
+	for _, s := range m.sessions {
+		if s.Name != deletedName && !s.Temporary && normalizeProjectName(m.sessionProjects[s.Name]) == project {
+			return false
+		}
+	}
+	return true
+}
+
 func (m model) contextSessions() []session {
 	if m.volatileContext() {
 		result := make([]session, 0, len(m.sessions))

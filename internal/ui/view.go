@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"strings"
-
 	"charm.land/lipgloss/v2"
 )
 
@@ -14,7 +12,7 @@ func (m model) View() string {
 	switch m.mode {
 	case inputHelp:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderHelp())
-	case inputNew, inputSwitchProject:
+	case inputSwitchProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderMenu())
 	case inputCreateSession:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Session"))
@@ -66,12 +64,7 @@ func (m model) renderSessionPanel(width int) string {
 }
 
 func (m model) renderSessionRow(index int, s session) string {
-	parts := []string{}
-	if sessionType := m.sessionType(s.Name); sessionType != sessionTypeTerminal {
-		parts = append(parts, m.sessionTypeBadge(sessionType), " ")
-	}
-	parts = append(parts, m.sessionLabel(s.Name))
-	content := strings.Join(parts, "")
+	content := m.sessionLabel(s.Name)
 	if s.Name == m.currentSession {
 		badge := "[live]"
 		if index != m.selectedSessionIndex() {
@@ -87,8 +80,6 @@ func (m model) renderSessionRow(index int, s session) string {
 func (m model) renderFooter(width int) string {
 	lines := []string{}
 	switch m.mode {
-	case inputNew:
-		lines = append(lines, hintStyle.Render("new: [p] project  [t] terminal  [k] k9s  [c] agent  [esc] cancel"))
 	case inputSwitchProject:
 		lines = append(lines, inputStyle.Render(m.input.View()), hintStyle.Render("Enter switches. Esc cancels."))
 		matches := m.matchingProjects(m.input.Value())

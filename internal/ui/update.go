@@ -109,6 +109,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		deleted, wasVolatile := m.findSession(msg.name)
+		project := normalizeProjectName(m.sessionProjects[msg.name])
 		delete(m.sessionProjects, msg.name)
 		delete(m.sessionTypes, msg.name)
 		delete(m.sessionLabels, msg.name)
@@ -116,6 +117,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selectedSession = ""
 		}
 		if !wasVolatile || !deleted.Temporary {
+			if project != "" && m.isLastProjectSession(project, msg.name) {
+				m.projects = removeProject(m.projects, project)
+				delete(m.projectConfigs, project)
+				if m.selectedProject == project {
+					m.selectedProject = ""
+				}
+			}
 			if err := m.saveState(); err != nil {
 				m.err = err
 				m.status = err.Error()
@@ -134,8 +142,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		msg.config = normalizeProjectConfig(msg.config)
 		m.addProject(msg.config.Name)
 		m.setProjectConfig(msg.config)
-		m.selectedProject = msg.config.Name
-		m.selectedSession = ""
+		keepContext := m.volatileContext()
+		if !keepContext {
+			m.selectedProject = msg.config.Name
+			m.selectedSession = ""
+		}
 		if msg.session.Name != "" {
 			if !containsSessionName(m.sessions, msg.session.Name) {
 				m.sessions = append(m.sessions, msg.session)
@@ -143,7 +154,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.assignSessionProject(msg.session.Name, msg.config.Name)
 			m.setSessionType(msg.session.Name, sessionTypeTerminal)
 			m.setSessionLabel(msg.session.Name, defaultProjectSessionName)
-			if current, ok := m.currentSessionInfo(); !ok || !current.Temporary {
+			if !keepContext {
 				m.selectedSession = msg.session.Name
 			}
 		}
@@ -348,9 +359,7 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, nil
 	case "n":
-		m.mode = inputNew
-		m.status = "New: p project, t terminal, k k9s, c agent."
-		return m, nil
+		return m.startSessionCreate()
 	case "N":
 		return m.beginProjectCreate()
 	case "p":
@@ -378,8 +387,6 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.status = ""
 		}
 		return m, nil
-	case inputNew:
-		return m.updateNew(msg)
 	case inputCreateSession:
 		switch msg.Type {
 		case tea.KeyEsc:
@@ -407,19 +414,12 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = "Session name already exists."
 				return m, nil
 			}
-			command, err := m.sessionStartupCommand(m.createSessionKind)
-			if err != nil {
-				m.err = err
-				m.status = err.Error()
-				return m, nil
-			}
 			m.mode = inputNone
 			m.input.Blur()
 			m.input.Prompt = ""
 			dir := m.createSessionDir()
-			kind := sessionTypeFromKind(m.createSessionKind)
 			return m, func() tea.Msg {
-				s, err := m.tmux.CreateSession(name, dir, command)
+				s, err := m.tmux.CreateSession(name, dir, "")
 				if err != nil {
 					return sessionCreatedMsg{err: err}
 				}
@@ -428,9 +428,9 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						_ = m.tmux.KillSession(s.Name)
 						return sessionCreatedMsg{err: fmt.Errorf("mark volatile session: %w", err)}
 					}
-					return sessionCreatedMsg{session: s, volatile: true, kind: kind, label: label}
+					return sessionCreatedMsg{session: s, volatile: true, label: label}
 				}
-				return sessionCreatedMsg{session: s, kind: kind, project: project, label: label}
+				return sessionCreatedMsg{session: s, kind: sessionTypeTerminal, project: project, label: label}
 			}
 		}
 		next, cmd := m.input.Update(msg)
@@ -521,27 +521,4 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
-}
-
-func (m model) updateNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEsc:
-		m.mode = inputNone
-		m.status = "New cancelled."
-		return m, nil
-	}
-
-	switch msg.String() {
-	case "p":
-		return m.beginProjectCreate()
-	case "t":
-		return m.startSessionCreate(sessionKindTerminal)
-	case "k":
-		return m.startSessionCreate(sessionKindK9s)
-	case "c":
-		return m.startSessionCreate(sessionKindAgent)
-	default:
-		m.status = "New: use p, t, k, or c."
-		return m, nil
-	}
 }
