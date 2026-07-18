@@ -354,22 +354,18 @@ func TestProjectSwitchFromVolatileSessionRequiresConfirmation(t *testing.T) {
 	}
 }
 
-func TestProjectSwitchConfirmationAcceptsY(t *testing.T) {
+func TestProjectSwitchConfirmationRejectsLegacyYBinding(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "scratch-temp").(model)
-	m.projects = []string{"storage"}
-	m.sessions = []session{{Name: "scratch-temp", Temporary: true}, {Name: "storage--code"}}
-	m.sessionProjects = map[string]string{"storage--code": "storage"}
-	m.sessionLabels = map[string]string{"storage--code": "code"}
 	m.mode = inputConfirmProjectSwitch
 	m.switchProjectTarget = "storage"
 
-	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{121}})
 	got := updated.(model)
-	if cmd == nil {
-		t.Fatal("expected switch command")
+	if cmd != nil {
+		t.Fatal("legacy y binding should not confirm")
 	}
-	if got.selectedSession != "storage--code" {
-		t.Fatalf("selectedSession = %q", got.selectedSession)
+	if got.mode != inputConfirmProjectSwitch {
+		t.Fatalf("mode = %v", got.mode)
 	}
 }
 
@@ -985,5 +981,47 @@ func TestStartWithManagerCleansUpWhenAttachCommandFails(t *testing.T) {
 	}
 	if got, want := fmt.Sprint(cleaned), "[instance-1]"; got != want {
 		t.Fatalf("cleanup calls = %s, want %s", got, want)
+	}
+}
+
+func TestHelpEscReturnsToSessionList(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.mode = inputHelp
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("Esc from help should not close the popup")
+	}
+	if got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone", got.mode)
+	}
+}
+
+func TestUndocumentedKeysDoNotDispatch(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		mode inputMode
+		key  tea.KeyMsg
+	}{
+		{name: "down", key: tea.KeyMsg{Type: tea.KeyDown}},
+		{name: "up", key: tea.KeyMsg{Type: tea.KeyUp}},
+		{name: "delete confirmation y", mode: inputConfirmDelete, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{121}}},
+		{name: "delete confirmation d", mode: inputConfirmDelete, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{100}}},
+		{name: "project switch confirmation y", mode: inputConfirmProjectSwitch, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{121}}},
+		{name: "quit confirmation y", mode: inputConfirmQuit, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{121}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := newModel(fakeTmuxController{}, "").(model)
+			m.mode = test.mode
+			updated, cmd := m.Update(test.key)
+			got := updated.(model)
+			if cmd != nil {
+				t.Fatal("undocumented key dispatched an action")
+			}
+			if got.mode != test.mode {
+				t.Fatalf("mode = %v, want %v", got.mode, test.mode)
+			}
+		})
 	}
 }

@@ -12,6 +12,8 @@ func (m model) View() string {
 	}
 
 	switch m.mode {
+	case inputHelp:
+		return appStyle.Width(m.width).Height(m.height).Render(m.renderHelp())
 	case inputNew, inputSwitchProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderMenu())
 	case inputCreateSession:
@@ -42,12 +44,7 @@ func (m model) renderMenu() string {
 }
 
 func (m model) renderHeader(width int) string {
-	left := brandBadgeStyle.Render("TFLOW")
-	project := countBadgeStyle.Render("project " + fallbackText(m.currentProject(), ""))
-	session := countBadgeStyle.Render("session " + fallbackText(m.sessionLabel(m.currentSession), ""))
-	right := lipgloss.JoinHorizontal(lipgloss.Left, project, " ", session)
-	gap := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
-	return headerStyle.Width(width).Render(left + strings.Repeat(" ", gap) + right)
+	return headerStyle.Width(width).Render(lipgloss.PlaceHorizontal(width, lipgloss.Center, brandBadgeStyle.Render("TFLOW")))
 }
 
 func (m model) renderSessionPanel(width int) string {
@@ -102,8 +99,6 @@ func (m model) renderFooter(width int) string {
 				lines = append(lines, sessionStyle.Render("  "+project))
 			}
 		}
-	default:
-		lines = append(lines, hintStyle.Render("[j/k] move  [enter] switch  [n] new session  [N] new project  [p] project  [r/R] rename  [d/D] delete  [e] edit project  [ctrl+q] quit"))
 	}
 	if status := m.statusView(); status != "" {
 		if len(lines) > 0 {
@@ -112,6 +107,29 @@ func (m model) renderFooter(width int) string {
 		lines = append(lines, status)
 	}
 	return footerStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+}
+
+func (m model) renderHelp() string {
+	rows := []string{
+		titleStyle.Render("Shortcuts"),
+		"Ctrl+F  Toggle sidebar",
+		"Ctrl+Q  Quit tflow",
+		"Ctrl+C  Close sidebar",
+		"Esc     Return to sessions",
+		"?       Show shortcuts",
+		"j       Select next session",
+		"k       Select previous session",
+		"Enter   Switch to session",
+		"n       Create session",
+		"N       Create project",
+		"p       Switch project",
+		"r       Rename session",
+		"R       Rename project",
+		"d       Delete session",
+		"D       Delete project",
+		"e       Edit project settings",
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func (m model) renderInputOverlay(title string) string {
@@ -139,7 +157,7 @@ func (m model) renderDeleteOverlay() string {
 		titleStyle.Render("Confirm Delete"),
 		mutedStyle.Render("Delete " + target + "?"),
 		"",
-		hintStyle.Render("Enter, d, or y confirms. Esc cancels."),
+		hintStyle.Render("Enter confirms. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(42, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
@@ -150,7 +168,7 @@ func (m model) renderProjectSwitchConfirmOverlay() string {
 		titleStyle.Render("Confirm Project Switch"),
 		mutedStyle.Render("Switch from the current volatile session to project " + fallbackText(m.switchProjectTarget, "none") + "?"),
 		"",
-		hintStyle.Render("Enter or y confirms. Esc cancels."),
+		hintStyle.Render("Enter confirms. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(48, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
@@ -161,7 +179,7 @@ func (m model) renderQuitConfirmOverlay() string {
 		titleStyle.Render("Confirm Quit"),
 		mutedStyle.Render("Remove this instance's volatile sessions and detach?"),
 		"",
-		hintStyle.Render("Enter or y confirms. Esc cancels."),
+		hintStyle.Render("Enter confirms. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(48, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)

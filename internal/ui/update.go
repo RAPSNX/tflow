@@ -335,14 +335,18 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
-	case "j", "down":
+	case "j":
 		m.shiftSession(1)
 		return m, nil
-	case "k", "up":
+	case "k":
 		m.shiftSession(-1)
 		return m, nil
 	case "enter":
 		return m.switchSelectedSession()
+	case "?":
+		m.mode = inputHelp
+		m.status = ""
+		return m, nil
 	case "n":
 		m.mode = inputNew
 		m.status = "New: p project, t terminal, k k9s, c agent."
@@ -368,6 +372,12 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.mode {
+	case inputHelp:
+		if msg.Type == tea.KeyEsc {
+			m.mode = inputNone
+			m.status = ""
+		}
+		return m, nil
 	case inputNew:
 		return m.updateNew(msg)
 	case inputCreateSession:
@@ -465,10 +475,6 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			return m.confirmDelete()
 		}
-		switch msg.String() {
-		case "d", "y":
-			return m.confirmDelete()
-		}
 	case inputConfirmProjectSwitch:
 		switch msg.Type {
 		case tea.KeyEsc:
@@ -479,10 +485,6 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			return m.confirmProjectSwitch()
 		}
-		switch msg.String() {
-		case "y":
-			return m.confirmProjectSwitch()
-		}
 	case inputConfirmQuit:
 		switch msg.Type {
 		case tea.KeyEsc:
@@ -490,10 +492,6 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.status = "Quit cancelled."
 			return m, nil
 		case tea.KeyEnter:
-			return m.confirmQuit()
-		}
-		switch msg.String() {
-		case "y":
 			return m.confirmQuit()
 		}
 	case inputEditProject:

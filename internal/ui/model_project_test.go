@@ -261,34 +261,17 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	}
 }
 
-func TestRenderHeaderUsesLiveSessionProject(t *testing.T) {
+func TestRenderHeaderCentersBrandWithoutPopupMetadata(t *testing.T) {
 	m := NewMenu().(model)
-	m.width = 48
-	m.currentSession = "keep"
-	m.selectedProject = "small"
-	m.sessions = []session{{Name: "keep"}}
-	m.sessionProjects = map[string]string{"keep": "storage"}
-
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHeader(40), "")
-	if !strings.Contains(plain, "project storage") {
-		t.Fatalf("renderHeader missing live project in %q", plain)
+	firstLine := strings.Split(plain, "\n")[0]
+	if got, want := strings.Index(firstLine, "TFLOW"), 17; got != want {
+		t.Fatalf("TFLOW offset = %d, want %d in %q", got, want, firstLine)
 	}
-	if strings.Contains(plain, "project small") {
-		t.Fatalf("renderHeader used selected project in %q", plain)
-	}
-}
-
-func TestRenderHeaderUsesDisplayLabel(t *testing.T) {
-	m := NewMenu().(model)
-	m.width = 48
-	m.currentSession = "small--code"
-	m.sessions = []session{{Name: "small--code"}}
-	m.sessionProjects = map[string]string{"small--code": "small"}
-	m.sessionLabels = map[string]string{"small--code": "code"}
-
-	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHeader(40), "")
-	if !strings.Contains(plain, "session code") || strings.Contains(plain, "small--code") {
-		t.Fatalf("header = %q", plain)
+	for _, unwanted := range []string{"project", "session"} {
+		if strings.Contains(plain, unwanted) {
+			t.Fatalf("header unexpectedly contains %q in %q", unwanted, plain)
+		}
 	}
 }
 
@@ -304,37 +287,6 @@ func TestRenderSessionRowUsesDisplayLabel(t *testing.T) {
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderSessionRow(0, m.sessions[0]), "")
 	if !strings.Contains(plain, "code") || strings.Contains(plain, "small--code") {
 		t.Fatalf("session row = %q", plain)
-	}
-}
-
-func TestRenderHeaderLeavesProjectBadgeEmptyForVolatileSession(t *testing.T) {
-	m := NewMenu().(model)
-	m.width = 48
-	m.currentSession = "scratch-temp"
-	m.selectedProject = "small"
-	m.sessions = []session{{Name: "scratch-temp", Temporary: true}}
-	m.sessionProjects = map[string]string{"scratch-temp": "small"}
-
-	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHeader(40), "")
-	if strings.Contains(plain, "project small") {
-		t.Fatalf("renderHeader used project badge for volatile session in %q", plain)
-	}
-	if !strings.Contains(plain, "session scratch-temp") {
-		t.Fatalf("renderHeader missing session badge in %q", plain)
-	}
-}
-
-func TestRenderHeaderUsesProjectLocalSessionName(t *testing.T) {
-	m := NewMenu().(model)
-	m.width = 48
-	m.currentSession = "small--code"
-	m.sessions = []session{{Name: "small--code"}}
-	m.sessionProjects = map[string]string{"small--code": "garden"}
-	m.sessionLabels = map[string]string{"small--code": "code"}
-
-	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHeader(40), "")
-	if !strings.Contains(plain, "session code") || strings.Contains(plain, "small--code") {
-		t.Fatalf("header = %q", plain)
 	}
 }
 
@@ -413,16 +365,63 @@ func TestRenderMenuIncludesBrandSessionPanelAndStatusArea(t *testing.T) {
 	}
 }
 
-func TestRenderFooterIncludesDirectProjectShortcut(t *testing.T) {
+func TestRenderFooterShowsOnlyInlineStatusByDefault(t *testing.T) {
 	m := NewMenu().(model)
-	m.width = 72
-
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderFooter(60), "")
-	footer := strings.Join(strings.Fields(plain), " ")
-	for _, want := range []string{"[N] new project", "[r/R] rename", "[d/D] delete", "[ctrl+q] quit"} {
-		if !strings.Contains(footer, want) {
-			t.Fatalf("renderFooter missing %q in %q", want, plain)
+	if strings.TrimSpace(plain) != "" {
+		t.Fatalf("default footer = %q, want empty", plain)
+	}
+	m.status = "Saved."
+	plain = regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderFooter(60), "")
+	if !strings.Contains(plain, "Saved.") {
+		t.Fatalf("status footer = %q", plain)
+	}
+}
+
+func TestRenderHelpListsOneShortcutPerRow(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.height = 24
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHelp(), "")
+	for _, want := range []string{"Ctrl+F", "Ctrl+Q", "Ctrl+C", "Esc", "?", "j", "k", "Enter", "n", "N", "p", "r", "R", "d", "D", "e"} {
+		count := 0
+		for _, line := range strings.Split(plain, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), want) {
+				count++
+			}
 		}
+		if count != 1 {
+			t.Fatalf("shortcut %q appears %d times in %q", want, count, plain)
+		}
+	}
+}
+
+func TestRenderHelpDoesNotApplyOuterLayout(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.height = 24
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHelp(), "")
+	if got, want := strings.Count(plain, "\n")+1, 17; got != want {
+		t.Fatalf("help row count = %d, want %d", got, want)
+	}
+}
+
+func TestConfirmationOverlaysAdvertiseAcceptedKeys(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.height = 24
+
+	for name, render := range map[string]func() string{
+		"delete":         m.renderDeleteOverlay,
+		"project switch": m.renderProjectSwitchConfirmOverlay,
+		"quit":           m.renderQuitConfirmOverlay,
+	} {
+		t.Run(name, func(t *testing.T) {
+			plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(render(), "")
+			if !strings.Contains(plain, "Enter confirms. Esc cancels.") {
+				t.Fatalf("confirmation hint = %q", plain)
+			}
+		})
 	}
 }
 
