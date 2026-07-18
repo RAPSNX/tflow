@@ -15,6 +15,7 @@ type AppState struct {
 	Projects        []string                 `json:"projects"`
 	SessionProjects map[string]string        `json:"session_projects"`
 	SessionTypes    map[string]string        `json:"session_types"`
+	SessionLabels   map[string]string        `json:"session_labels"`
 	ProjectConfigs  map[string]ProjectConfig `json:"project_configs"`
 }
 
@@ -23,6 +24,7 @@ type storedState struct {
 	Projects        map[string]storedProject `json:"projects"`
 	SessionProjects map[string]string        `json:"session_projects"`
 	SessionTypes    map[string]string        `json:"session_types"`
+	SessionLabels   map[string]string        `json:"session_labels"`
 }
 
 type storedProject struct {
@@ -112,6 +114,9 @@ func NormalizeAppState(state AppState) AppState {
 	if state.SessionTypes == nil {
 		state.SessionTypes = map[string]string{}
 	}
+	if state.SessionLabels == nil {
+		state.SessionLabels = map[string]string{}
+	}
 	if state.ProjectConfigs == nil {
 		state.ProjectConfigs = map[string]ProjectConfig{}
 	}
@@ -128,6 +133,22 @@ func NormalizeAppState(state AppState) AppState {
 		if _, ok := state.SessionTypes[name]; !ok {
 			state.SessionTypes[name] = "terminal"
 		}
+		if _, ok := state.SessionLabels[name]; !ok {
+			state.SessionLabels[name] = sessionLabelFromKey(name, project)
+		}
+	}
+	for _, name := range sortedStringKeys(state.SessionTypes) {
+		if _, ok := state.SessionLabels[name]; !ok {
+			state.SessionLabels[name] = strings.TrimSpace(name)
+		}
+	}
+	for _, name := range sortedStringKeys(state.SessionLabels) {
+		label := strings.TrimSpace(state.SessionLabels[name])
+		if strings.TrimSpace(name) == "" || label == "" {
+			delete(state.SessionLabels, name)
+			continue
+		}
+		state.SessionLabels[name] = label
 	}
 
 	normalizedConfigs := map[string]ProjectConfig{}
@@ -154,6 +175,19 @@ func NormalizeAppState(state AppState) AppState {
 		state.ProjectConfigs[project] = cfg
 	}
 	return state
+}
+
+func sessionLabelFromKey(name, project string) string {
+	name = strings.TrimSpace(name)
+	project = NormalizeProjectName(project)
+	if project == "" {
+		return name
+	}
+	prefix := project + "--"
+	if strings.HasPrefix(name, prefix) {
+		return strings.TrimPrefix(name, prefix)
+	}
+	return name
 }
 
 func NormalizeProjectList(projects []string) []string {
@@ -217,6 +251,7 @@ func emptyAppState() AppState {
 		Projects:        []string{},
 		SessionProjects: map[string]string{},
 		SessionTypes:    map[string]string{},
+		SessionLabels:   map[string]string{},
 		ProjectConfigs:  map[string]ProjectConfig{},
 	}
 }
@@ -257,6 +292,7 @@ func encodeAppState(state AppState) ([]byte, error) {
 		Projects:        map[string]storedProject{},
 		SessionProjects: cloneStringMap(state.SessionProjects),
 		SessionTypes:    cloneStringMap(state.SessionTypes),
+		SessionLabels:   cloneStringMap(state.SessionLabels),
 	}
 
 	for _, project := range state.Projects {
@@ -321,6 +357,9 @@ func decodeStoredState(data []byte) (AppState, error) {
 	for name, sessionType := range stored.SessionTypes {
 		state.SessionTypes[name] = sessionType
 	}
+	for name, label := range stored.SessionLabels {
+		state.SessionLabels[name] = label
+	}
 
 	return NormalizeAppState(state), nil
 }
@@ -334,6 +373,7 @@ func decodeLegacyStringListState(data []byte) (AppState, error) {
 		Projects:        append([]string(nil), legacy.Projects...),
 		SessionProjects: cloneStringMap(legacy.SessionProjects),
 		SessionTypes:    cloneStringMap(legacy.SessionTypes),
+		SessionLabels:   map[string]string{},
 		ProjectConfigs:  legacyProjectConfigs(legacy.ProjectDirs),
 	}), nil
 }
@@ -360,6 +400,9 @@ func decodeLegacySessionSnapshotState(data []byte) (AppState, error) {
 				continue
 			}
 			state.SessionProjects[sessionKey] = name
+			if label := strings.TrimSpace(session.Name); label != "" {
+				state.SessionLabels[sessionKey] = label
+			}
 			if strings.TrimSpace(session.Type) == "" {
 				state.SessionTypes[sessionKey] = "terminal"
 				continue

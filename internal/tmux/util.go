@@ -29,7 +29,24 @@ func NormalizeCWD(cwd string) string {
 }
 
 func SanitizeSessionName(name string) string {
+	parts := strings.Split(name, "--")
+	if len(parts) == 2 {
+		project := store.NormalizeProjectName(parts[0])
+		label := store.NormalizeProjectName(parts[1])
+		if project != "" && label != "" {
+			return project + "--" + label
+		}
+	}
 	return store.NormalizeProjectName(name)
+}
+
+func ProjectSessionName(project, label string) string {
+	project = store.NormalizeProjectName(project)
+	label = store.NormalizeProjectName(label)
+	if project == "" || label == "" {
+		return ""
+	}
+	return project + "--" + label
 }
 
 func NextTempSessionName(existing []Session) string {

@@ -109,27 +109,31 @@
 
 ## Session and project management
 
-- [ ] Define a project-scoped tmux session naming scheme so multiple projects can each keep a default `code` session without cross-project name collisions.
+- [x] Define a project-scoped tmux session naming scheme so multiple projects can each keep a default `code` session without cross-project name collisions.
+- [x] Persist display labels independently from tmux identifiers so project sessions remain visible as `code`.
+- [x] Migrate existing project sessions to scoped tmux identifiers without losing project membership, session type, or selection.
+- [x] Rename scoped tmux session identifiers when a project is renamed and roll back partial rename failures.
+- [x] Reject duplicate display labels within a project.
 - [x] Support `n` to create a new session.
 - [x] Start project sessions in the project `workdir` when one is set.
 - [x] Start non-project sessions in the current working directory.
 - [x] Support `N` to create a new project.
-- [x] Support `r` to rename the selected session or project.
+- [x] Support `r` to rename the selected session and `R` to rename the current project.
 - [x] Support `e` to update project settings.
-- [x] Support `d` to delete the selected session or project with confirmation.
+- [x] Support `d` to delete the selected session and `D` to delete the current project with confirmation.
 - [x] Require confirmation before deleting the last session of a project.
 
 ## Quit flow
 
-- [ ] Support `Ctrl+Q` to open a quit confirmation flow.
-- [ ] Remove only the current instance's volatile sessions on confirmed quit.
-- [ ] Leave persistent project sessions untouched on quit.
-- [ ] Keep quit behavior aligned with the tmux-native runtime model.
+- [x] Support `Ctrl+Q` to open a quit confirmation flow.
+- [x] Remove only the current instance's volatile sessions on confirmed quit.
+- [x] Leave persistent project sessions untouched on quit.
+- [x] Keep quit behavior aligned with the tmux-native runtime model.
 
 ## Cleanup and verification
 
-- [ ] Remove dead YAML/config and command-mode code and tests left behind by the deleted flows.
+- [x] Remove dead YAML/config and command-mode code and tests left behind by the deleted flows.
 - [ ] Keep production files small and focused after the refactor.
-- [ ] Run `gofmt` on changed Go files.
-- [ ] Run `go test ./...`.
-- [ ] Run `go build ./...`.
+- [x] Run `gofmt` on changed Go files.
+- [x] Run `go test ./...`.
+- [x] Run `go build ./...`.

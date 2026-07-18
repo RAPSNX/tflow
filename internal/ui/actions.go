@@ -127,37 +127,26 @@ func (m *model) switchToProject(project string) (tea.Model, tea.Cmd) {
 	return m.switchSelectedSession()
 }
 
-func (m model) killSelectedSession() (tea.Model, tea.Cmd) {
+func (m model) killSession(name string) (tea.Model, tea.Cmd) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		m.status = "No session selected."
+		return m, nil
+	}
+	return m, func() tea.Msg {
+		return sessionKilledMsg{name: name, err: m.tmux.KillSession(name)}
+	}
+}
+
+func (m *model) beginDelete() (tea.Model, tea.Cmd) {
 	s, ok := m.selectedSessionInfo()
 	if !ok {
 		m.status = "No session selected."
 		return m, nil
 	}
-	return m, func() tea.Msg {
-		return sessionKilledMsg{name: s.Name, err: m.tmux.KillSession(s.Name)}
-	}
-}
-
-func (m *model) beginDelete() (tea.Model, tea.Cmd) {
-	if s, ok := m.selectedSessionInfo(); ok {
-		m.mode = inputConfirmDelete
-		m.deleteTarget = deleteTarget{session: s.Name}
-		m.status = fmt.Sprintf("Confirm delete for session %s.", s.Name)
-		return m, nil
-	}
-
-	project := m.contextProject()
-	if project == "" {
-		m.status = "Select a session or project to delete."
-		return m, nil
-	}
-	if m.projectConfig(project).Protect {
-		m.status = fmt.Sprintf("Project %s is protected.", project)
-		return m, nil
-	}
 	m.mode = inputConfirmDelete
-	m.deleteTarget = deleteTarget{project: project}
-	m.status = fmt.Sprintf("Confirm delete for project %s.", project)
+	m.deleteTarget = deleteTarget{session: s.Name}
+	m.status = fmt.Sprintf("Confirm delete for session %s.", m.sessionLabel(s.Name))
 	return m, nil
 }
 
@@ -166,9 +155,9 @@ func (m model) confirmDelete() (tea.Model, tea.Cmd) {
 	m.mode = inputNone
 	m.deleteTarget = deleteTarget{}
 	if target.session != "" {
-		return m.killSelectedSession()
+		return m.killSession(target.session)
 	}
-	return m.deleteSelectedProject()
+	return m.deleteProject(target.project)
 }
 
 func (m model) closeMenuCmd() tea.Cmd {
@@ -177,30 +166,35 @@ func (m model) closeMenuCmd() tea.Cmd {
 	}
 }
 
-func (m *model) beginRename() (tea.Model, tea.Cmd) {
-	if s, ok := m.selectedSessionInfo(); ok {
-		m.mode = inputRename
-		m.renameTarget = renameTarget{session: s.Name}
-		m.input.SetValue(s.Name)
-		m.input.CursorEnd()
-		m.input.Prompt = "session: "
-		m.input.Focus()
-		m.status = "Rename the selected session."
-		return m, nil
-	}
+func (m *model) beginQuit() (tea.Model, tea.Cmd) {
+	m.mode = inputConfirmQuit
+	m.input.Blur()
+	m.input.Prompt = ""
+	m.input.SetValue("")
+	m.status = "Confirm shutdown of this tflow instance."
+	return m, nil
+}
 
-	project := m.contextProject()
-	if project == "" {
-		m.status = "Select a session or project to rename."
+func (m model) confirmQuit() (tea.Model, tea.Cmd) {
+	m.mode = inputNone
+	return m, func() tea.Msg {
+		return menuActionMsg{quit: true}
+	}
+}
+
+func (m *model) beginRename() (tea.Model, tea.Cmd) {
+	s, ok := m.selectedSessionInfo()
+	if !ok {
+		m.status = "No session selected."
 		return m, nil
 	}
 	m.mode = inputRename
-	m.renameTarget = renameTarget{project: project}
-	m.input.SetValue(project)
+	m.renameTarget = renameTarget{session: s.Name}
+	m.input.SetValue(m.sessionLabel(s.Name))
 	m.input.CursorEnd()
-	m.input.Prompt = "project: "
+	m.input.Prompt = "session: "
 	m.input.Focus()
-	m.status = "Rename the current project."
+	m.status = "Rename the selected session."
 	return m, nil
 }
 
@@ -225,20 +219,35 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 			m.status = "Project already exists."
 			return m, nil
 		}
+		renames, err := m.projectSessionRenames(target.project, name)
+		if err != nil {
+			m.status = err.Error()
+			return m, nil
+		}
 		m.mode = inputNone
 		m.renameTarget = renameTarget{}
 		m.input.Blur()
 		m.input.Prompt = ""
 		return m, func() tea.Msg {
-			return projectRenamedMsg{oldName: target.project, newName: name}
+			applied := make([]sessionRename, 0, len(renames))
+			for _, rename := range renames {
+				if err := m.tmux.RenameSession(rename.oldName, rename.newName); err != nil {
+					for i := len(applied) - 1; i >= 0; i-- {
+						_ = m.tmux.RenameSession(applied[i].newName, applied[i].oldName)
+					}
+					return projectRenamedMsg{oldName: target.project, newName: name, err: fmt.Errorf("rename project session: %w", err)}
+				}
+				applied = append(applied, rename)
+			}
+			return projectRenamedMsg{oldName: target.project, newName: name, sessionRenames: renames}
 		}
 	case target.session != "":
-		name := sanitizeSessionName(m.input.Value())
-		if name == "" {
+		label := sanitizeSessionName(m.input.Value())
+		if label == "" {
 			m.status = "Session name is empty."
 			return m, nil
 		}
-		if name == target.session {
+		if label == m.sessionLabel(target.session) {
 			m.mode = inputNone
 			m.renameTarget = renameTarget{}
 			m.input.Blur()
@@ -246,8 +255,17 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 			m.status = ""
 			return m, nil
 		}
-		if _, ok := m.findSession(name); ok {
-			m.status = "Session already exists."
+		project := normalizeProjectName(m.sessionProjects[target.session])
+		if m.hasSessionLabel(project, label, target.session) {
+			m.status = "Session name already exists in this project."
+			return m, nil
+		}
+		name := label
+		if project != "" {
+			name = projectSessionName(project, label)
+		}
+		if existing, ok := m.findSession(name); ok && existing.Name != target.session {
+			m.status = "Session name already exists."
 			return m, nil
 		}
 		m.mode = inputNone
@@ -255,75 +273,10 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 		m.input.Blur()
 		m.input.Prompt = ""
 		return m, func() tea.Msg {
-			return sessionRenamedMsg{oldName: target.session, newName: name, err: m.tmux.RenameSession(target.session, name)}
+			return sessionRenamedMsg{oldName: target.session, newName: name, label: label, err: m.tmux.RenameSession(target.session, name)}
 		}
 	default:
 		m.status = "Select a session or project to rename."
 		return m, nil
 	}
-}
-
-func (m model) deleteSelectedProject() (tea.Model, tea.Cmd) {
-	project := normalizeProjectName(m.contextProject())
-	if project == "" {
-		m.status = "Select a project to delete."
-		return m, nil
-	}
-	sessions := m.projectSessions(project)
-	return m, func() tea.Msg {
-		for _, s := range sessions {
-			if err := m.tmux.KillSession(s.Name); err != nil {
-				return projectDeletedMsg{project: project, err: err}
-			}
-		}
-		return projectDeletedMsg{project: project}
-	}
-}
-
-func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
-	project = normalizeProjectName(project)
-	if project == "" {
-		m.err = fmt.Errorf("project name is empty")
-		m.status = "Project name is empty."
-		return m, nil
-	}
-
-	deletedSessions := m.projectSessions(project)
-	for _, s := range deletedSessions {
-		delete(m.sessionProjects, s.Name)
-		delete(m.sessionTypes, s.Name)
-		if m.selectedSession == s.Name {
-			m.selectedSession = ""
-		}
-		if m.currentSession == s.Name {
-			m.currentSession = ""
-		}
-	}
-	m.sessions = filterSessions(m.sessions, func(s session) bool {
-		for _, deleted := range deletedSessions {
-			if deleted.Name == s.Name {
-				return false
-			}
-		}
-		return true
-	})
-	m.projects = removeProject(m.projects, project)
-	delete(m.projectConfigs, project)
-	if m.selectedProject == project {
-		m.selectedProject = ""
-	}
-	if err := m.saveState(); err != nil {
-		m.err = err
-		m.status = err.Error()
-		return m, nil
-	}
-	m.syncSelection()
-	if err := m.syncTmuxSessionProjects(); err != nil {
-		m.err = err
-		m.status = err.Error()
-		return m, nil
-	}
-	m.err = nil
-	m.status = ""
-	return m, nil
 }

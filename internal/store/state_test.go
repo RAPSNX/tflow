@@ -29,6 +29,7 @@ func TestSaveAndLoadAppStateRoundTripsProjectSettings(t *testing.T) {
 		Projects:        []string{"small"},
 		SessionProjects: map[string]string{"dev": "small"},
 		SessionTypes:    map[string]string{"dev": "agent"},
+		SessionLabels:   map[string]string{"dev": "development"},
 		ProjectConfigs: map[string]ProjectConfig{
 			"small": {
 				Name:        "small",
@@ -67,6 +68,9 @@ func TestSaveAndLoadAppStateRoundTripsProjectSettings(t *testing.T) {
 	if cfg.Cluster.ConnectionCmd != "aws eks update-kubeconfig --name prod" {
 		t.Fatalf("connectionCmd = %q", cfg.Cluster.ConnectionCmd)
 	}
+	if loaded.SessionLabels["dev"] != "development" {
+		t.Fatalf("session label = %q, want development", loaded.SessionLabels["dev"])
+	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -77,6 +81,22 @@ func TestSaveAndLoadAppStateRoundTripsProjectSettings(t *testing.T) {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("store.json missing %s: %s", want, plain)
 		}
+	}
+}
+
+func TestLoadAppStateMigratesMissingSessionLabels(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	data := []byte(`{"project_order":["small"],"projects":{"small":{}},"session_projects":{"small--code":"small"},"session_types":{"small--code":"terminal"}}`)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	state, err := LoadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.SessionLabels["small--code"] != "code" {
+		t.Fatalf("migrated label = %q, want code", state.SessionLabels["small--code"])
 	}
 }
 
@@ -247,6 +267,12 @@ func TestEnsureStartupStateMigratesLegacySessionSnapshot(t *testing.T) {
 	}
 	if got := state.SessionTypes["bug-iowait_agent"]; got != "agent" {
 		t.Fatalf("sessionTypes[bug-iowait_agent] = %q", got)
+	}
+	if got := state.SessionLabels["atze_code"]; got != "code" {
+		t.Fatalf("sessionLabels[atze_code] = %q, want code", got)
+	}
+	if got := state.SessionLabels["bug-iowait_agent"]; got != "agent" {
+		t.Fatalf("sessionLabels[bug-iowait_agent] = %q, want agent", got)
 	}
 	if _, ok := state.SessionProjects["agent"]; ok {
 		t.Fatal("sessionProjects unexpectedly used display session name key")

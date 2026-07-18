@@ -74,6 +74,26 @@ func TestCreateSessionUsesProjectDirectoryWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestCreateSessionRejectsDuplicateLabelWithinProject(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "small--code"}}
+	m.sessionProjects = map[string]string{"small--code": "small"}
+	m.sessionLabels = map[string]string{"small--code": "code"}
+	m.selectedProject = "small"
+	m.mode = inputCreateSession
+	m.input.SetValue("code")
+
+	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("expected no create command")
+	}
+	if got.status != "Session name already exists in this project." {
+		t.Fatalf("status = %q", got.status)
+	}
+}
+
 func TestCreateSessionUsesExpandedHomeDirectoryWhenConfigured(t *testing.T) {
 	t.Setenv("HOME", "/tmp/home")
 

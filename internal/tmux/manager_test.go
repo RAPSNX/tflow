@@ -50,6 +50,8 @@ func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 		"dev":   "small",
 		"api":   "",
 		"blank": "  ",
+	}, map[string]string{
+		"dev": "development",
 	})
 	if err != nil {
 		t.Fatalf("SyncSessionProjects returned error: %v", err)
@@ -59,6 +61,9 @@ func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 		{"set-option", "-t", "dev", "@tflow-project", "small"},
 		{"set-option", "-t", "api", "@tflow-project", ""},
 		{"set-option", "-t", "blank", "@tflow-project", ""},
+		{"set-option", "-t", "dev", "@tflow-session-label", "development"},
+		{"set-option", "-t", "api", "@tflow-session-label", "api"},
+		{"set-option", "-t", "blank", "@tflow-session-label", "blank"},
 	}
 	for _, want := range wants {
 		found := false
@@ -254,11 +259,11 @@ func TestRenameSessionUsesTmuxRenameSession(t *testing.T) {
 		},
 	}
 
-	if err := manager.RenameSession("dev", "lala"); err != nil {
+	if err := manager.RenameSession("legacy_code", "lala"); err != nil {
 		t.Fatalf("RenameSession returned error: %v", err)
 	}
 
-	want := []string{"rename-session", "-t", "dev", "lala"}
+	want := []string{"rename-session", "-t", "legacy_code", "lala"}
 	found := false
 	for _, call := range calls {
 		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {

@@ -19,6 +19,7 @@ type fakeTmuxController struct {
 	ensureControlMode   func(binaryPath string) error
 	toggleMenu          func(binaryPath string) error
 	closeMenu           func() error
+	quitAll             func() error
 	cleanupVolatile     func(instanceID string) error
 	syncSessionProjects func(sessionProjects map[string]string) error
 }
@@ -93,6 +94,13 @@ func (f fakeTmuxController) CloseMenu() error {
 	return nil
 }
 
+func (f fakeTmuxController) QuitAll() error {
+	if f.quitAll != nil {
+		return f.quitAll()
+	}
+	return nil
+}
+
 func (f fakeTmuxController) CleanupVolatileSessions(instanceID string) error {
 	if f.cleanupVolatile != nil {
 		return f.cleanupVolatile(instanceID)
@@ -100,7 +108,7 @@ func (f fakeTmuxController) CleanupVolatileSessions(instanceID string) error {
 	return nil
 }
 
-func (f fakeTmuxController) SyncSessionProjects(sessionProjects map[string]string) error {
+func (f fakeTmuxController) SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error {
 	if f.syncSessionProjects != nil {
 		return f.syncSessionProjects(sessionProjects)
 	}

@@ -10,6 +10,7 @@ func (m model) saveState() error {
 		Projects:        append([]string(nil), m.projects...),
 		SessionProjects: map[string]string{},
 		SessionTypes:    map[string]string{},
+		SessionLabels:   map[string]string{},
 		ProjectConfigs:  map[string]projectConfig{},
 	}
 	for name, project := range m.sessionProjects {
@@ -17,6 +18,9 @@ func (m model) saveState() error {
 	}
 	for name, sessionType := range m.sessionTypes {
 		state.SessionTypes[name] = string(sessionType)
+	}
+	for name, label := range m.sessionLabels {
+		state.SessionLabels[name] = label
 	}
 	for project, cfg := range m.projectConfigs {
 		project = normalizeProjectName(project)
@@ -32,21 +36,6 @@ func (m model) saveState() error {
 
 func sanitizeProjectName(name string) string {
 	return normalizeProjectName(name)
-}
-
-func projectSessionName(project, name string) string {
-	return sanitizeSessionName(project) + "--" + sanitizeSessionName(name)
-}
-
-func (m model) sessionDisplayName(name string) string {
-	if normalizeProjectName(m.sessionProjects[name]) == "" {
-		return name
-	}
-	_, label, ok := strings.Cut(name, "--")
-	if !ok || label == "" {
-		return name
-	}
-	return label
 }
 
 func projectAccentColor(project string) string {
@@ -129,11 +118,13 @@ func (m model) statusView() string {
 
 func (m model) syncTmuxSessionProjects() error {
 	sessionProjects := make(map[string]string, len(m.sessions))
+	sessionLabels := make(map[string]string, len(m.sessions))
 	for _, s := range m.sessions {
 		project := normalizeProjectName(m.sessionProjects[s.Name])
 		sessionProjects[s.Name] = project
+		sessionLabels[s.Name] = m.sessionLabel(s.Name)
 	}
-	return m.tmux.SyncSessionProjects(sessionProjects)
+	return m.tmux.SyncSessionProjects(sessionProjects, sessionLabels)
 }
 
 func max(a, b int) int {

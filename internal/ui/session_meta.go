@@ -54,6 +54,36 @@ func (m *model) setSessionType(name string, value sessionType) {
 	m.sessionTypes[name] = value
 }
 
+func (m model) sessionLabel(name string) string {
+	if m.sessionLabels != nil {
+		if label := strings.TrimSpace(m.sessionLabels[name]); label != "" {
+			return label
+		}
+	}
+	return name
+}
+
+func (m *model) setSessionLabel(name, label string) {
+	if m.sessionLabels == nil {
+		m.sessionLabels = map[string]string{}
+	}
+	m.sessionLabels[name] = sanitizeSessionName(label)
+}
+
+func (m model) hasSessionLabel(project, label string, exceptName string) bool {
+	project = normalizeProjectName(project)
+	label = sanitizeSessionName(label)
+	for _, s := range m.sessions {
+		if s.Name == exceptName || s.Temporary {
+			continue
+		}
+		if normalizeProjectName(m.sessionProjects[s.Name]) == project && m.sessionLabel(s.Name) == label {
+			return true
+		}
+	}
+	return false
+}
+
 func (m model) sessionTypeBadge(value sessionType) string {
 	switch value {
 	case sessionTypeK9s:
