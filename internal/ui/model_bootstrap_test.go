@@ -390,6 +390,25 @@ func TestCtrlCClosesMenu(t *testing.T) {
 	}
 }
 
+func TestCtrlCClosesMenuFromModalMode(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.mode = inputRename
+	m.input.Prompt = "session: "
+	m.input.SetValue("dev")
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("expected close command")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("close returned error: %v", msg.err)
+	}
+	if msg.switchSession != "" {
+		t.Fatalf("close msg = %#v, want plain close", msg)
+	}
+}
+
 func TestCtrlFClosesMenuFromNormalMode(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 
@@ -422,6 +441,71 @@ func TestCtrlFClosesMenuFromModalMode(t *testing.T) {
 	}
 	if msg.switchSession != "" {
 		t.Fatalf("close msg = %#v, want plain close", msg)
+	}
+}
+
+func TestEscCancelsPromptWithoutClosingMenu(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.projects = []string{"small", "storage"}
+	m.mode = inputSwitchProject
+	m.input.Prompt = "project: "
+	m.input.SetValue("sto")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("expected no close command")
+	}
+	if got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone", got.mode)
+	}
+	if got.status != "Project switch cancelled." {
+		t.Fatalf("status = %q", got.status)
+	}
+	if got.input.Value() != "" {
+		t.Fatalf("input value = %q, want cleared", got.input.Value())
+	}
+}
+
+func TestEscCancelsDeleteConfirmationWithoutClosingMenu(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.mode = inputConfirmDelete
+	m.deleteTarget = deleteTarget{session: "dev"}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("expected no close command")
+	}
+	if got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone", got.mode)
+	}
+	if got.deleteTarget != (deleteTarget{}) {
+		t.Fatalf("deleteTarget = %#v, want empty", got.deleteTarget)
+	}
+	if got.status != "Delete cancelled." {
+		t.Fatalf("status = %q", got.status)
+	}
+}
+
+func TestEscCancelsProjectSwitchConfirmationWithoutClosingMenu(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.mode = inputConfirmProjectSwitch
+	m.switchProjectTarget = "storage"
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("expected no close command")
+	}
+	if got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone", got.mode)
+	}
+	if got.switchProjectTarget != "" {
+		t.Fatalf("switchProjectTarget = %q, want empty", got.switchProjectTarget)
+	}
+	if got.status != "Project switch cancelled." {
+		t.Fatalf("status = %q", got.status)
 	}
 }
 

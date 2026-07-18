@@ -189,6 +189,31 @@ func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 	}
 }
 
+func TestRenderSessionPanelUsesCurrentProjectContext(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.projects = []string{defaultProjectName, "small"}
+	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
+	m.sessionProjects = map[string]string{
+		"dev": defaultProjectName,
+		"api": "small",
+	}
+	m.selectedProject = "small"
+	m.selectedSession = "api"
+
+	view := m.renderSessionPanel(40)
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(view, "")
+	if !strings.Contains(plain, "api") {
+		t.Fatalf("renderSessionPanel missing selected-project session in %q", plain)
+	}
+	if strings.Contains(plain, "dev") {
+		t.Fatalf("renderSessionPanel leaked other-context session in %q", plain)
+	}
+	if strings.Contains(plain, "Projects") {
+		t.Fatalf("renderSessionPanel unexpectedly contained grouped project UI in %q", plain)
+	}
+}
+
 func TestRenderMenuIncludesBrandSessionPanelAndStatusArea(t *testing.T) {
 	m := NewMenu().(model)
 	m.width = 48
