@@ -180,7 +180,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, tea.Quit
 	case tea.KeyMsg:
-		if msg.Type == tea.KeyCtrlF {
+		if msg.Type == tea.KeyCtrlF || msg.Type == tea.KeyCtrlC {
 			return m, m.closeMenuCmd()
 		}
 		if m.mode != inputNone {

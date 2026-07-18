@@ -91,11 +91,11 @@
 
 ## Session list navigation
 
-- [ ] Show sessions as a flat list for the current context.
-- [ ] Support `j` / `k` movement through the session list.
-- [ ] Support `Enter` to switch to the selected session and close the sidebar.
-- [ ] Support `Ctrl+C` to close the sidebar when it is open.
-- [ ] Support `Esc` to cancel prompts or confirmations before closing the sidebar.
+- [x] Show sessions as a flat list for the current context.
+- [x] Support `j` / `k` movement through the session list.
+- [x] Support `Enter` to switch to the selected session and close the sidebar.
+- [x] Support `Ctrl+C` to close the sidebar when it is open.
+- [x] Support `Esc` to cancel prompts or confirmations before closing the sidebar.
 
 ## Project creation and switching
 
