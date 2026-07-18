@@ -396,6 +396,35 @@ func TestRenderHelpListsOneShortcutPerRow(t *testing.T) {
 	}
 }
 
+func TestRenderHelpDoesNotApplyOuterLayout(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.height = 24
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHelp(), "")
+	if got, want := strings.Count(plain, "\n")+1, 17; got != want {
+		t.Fatalf("help row count = %d, want %d", got, want)
+	}
+}
+
+func TestConfirmationOverlaysAdvertiseAcceptedKeys(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.height = 24
+
+	for name, render := range map[string]func() string{
+		"delete":         m.renderDeleteOverlay,
+		"project switch": m.renderProjectSwitchConfirmOverlay,
+		"quit":           m.renderQuitConfirmOverlay,
+	} {
+		t.Run(name, func(t *testing.T) {
+			plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(render(), "")
+			if !strings.Contains(plain, "Enter confirms. Esc cancels.") {
+				t.Fatalf("confirmation hint = %q", plain)
+			}
+		})
+	}
+}
+
 func TestRenderFooterListsProjectsOnSeparateLinesDuringProjectSwitch(t *testing.T) {
 	m := NewMenu().(model)
 	m.width = 48

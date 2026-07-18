@@ -129,7 +129,7 @@ func (m model) renderHelp() string {
 		"D       Delete project",
 		"e       Edit project settings",
 	}
-	return appStyle.Width(m.width).Height(m.height).Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func (m model) renderInputOverlay(title string) string {
@@ -157,7 +157,7 @@ func (m model) renderDeleteOverlay() string {
 		titleStyle.Render("Confirm Delete"),
 		mutedStyle.Render("Delete " + target + "?"),
 		"",
-		hintStyle.Render("Enter, d, or y confirms. Esc cancels."),
+		hintStyle.Render("Enter confirms. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(42, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
@@ -168,7 +168,7 @@ func (m model) renderProjectSwitchConfirmOverlay() string {
 		titleStyle.Render("Confirm Project Switch"),
 		mutedStyle.Render("Switch from the current volatile session to project " + fallbackText(m.switchProjectTarget, "none") + "?"),
 		"",
-		hintStyle.Render("Enter or y confirms. Esc cancels."),
+		hintStyle.Render("Enter confirms. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(48, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
@@ -179,7 +179,7 @@ func (m model) renderQuitConfirmOverlay() string {
 		titleStyle.Render("Confirm Quit"),
 		mutedStyle.Render("Remove this instance's volatile sessions and detach?"),
 		"",
-		hintStyle.Render("Enter or y confirms. Esc cancels."),
+		hintStyle.Render("Enter confirms. Esc cancels."),
 	}
 	box := overlayStyle.Width(max(24, min(48, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
