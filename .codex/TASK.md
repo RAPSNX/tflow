@@ -15,6 +15,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 - [x] Roll back a newly created startup session if temporary tagging, control-mode setup, or later startup preparation fails.
 - [x] Mark every session created outside a project as volatile and owned by the current instance.
 - [x] Show and manage only the current instance's volatile sessions while outside a project.
+- [ ] Fetch, review, and compile a fixed list of exactly 25 animal names; do not make runtime API requests.
+- [ ] Give the startup volatile session and every initial project session a random plain animal name without a `-temp` suffix.
+- [ ] Use unique two-animal volatile-session names after the single-name pool is exhausted, and numeric suffixes only after all combinations are exhausted.
 - [x] Ensure normal exit and confirmed `Ctrl+Q` remove every volatile session created by that instance.
 - [x] Bind `Ctrl+Q` in tmux so quit confirmation opens from the live terminal while the sidebar is closed.
 - [x] Add an internal `open-quit` command that opens the popup directly in quit-confirmation mode.
@@ -28,6 +31,11 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 - [x] Support `j` and `k` navigation with `Enter` switching to the selected session and closing the popup.
 - [x] Close the popup with `Ctrl+C` and cancel an active prompt or confirmation with `Esc`.
 - [x] Center the `TFLOW` header and remove project/session metadata from the popup header.
+- [ ] Render the centered `TFLOW` badge using the documented blue filled badge style.
+- [ ] Render a green filled `live` badge immediately before the active session label, including in a selected row.
+- [ ] Apply the documented structured-card layout to every input, rename, settings, and confirmation dialog.
+- [ ] Add dialog headers, dividers, context or bordered input areas, and `Enter`/`Esc` keycap footers.
+- [ ] Use red header and primary-action keycaps exclusively for deletion confirmations.
 - [x] Remove the always-visible shortcut line from the normal sidebar.
 - [x] Add a `?` help view containing every supported shortcut on its own row.
 - [x] Make `Esc` return from help to the session list without closing the popup.
@@ -38,7 +46,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 ## Projects and sessions
 
 - [x] Keep project names unique and preserve project order.
-- [x] Create a project-scoped default session displayed as `code`.
+- [ ] Create a project-scoped initial session displayed with a random animal name.
 - [x] Use project-scoped tmux identifiers so different projects can reuse session labels.
 - [x] Persist session display labels independently from tmux identifiers.
 - [x] Reject duplicate display labels within one project.
@@ -51,7 +59,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 - [x] Support `r` and `d` for the selected session and `R` and `D` for the current project.
 - [x] Require confirmation before deleting a session, including the final session of a project.
 - [x] Persist the current working directory as a newly created project's default `workdir`.
-- [x] Create the project's default `code` session in that persisted directory.
+- [ ] Create the project's initial randomly named session in that persisted directory.
 - [x] Keep sidebar context aligned with the active volatile session instead of selecting the first stored project automatically.
 - [x] Keep project creation from changing the active sidebar context until the user switches projects.
 - [x] Make `n` open the session-name prompt directly and create a plain terminal session.
@@ -91,7 +99,10 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 ## Verification
 
 - [x] Add regression tests for global quit invocation and instance-scoped volatile session creation and cleanup.
+- [ ] Add deterministic tests for startup and project-default animal names, collisions, two-animal fallback, and the absence of runtime HTTP usage.
 - [x] Add rendering tests for the centered header, metadata-free default sidebar, and one-shortcut-per-row help view.
+- [ ] Add rendering tests for the `TFLOW` and active-session `live` badges, including selected-row contrast.
+- [ ] Add rendering tests covering the shared dialog structure and destructive-confirmation red accents.
 - [x] Add context tests covering volatile startup with existing projects and project creation without implicit switching.
 - [x] Add tests for persisted project workdirs and final-session project deletion.
 - [ ] Add strict-store tests for every removed field, unknown fields, and the canonical round trip.
