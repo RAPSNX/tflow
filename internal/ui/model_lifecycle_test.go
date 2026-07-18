@@ -1,0 +1,295 @@
+package ui
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+func TestNewModelStartsWithoutProjectsWhenStateIsEmpty(t *testing.T) {
+	stateHome := t.TempDir()
+	configHome := t.TempDir()
+	oldStateHome := os.Getenv("XDG_STATE_HOME")
+	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("XDG_STATE_HOME", oldStateHome)
+		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+	})
+	_ = os.Setenv("XDG_STATE_HOME", stateHome)
+	_ = os.Setenv("XDG_CONFIG_HOME", configHome)
+
+	m := newModel(fakeTmuxController{}, "").(model)
+	if len(m.projects) != 0 {
+		t.Fatalf("projects = %#v, want none", m.projects)
+	}
+	if m.selectedProject != "" {
+		t.Fatalf("selectedProject = %q, want empty", m.selectedProject)
+	}
+}
+
+func TestBuildModelFailsWhenStoreIsInvalid(t *testing.T) {
+	stateHome := t.TempDir()
+	configHome := t.TempDir()
+	oldStateHome := os.Getenv("XDG_STATE_HOME")
+	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("XDG_STATE_HOME", oldStateHome)
+		_ = os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+	})
+	_ = os.Setenv("XDG_STATE_HOME", stateHome)
+	_ = os.Setenv("XDG_CONFIG_HOME", configHome)
+
+	path := appStatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("{not-json"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	_, err := buildModel(fakeTmuxController{}, "")
+	if err == nil {
+		t.Fatal("buildModel returned nil error")
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("error = %q, want path %q", err, path)
+	}
+}
+
+func TestRunMenuExitActionSwitchesClientAfterExit(t *testing.T) {
+	var switched []string
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error {
+			switched = append(switched, name)
+			return nil
+		},
+	}, model{exitAction: menuExitSwitchSession, exitSessionName: "dev"})
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if got, want := fmt.Sprint(switched), fmt.Sprint([]string{"dev"}); got != want {
+		t.Fatalf("switches = %s, want %s", got, want)
+	}
+}
+
+func TestRunMenuExitActionQuitsCurrentInstance(t *testing.T) {
+	called := false
+	err := runMenuExitAction(fakeTmuxController{
+		quitAll: func() error {
+			called = true
+			return nil
+		},
+	}, model{exitAction: menuExitQuit})
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("QuitAll was not called")
+	}
+}
+
+func TestPrepareStartupValidatesStateBeforeTmuxWork(t *testing.T) {
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	path := filepath.Join(stateHome, "tflow", "store.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	called := false
+	_, err := prepareStartup(fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			called = true
+			return nil, nil
+		},
+	}, "/tmp/tflow", "/tmp/project", "instance-1")
+	if err == nil {
+		t.Fatal("prepareStartup returned nil error for invalid state")
+	}
+	if called {
+		t.Fatal("tmux work started before state validation")
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("error = %q, want state path", err)
+	}
+}
+
+func TestPrepareStartupRollsBackCreatedSessionOnLaterFailure(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		failTag     bool
+		failControl bool
+		want        []string
+	}{
+		{name: "tag", failTag: true, want: []string{"create", "tag", "kill"}},
+		{name: "control", failControl: true, want: []string{"create", "tag", "control", "kill"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			var calls []string
+			manager := fakeTmuxController{
+				listSessions: func() ([]session, error) { return nil, nil },
+				createSession: func(name, cwd, command string) (session, error) {
+					calls = append(calls, "create")
+					return session{Name: name}, nil
+				},
+				setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+					calls = append(calls, "tag")
+					if test.failTag {
+						return fmt.Errorf("tag failed")
+					}
+					return nil
+				},
+				ensureControlMode: func(binaryPath string) error {
+					calls = append(calls, "control")
+					if test.failControl {
+						return fmt.Errorf("control failed")
+					}
+					return nil
+				},
+				killSession: func(name string) error {
+					calls = append(calls, "kill")
+					return nil
+				},
+			}
+			if _, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err == nil {
+				t.Fatal("prepareStartup returned nil error")
+			}
+			if got, want := fmt.Sprint(calls), fmt.Sprint(test.want); got != want {
+				t.Fatalf("calls = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
+func TestStartWithManagerCleansUpWhenAttachCommandFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var cleaned []string
+	manager := fakeTmuxController{
+		listSessions:        func() ([]session, error) { return nil, nil },
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error { return nil },
+		attachCommand: func(name string) (*exec.Cmd, error) {
+			return nil, fmt.Errorf("attach unavailable")
+		},
+		cleanupVolatile: func(instanceID string) error {
+			cleaned = append(cleaned, instanceID)
+			return nil
+		},
+	}
+
+	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err == nil {
+		t.Fatal("startWithManager returned nil error")
+	}
+	if got, want := fmt.Sprint(cleaned), "[instance-1]"; got != want {
+		t.Fatalf("cleanup calls = %s, want %s", got, want)
+	}
+}
+
+func TestHelpEscReturnsToSessionList(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.mode = inputHelp
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("Esc from help should not close the popup")
+	}
+	if got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone", got.mode)
+	}
+}
+
+func TestUndocumentedKeysDoNotDispatch(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		mode inputMode
+		key  tea.KeyMsg
+	}{
+		{name: "down", key: tea.KeyMsg{Type: tea.KeyDown}},
+		{name: "up", key: tea.KeyMsg{Type: tea.KeyUp}},
+		{name: "delete confirmation y", mode: inputConfirmDelete, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{121}}},
+		{name: "delete confirmation d", mode: inputConfirmDelete, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{100}}},
+		{name: "project switch confirmation y", mode: inputConfirmProjectSwitch, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{121}}},
+		{name: "quit confirmation y", mode: inputConfirmQuit, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{121}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := newModel(fakeTmuxController{}, "").(model)
+			m.mode = test.mode
+			updated, cmd := m.Update(test.key)
+			got := updated.(model)
+			if cmd != nil {
+				t.Fatal("undocumented key dispatched an action")
+			}
+			if got.mode != test.mode {
+				t.Fatalf("mode = %v, want %v", got.mode, test.mode)
+			}
+		})
+	}
+}
+
+func TestProjectCreationKeepsVolatileSidebarContext(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "scratch-temp").(model)
+	m.statePath = t.TempDir() + "/store.json"
+	m.cwd = "/tmp/workspace"
+	m.sessions = []session{{Name: "scratch-temp", Temporary: true, Instance: "instance-1"}}
+	m.instanceID = "instance-1"
+	m.mode = inputCreateProject
+	m.input.SetValue("small")
+
+	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	msg := cmd().(projectCreatedMsg)
+	pending := *(updated.(*model))
+	updated, _ = pending.Update(msg)
+	got := updated.(model)
+	if got.selectedProject != "" || got.selectedSession != "" {
+		t.Fatalf("project creation changed volatile context: project %q session %q", got.selectedProject, got.selectedSession)
+	}
+}
+
+func TestProjectCreationKeepsExistingProjectContext(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "existing--code").(model)
+	m.statePath = t.TempDir() + "/store.json"
+	m.projects = []string{"existing"}
+	m.sessions = []session{{Name: "existing--code"}}
+	m.selectedProject = "existing"
+	m.selectedSession = "existing--code"
+	m.sessionProjects = map[string]string{"existing--code": "existing"}
+	m.sessionLabels = map[string]string{"existing--code": "code"}
+
+	updated, _ := m.Update(projectCreatedMsg{
+		config:  projectConfig{Name: "new", Workdir: "/tmp/new"},
+		session: session{Name: "new--code"},
+	})
+	got := updated.(model)
+	if got.selectedProject != "existing" || got.selectedSession != "existing--code" {
+		t.Fatalf("project creation changed context: project %q session %q", got.selectedProject, got.selectedSession)
+	}
+}
+
+func TestDeletingFinalProjectSessionRemovesProjectMetadata(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.statePath = t.TempDir() + "/store.json"
+	m.projects = []string{"small"}
+	m.selectedProject = "small"
+	m.sessions = []session{{Name: "small--code"}}
+	m.sessionProjects = map[string]string{"small--code": "small"}
+	m.sessionLabels = map[string]string{"small--code": "code"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}}
+
+	updated, _ := m.Update(sessionKilledMsg{name: "small--code"})
+	got, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatalf("updated model = %T", updated)
+	}
+	if len(got.projects) != 0 || len(got.projectConfigs) != 0 {
+		t.Fatal("final session left project metadata")
+	}
+}

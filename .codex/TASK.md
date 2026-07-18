@@ -47,11 +47,11 @@ Every previously open task is grouped below for a dedicated implementation sessi
 
 ### Session 5: Post-feature refactoring
 
-- [ ] Remove dead session-type, project-tree, metadata-header, and unused style helpers.
-- [ ] Split `internal/store/state.go` by schema, codec, and normalization responsibilities.
-- [ ] Split tmux popup/control, instance ownership, and quit behavior into focused files.
-- [ ] Split UI message handling, key dispatch, modal updates, and lifecycle orchestration into focused files.
-- [ ] Split oversized store, tmux, and UI tests by the behavior they cover.
+- [x] Remove dead session-type, project-tree, metadata-header, and unused style helpers.
+- [x] Split `internal/store/state.go` by schema, codec, and normalization responsibilities.
+- [x] Split tmux popup/control, instance ownership, and quit behavior into focused files.
+- [x] Split UI message handling, key dispatch, modal updates, and lifecycle orchestration into focused files.
+- [x] Split oversized store, tmux, and UI tests by the behavior they cover.
 
 ## Completed checklist
 
