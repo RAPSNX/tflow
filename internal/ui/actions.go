@@ -39,6 +39,15 @@ func (m *model) beginProjectSwitch() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *model) beginProjectCreate() (tea.Model, tea.Cmd) {
+	m.mode = inputCreateProject
+	m.input.Prompt = "project: "
+	m.input.SetValue("")
+	m.input.Focus()
+	m.status = "Create a new project."
+	return m, nil
+}
+
 func (m *model) commitProjectCreate() (tea.Model, tea.Cmd) {
 	name := sanitizeProjectName(m.input.Value())
 	if name == "" {

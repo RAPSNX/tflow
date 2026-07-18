@@ -230,6 +230,25 @@ func TestPStartsProjectSwitchMode(t *testing.T) {
 	}
 }
 
+func TestNStartsProjectCreateMode(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
+	got := *(updated.(*model))
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	if got.mode != inputCreateProject {
+		t.Fatalf("mode = %v, want inputCreateProject", got.mode)
+	}
+	if got.input.Prompt != "project: " {
+		t.Fatalf("prompt = %q, want project prompt", got.input.Prompt)
+	}
+	if got.status != "Create a new project." {
+		t.Fatalf("status = %q", got.status)
+	}
+}
+
 func TestProjectSwitchUsesUniquePrefixAndClosesMenu(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "dev").(model)
 	m.projects = []string{"small", "storage"}
@@ -463,6 +482,36 @@ func TestDDeletesSelectedSession(t *testing.T) {
 	}
 	if got, want := fmt.Sprint(killed), fmt.Sprint([]string{"dev"}); got != want {
 		t.Fatalf("killed = %s, want %s", got, want)
+	}
+}
+
+func TestDeleteLastProjectSessionRequiresConfirmation(t *testing.T) {
+	var killed []string
+	m := newModel(fakeTmuxController{
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+	}, "").(model)
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "dev"}}
+	m.sessionProjects = map[string]string{"dev": "small"}
+	m.selectedProject = "small"
+	m.selectedSession = "dev"
+
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	got := *(updated.(*model))
+	if cmd != nil {
+		t.Fatal("expected no delete command before confirmation")
+	}
+	if got.mode != inputConfirmDelete {
+		t.Fatalf("mode = %v, want inputConfirmDelete", got.mode)
+	}
+	if got.deleteTarget.session != "dev" {
+		t.Fatalf("deleteTarget = %#v, want session dev", got.deleteTarget)
+	}
+	if len(killed) != 0 {
+		t.Fatalf("killSession called before confirmation: %#v", killed)
 	}
 }
 

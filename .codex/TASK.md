@@ -110,14 +110,14 @@
 ## Session and project management
 
 - [ ] Define a project-scoped tmux session naming scheme so multiple projects can each keep a default `code` session without cross-project name collisions.
-- [ ] Support `n` to create a new session.
-- [ ] Start project sessions in the project `workdir` when one is set.
-- [ ] Start non-project sessions in the current working directory.
-- [ ] Support `N` to create a new project.
-- [ ] Support `r` to rename the selected session or project.
-- [ ] Support `e` to update project settings.
-- [ ] Support `d` to delete the selected session or project with confirmation.
-- [ ] Require confirmation before deleting the last session of a project.
+- [x] Support `n` to create a new session.
+- [x] Start project sessions in the project `workdir` when one is set.
+- [x] Start non-project sessions in the current working directory.
+- [x] Support `N` to create a new project.
+- [x] Support `r` to rename the selected session or project.
+- [x] Support `e` to update project settings.
+- [x] Support `d` to delete the selected session or project with confirmation.
+- [x] Require confirmation before deleting the last session of a project.
 
 ## Quit flow
 
