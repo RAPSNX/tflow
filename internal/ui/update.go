@@ -77,9 +77,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.volatile {
-			delete(m.sessionProjects, msg.session.Name)
-			delete(m.sessionTypes, msg.session.Name)
-			delete(m.sessionLabels, msg.session.Name)
+			if m.clearSessionMetadata(msg.session.Name) {
+				if err := m.saveState(); err != nil {
+					m.err = err
+					m.status = err.Error()
+					return m, nil
+				}
+			}
 			m.selectedProject = ""
 			m.selectedSession = msg.session.Name
 		} else {
@@ -165,12 +169,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		oldSession, wasVolatile := m.findSession(msg.oldName)
 		if wasVolatile && oldSession.Temporary {
-			delete(m.sessionProjects, msg.oldName)
-			delete(m.sessionProjects, msg.newName)
-			delete(m.sessionTypes, msg.oldName)
-			delete(m.sessionTypes, msg.newName)
-			delete(m.sessionLabels, msg.oldName)
-			delete(m.sessionLabels, msg.newName)
+			if m.clearSessionMetadata(msg.oldName, msg.newName) {
+				if err := m.saveState(); err != nil {
+					m.err = err
+					m.status = err.Error()
+					return m, nil
+				}
+			}
 			for index := range m.sessions {
 				if m.sessions[index].Name == msg.oldName {
 					m.sessions[index].Name = msg.newName

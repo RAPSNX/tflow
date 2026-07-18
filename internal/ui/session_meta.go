@@ -70,6 +70,25 @@ func (m *model) setSessionLabel(name, label string) {
 	m.sessionLabels[name] = sanitizeSessionName(label)
 }
 
+func (m *model) clearSessionMetadata(names ...string) bool {
+	changed := false
+	for _, name := range names {
+		if _, ok := m.sessionProjects[name]; ok {
+			delete(m.sessionProjects, name)
+			changed = true
+		}
+		if _, ok := m.sessionTypes[name]; ok {
+			delete(m.sessionTypes, name)
+			changed = true
+		}
+		if _, ok := m.sessionLabels[name]; ok {
+			delete(m.sessionLabels, name)
+			changed = true
+		}
+	}
+	return changed
+}
+
 func (m model) hasSessionLabel(project, label string, exceptName string) bool {
 	project = normalizeProjectName(project)
 	label = sanitizeSessionName(label)

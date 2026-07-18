@@ -305,6 +305,10 @@ func TestCreateVolatileSessionClearsStaleMetadata(t *testing.T) {
 	m.sessionProjects = map[string]string{"notes": "old-project"}
 	m.sessionTypes = map[string]sessionType{"notes": sessionTypeAgent}
 	m.sessionLabels = map[string]string{"notes": "old label"}
+	m.statePath = t.TempDir() + "/store.json"
+	if err := m.saveState(); err != nil {
+		t.Fatal(err)
+	}
 
 	updated, _ := m.Update(sessionCreatedMsg{
 		session:  session{Name: "notes", Temporary: true, Instance: "instance-1"},
@@ -320,6 +324,19 @@ func TestCreateVolatileSessionClearsStaleMetadata(t *testing.T) {
 	}
 	if _, ok := got.sessionLabels["notes"]; ok {
 		t.Fatalf("stale label metadata remains: %#v", got.sessionLabels)
+	}
+	state, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := state.SessionProjects["notes"]; ok {
+		t.Fatalf("stale project state remains: %#v", state.SessionProjects)
+	}
+	if _, ok := state.SessionTypes["notes"]; ok {
+		t.Fatalf("stale type state remains: %#v", state.SessionTypes)
+	}
+	if _, ok := state.SessionLabels["notes"]; ok {
+		t.Fatalf("stale label state remains: %#v", state.SessionLabels)
 	}
 }
 
@@ -338,6 +355,10 @@ func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
 	m.sessionProjects = map[string]string{"notes": "old-project", "dev": "other-project"}
 	m.sessionTypes = map[string]sessionType{"notes": sessionTypeAgent, "dev": sessionTypeAgent}
 	m.sessionLabels = map[string]string{"notes": "old-notes", "dev": "old-dev"}
+	m.statePath = t.TempDir() + "/store.json"
+	if err := m.saveState(); err != nil {
+		t.Fatal(err)
+	}
 	m.input.SetValue("dev")
 
 	updated, cmd := m.commitRename()
@@ -367,6 +388,21 @@ func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
 		}
 		if _, ok := got.sessionLabels[name]; ok {
 			t.Fatalf("stale label metadata remains for %s: %#v", name, got.sessionLabels)
+		}
+	}
+	state, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"notes", "dev"} {
+		if _, ok := state.SessionProjects[name]; ok {
+			t.Fatalf("stale project state remains for %s: %#v", name, state.SessionProjects)
+		}
+		if _, ok := state.SessionTypes[name]; ok {
+			t.Fatalf("stale type state remains for %s: %#v", name, state.SessionTypes)
+		}
+		if _, ok := state.SessionLabels[name]; ok {
+			t.Fatalf("stale label state remains for %s: %#v", name, state.SessionLabels)
 		}
 	}
 }
