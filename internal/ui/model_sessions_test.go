@@ -2,21 +2,17 @@ package ui
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestDefaultSessionDirPrefersHome(t *testing.T) {
-	oldHome := os.Getenv("HOME")
-	t.Cleanup(func() {
-		_ = os.Setenv("HOME", oldHome)
-	})
-	_ = os.Setenv("HOME", "/tmp/home")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 
-	if got := defaultSessionDir(); got != "/tmp/home" {
-		t.Fatalf("defaultSessionDir = %q, want /tmp/home", got)
+	if got := defaultSessionDir(); got != home {
+		t.Fatalf("defaultSessionDir = %q, want %q", got, home)
 	}
 }
 
