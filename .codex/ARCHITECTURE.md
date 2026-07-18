@@ -44,9 +44,10 @@ In volatile mode, the project badge value is empty.
 
 The sidebar is shown on the left and contains:
 
-- a `TFLOW` header
+- a `TFLOW` header centered
 - a session list
 - an inline command and status area
+- there is no metadata or help displayed in the sidebar
 
 The sidebar handles the core management actions:
 
@@ -56,6 +57,7 @@ The sidebar handles the core management actions:
 - switch to another project
 - update project settings
 - quit the current `tflow` instance
+- typing `?` will open a help list, with all available shortcuts, one per row
 
 ## Projects and Sessions
 
