@@ -10,6 +10,7 @@ func (m model) saveState() error {
 		Projects:        append([]string(nil), m.projects...),
 		SessionProjects: map[string]string{},
 		SessionTypes:    map[string]string{},
+		SessionLabels:   map[string]string{},
 		ProjectConfigs:  map[string]projectConfig{},
 	}
 	for name, project := range m.sessionProjects {
@@ -17,6 +18,9 @@ func (m model) saveState() error {
 	}
 	for name, sessionType := range m.sessionTypes {
 		state.SessionTypes[name] = string(sessionType)
+	}
+	for name, label := range m.sessionLabels {
+		state.SessionLabels[name] = label
 	}
 	for project, cfg := range m.projectConfigs {
 		project = normalizeProjectName(project)

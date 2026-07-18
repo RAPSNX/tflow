@@ -15,3 +15,12 @@ func TestNormalizeCWDExpandsHome(t *testing.T) {
 		t.Fatalf("NormalizeCWD = %q, want /tmp/home/project", got)
 	}
 }
+
+func TestProjectSessionNamePreservesScopeDelimiter(t *testing.T) {
+	if got, want := ProjectSessionName("Small", "Code"), "small--code"; got != want {
+		t.Fatalf("ProjectSessionName = %q, want %q", got, want)
+	}
+	if got, want := SanitizeSessionName("small--code"), "small--code"; got != want {
+		t.Fatalf("SanitizeSessionName = %q, want %q", got, want)
+	}
+}

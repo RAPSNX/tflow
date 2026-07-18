@@ -9,12 +9,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func TestRStartsProjectRenameModeWithoutSelectedSession(t *testing.T) {
+func TestRStartsProjectRenameModeWithSelectedSession(t *testing.T) {
 	m := NewMenu().(model)
 	m.projects = []string{defaultProjectName, "small"}
 	m.selectedProject = "small"
+	m.sessions = []session{{Name: "small--code"}}
+	m.selectedSession = "small--code"
+	m.sessionProjects = map[string]string{"small--code": "small"}
+	m.sessionLabels = map[string]string{"small--code": "code"}
 
-	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
 	got := *(updated.(*model))
 	if cmd != nil {
 		t.Fatal("expected no command")
@@ -41,11 +45,19 @@ func TestRenameProjectUpdatesAssignments(t *testing.T) {
 	}, "").(model)
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{defaultProjectName, "small"}
-	m.sessions = []session{{Name: "dev"}}
-	m.sessionProjects = map[string]string{"dev": "small"}
+	m.sessions = []session{{Name: "small--dev"}}
+	m.sessionProjects = map[string]string{"small--dev": "small"}
+	m.sessionLabels = map[string]string{"small--dev": "dev"}
 	m.selectedProject = "small"
 
-	updated, cmd := m.Update(projectRenamedMsg{oldName: "small", newName: "garden"})
+	updated, cmd := m.Update(projectRenamedMsg{
+		oldName: "small",
+		newName: "garden",
+		sessionRenames: []sessionRename{{
+			oldName: "small--dev",
+			newName: "garden--dev",
+		}},
+	})
 	got := updated.(model)
 	if cmd != nil {
 		t.Fatal("expected no command")
@@ -56,14 +68,135 @@ func TestRenameProjectUpdatesAssignments(t *testing.T) {
 	if !containsString(got.projects, "garden") {
 		t.Fatalf("projects missing new name: %#v", got.projects)
 	}
-	if got.sessionProjects["dev"] != "garden" {
-		t.Fatalf("sessionProjects[dev] = %q, want garden", got.sessionProjects["dev"])
+	if got.sessionProjects["garden--dev"] != "garden" {
+		t.Fatalf("sessionProjects[garden--dev] = %q, want garden", got.sessionProjects["garden--dev"])
 	}
 	if got.selectedProject != "garden" {
 		t.Fatalf("selectedProject = %q, want garden", got.selectedProject)
 	}
-	if synced["dev"] != "garden" {
-		t.Fatalf("synced project = %#v, want dev->garden", synced)
+	if synced["garden--dev"] != "garden" {
+		t.Fatalf("synced project = %#v, want garden--dev->garden", synced)
+	}
+}
+
+func TestRRenamesProjectWithSelectedSession(t *testing.T) {
+	tmp := t.TempDir()
+	var renamed []string
+	m := newModel(fakeTmuxController{
+		renameSession: func(oldName, newName string) error {
+			renamed = append(renamed, oldName, newName)
+			return nil
+		},
+	}, "").(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "small--code"}}
+	m.sessionProjects = map[string]string{"small--code": "small"}
+	m.sessionTypes = map[string]sessionType{"small--code": sessionTypeTerminal}
+	m.sessionLabels = map[string]string{"small--code": "code"}
+	m.selectedProject = "small"
+	m.selectedSession = "small--code"
+
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
+	pending := *(updated.(*model))
+	if cmd != nil || pending.renameTarget.project != "small" {
+		t.Fatalf("project rename state = %#v, cmd = %v", pending.renameTarget, cmd)
+	}
+	pending.input.SetValue("garden")
+	updated, cmd = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected project rename command")
+	}
+	msg := cmd().(projectRenamedMsg)
+	if msg.err != nil {
+		t.Fatalf("project rename returned error: %v", msg.err)
+	}
+	if fmt.Sprint(renamed) != fmt.Sprint([]string{"small--code", "garden--code"}) {
+		t.Fatalf("tmux renames = %#v", renamed)
+	}
+	pending, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatal("expected menu model after project rename command")
+	}
+	updated, _ = pending.Update(msg)
+	got := updated.(model)
+	if got.selectedSession != "garden--code" || got.sessionLabel("garden--code") != "code" {
+		t.Fatalf("renamed selection = %q, label = %q", got.selectedSession, got.sessionLabel("garden--code"))
+	}
+}
+
+func TestDDeletesProjectWithSelectedSession(t *testing.T) {
+	tmp := t.TempDir()
+	var killed []string
+	m := newModel(fakeTmuxController{
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+	}, "").(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "small--code"}}
+	m.sessionProjects = map[string]string{"small--code": "small"}
+	m.sessionLabels = map[string]string{"small--code": "code"}
+	m.selectedProject = "small"
+	m.selectedSession = "small--code"
+
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
+	pending := *(updated.(*model))
+	if cmd != nil || pending.deleteTarget.project != "small" {
+		t.Fatalf("project delete state = %#v, cmd = %v", pending.deleteTarget, cmd)
+	}
+	updated, cmd = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected project delete command")
+	}
+	msg := cmd().(projectDeletedMsg)
+	if msg.err != nil {
+		t.Fatalf("project delete returned error: %v", msg.err)
+	}
+	next, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatal("expected menu model after project deletion command")
+	}
+	pending = next
+	updated, _ = pending.Update(msg)
+	got := updated.(model)
+	if len(got.projects) != 0 || len(got.sessions) != 0 || len(killed) != 1 {
+		t.Fatalf("projects = %#v, sessions = %#v, killed = %#v", got.projects, got.sessions, killed)
+	}
+}
+
+func TestSessionLoadMigratesProjectSessionsToScopedNames(t *testing.T) {
+	tmp := t.TempDir()
+	var renamed []string
+	m := newModel(fakeTmuxController{
+		renameSession: func(oldName, newName string) error {
+			renamed = append(renamed, oldName, newName)
+			return nil
+		},
+	}, "code").(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{"small"}
+	m.sessionProjects = map[string]string{"code": "small"}
+	m.sessionTypes = map[string]sessionType{"code": sessionTypeTerminal}
+
+	updated, cmd := m.Update(sessionsLoadedMsg{sessions: []session{{Name: "code"}}})
+	pending := updated.(model)
+	if cmd == nil {
+		t.Fatal("expected scoped-name migration command")
+	}
+	msg := cmd().(sessionNamesMigratedMsg)
+	if msg.err != nil {
+		t.Fatalf("migration returned error: %v", msg.err)
+	}
+	if got, want := fmt.Sprint(renamed), fmt.Sprint([]string{"code", "small--code"}); got != want {
+		t.Fatalf("renames = %s, want %s", got, want)
+	}
+	updated, _ = pending.Update(msg)
+	got := updated.(model)
+	if got.currentSession != "small--code" || got.sessionLabel("small--code") != "code" {
+		t.Fatalf("migrated current = %q, labels = %#v", got.currentSession, got.sessionLabels)
 	}
 }
 
@@ -75,16 +208,17 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 			renamed = []string{oldName, newName}
 			return nil
 		},
-	}, "dev").(model)
+	}, "default--dev").(model)
 	m.statePath = tmp + "/state.json"
-	m.sessions = []session{{Name: "dev"}}
+	m.sessions = []session{{Name: "default--dev"}}
 	m.projects = []string{defaultProjectName}
-	m.sessionProjects = map[string]string{"dev": defaultProjectName}
+	m.sessionProjects = map[string]string{"default--dev": defaultProjectName}
+	m.sessionLabels = map[string]string{"default--dev": "dev"}
 	m.selectedProject = defaultProjectName
-	m.selectedSession = "dev"
+	m.selectedSession = "default--dev"
 	m.mode = inputRename
-	m.renameTarget = renameTarget{session: "dev"}
-	m.sessionTypes = map[string]sessionType{"dev": sessionTypeAgent}
+	m.renameTarget = renameTarget{session: "default--dev"}
+	m.sessionTypes = map[string]sessionType{"default--dev": sessionTypeAgent}
 	m.input.SetValue("lala")
 
 	updated, cmd := m.commitRename()
@@ -96,30 +230,33 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("rename returned error: %v", msg.err)
 	}
-	if got.selectedSession != "dev" {
-		t.Fatalf("selectedSession before ack = %q, want dev", got.selectedSession)
+	if got.selectedSession != "default--dev" {
+		t.Fatalf("selectedSession before ack = %q, want default--dev", got.selectedSession)
 	}
 	updated, followUp := got.Update(msg)
 	final := updated.(model)
 	if followUp == nil {
 		t.Fatal("expected reload command after rename")
 	}
-	if final.selectedSession != "lala" {
-		t.Fatalf("selectedSession = %q, want lala", final.selectedSession)
+	if final.selectedSession != "default--lala" {
+		t.Fatalf("selectedSession = %q, want default--lala", final.selectedSession)
 	}
-	if final.currentSession != "lala" {
-		t.Fatalf("currentSession = %q, want lala", final.currentSession)
+	if final.currentSession != "default--lala" {
+		t.Fatalf("currentSession = %q, want default--lala", final.currentSession)
 	}
-	if final.sessionProjects["lala"] != defaultProjectName {
-		t.Fatalf("sessionProjects[lala] = %q, want %q", final.sessionProjects["lala"], defaultProjectName)
+	if final.sessionProjects["default--lala"] != defaultProjectName {
+		t.Fatalf("sessionProjects[default--lala] = %q, want %q", final.sessionProjects["default--lala"], defaultProjectName)
 	}
-	if final.sessionTypes["lala"] != sessionTypeAgent {
-		t.Fatalf("sessionTypes[lala] = %q, want %q", final.sessionTypes["lala"], sessionTypeAgent)
+	if final.sessionTypes["default--lala"] != sessionTypeAgent {
+		t.Fatalf("sessionTypes[default--lala] = %q, want %q", final.sessionTypes["default--lala"], sessionTypeAgent)
 	}
-	if _, ok := final.sessionProjects["dev"]; ok {
+	if final.sessionLabel("default--lala") != "lala" {
+		t.Fatalf("session label = %q, want lala", final.sessionLabel("default--lala"))
+	}
+	if _, ok := final.sessionProjects["default--dev"]; ok {
 		t.Fatalf("old session project still present: %#v", final.sessionProjects)
 	}
-	if fmt.Sprint(renamed) != fmt.Sprint([]string{"dev", "lala"}) {
+	if fmt.Sprint(renamed) != fmt.Sprint([]string{"default--dev", "default--lala"}) {
 		t.Fatalf("renameSession calls = %#v", renamed)
 	}
 }
@@ -138,6 +275,21 @@ func TestRenderHeaderUsesLiveSessionProject(t *testing.T) {
 	}
 	if strings.Contains(plain, "project small") {
 		t.Fatalf("renderHeader used selected project in %q", plain)
+	}
+}
+
+func TestRenderSessionRowUsesDisplayLabel(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.selectedProject = "small"
+	m.selectedSession = "small--code"
+	m.sessions = []session{{Name: "small--code"}}
+	m.sessionProjects = map[string]string{"small--code": "small"}
+	m.sessionLabels = map[string]string{"small--code": "code"}
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderSessionRow(0, m.sessions[0]), "")
+	if !strings.Contains(plain, "code") || strings.Contains(plain, "small--code") {
+		t.Fatalf("session row = %q", plain)
 	}
 }
 
@@ -251,8 +403,11 @@ func TestRenderFooterIncludesDirectProjectShortcut(t *testing.T) {
 	m.width = 72
 
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderFooter(60), "")
-	if !strings.Contains(strings.Join(strings.Fields(plain), " "), "[N] new project") {
-		t.Fatalf("renderFooter missing direct project shortcut in %q", plain)
+	footer := strings.Join(strings.Fields(plain), " ")
+	for _, want := range []string{"[N] new project", "[r/R] rename", "[d/D] delete", "[ctrl+q] quit"} {
+		if !strings.Contains(footer, want) {
+			t.Fatalf("renderFooter missing %q in %q", want, plain)
+		}
 	}
 }
 
@@ -304,7 +459,7 @@ func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 	}
 	m.selectedProject = "small"
 
-	updated, cmd := m.deleteSelectedProject()
+	updated, cmd := m.deleteProject("small")
 	pending := updated.(model)
 	if cmd == nil {
 		t.Fatal("expected delete command")

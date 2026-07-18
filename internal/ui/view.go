@@ -24,6 +24,8 @@ func (m model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderDeleteOverlay())
 	case inputConfirmProjectSwitch:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderProjectSwitchConfirmOverlay())
+	case inputConfirmQuit:
+		return appStyle.Width(m.width).Height(m.height).Render(m.renderQuitConfirmOverlay())
 	case inputRename:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderRenameOverlay())
 	default:
@@ -42,7 +44,7 @@ func (m model) renderMenu() string {
 func (m model) renderHeader(width int) string {
 	left := brandBadgeStyle.Render("TFLOW")
 	project := countBadgeStyle.Render("project " + fallbackText(m.currentProject(), ""))
-	session := countBadgeStyle.Render("session " + fallbackText(m.sessionDisplayName(m.currentSession), ""))
+	session := countBadgeStyle.Render("session " + fallbackText(m.currentSession, ""))
 	right := lipgloss.JoinHorizontal(lipgloss.Left, project, " ", session)
 	gap := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
 	return headerStyle.Width(width).Render(left + strings.Repeat(" ", gap) + right)
@@ -71,7 +73,7 @@ func (m model) renderSessionRow(index int, s session) string {
 	if sessionType := m.sessionType(s.Name); sessionType != sessionTypeTerminal {
 		parts = append(parts, m.sessionTypeBadge(sessionType), " ")
 	}
-	parts = append(parts, m.sessionDisplayName(s.Name))
+	parts = append(parts, m.sessionLabel(s.Name))
 	content := strings.Join(parts, "")
 	if s.Name == m.currentSession {
 		badge := "[live]"
@@ -101,7 +103,7 @@ func (m model) renderFooter(width int) string {
 			}
 		}
 	default:
-		lines = append(lines, hintStyle.Render("[j/k] move  [enter] switch  [n] new session  [N] new project  [p] project  [r] rename  [d] delete  [e] edit project"))
+		lines = append(lines, hintStyle.Render("[j/k] move  [enter] switch  [n] new session  [N] new project  [p] project  [r/R] rename  [d/D] delete  [e] edit project  [ctrl+q] quit"))
 	}
 	if status := m.statusView(); status != "" {
 		if len(lines) > 0 {
@@ -147,6 +149,17 @@ func (m model) renderProjectSwitchConfirmOverlay() string {
 	lines := []string{
 		titleStyle.Render("Confirm Project Switch"),
 		mutedStyle.Render("Switch from the current volatile session to project " + fallbackText(m.switchProjectTarget, "none") + "?"),
+		"",
+		hintStyle.Render("Enter or y confirms. Esc cancels."),
+	}
+	box := overlayStyle.Width(max(24, min(48, m.width-6))).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m model) renderQuitConfirmOverlay() string {
+	lines := []string{
+		titleStyle.Render("Confirm Quit"),
+		mutedStyle.Render("Remove this instance's volatile sessions and detach?"),
 		"",
 		hintStyle.Render("Enter or y confirms. Esc cancels."),
 	}

@@ -24,6 +24,7 @@ const (
 	inputSwitchProject
 	inputConfirmDelete
 	inputConfirmProjectSwitch
+	inputConfirmQuit
 	inputRename
 	inputEditProject
 )
@@ -36,6 +37,8 @@ type sessionsLoadedMsg struct {
 type sessionCreatedMsg struct {
 	session session
 	kind    sessionType
+	project string
+	label   string
 	err     error
 }
 
@@ -53,13 +56,25 @@ type projectCreatedMsg struct {
 type sessionRenamedMsg struct {
 	oldName string
 	newName string
+	label   string
+	err     error
+}
+
+type sessionNamesMigratedMsg struct {
+	renames []sessionRename
 	err     error
 }
 
 type projectRenamedMsg struct {
+	oldName        string
+	newName        string
+	sessionRenames []sessionRename
+	err            error
+}
+
+type sessionRename struct {
 	oldName string
 	newName string
-	err     error
 }
 
 type projectDeletedMsg struct {
@@ -70,6 +85,7 @@ type projectDeletedMsg struct {
 type menuActionMsg struct {
 	err           error
 	switchSession string
+	quit          bool
 }
 
 type menuExitAction int
@@ -77,6 +93,7 @@ type menuExitAction int
 const (
 	menuExitNone menuExitAction = iota
 	menuExitSwitchSession
+	menuExitQuit
 )
 
 type renameTarget struct {
@@ -101,6 +118,7 @@ type model struct {
 	projects        []string
 	sessionProjects map[string]string
 	sessionTypes    map[string]sessionType
+	sessionLabels   map[string]string
 	projectConfigs  map[string]projectConfig
 	selectedProject string
 	selectedSession string
@@ -266,6 +284,7 @@ func buildModel(manager tmuxController, current string) (model, error) {
 		projects:        state.Projects,
 		sessionProjects: state.SessionProjects,
 		sessionTypes:    normalizeSessionTypes(state.SessionTypes),
+		sessionLabels:   state.SessionLabels,
 		projectConfigs:  state.ProjectConfigs,
 		selectedProject: "",
 		currentSession:  current,
@@ -292,6 +311,8 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 			return nil
 		}
 		return manager.SwitchClient(menu.exitSessionName)
+	case menuExitQuit:
+		return manager.QuitAll()
 	default:
 		return nil
 	}

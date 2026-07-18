@@ -22,6 +22,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		changed := m.ensureSessionProjects()
 		m.syncSelection()
+		renames, err := m.scopedSessionRenames()
+		if err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
+		if len(renames) > 0 {
+			return m, m.renameSessionsCmd(renames)
+		}
 		if changed {
 			if err := m.saveState(); err != nil {
 				m.err = err
@@ -33,16 +42,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = err.Error()
 		}
 		return m, nil
+	case sessionNamesMigratedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.status = msg.err.Error()
+			return m, nil
+		}
+		for _, rename := range msg.renames {
+			m.applySessionRename(rename)
+		}
+		if err := m.saveState(); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
+		if err := m.syncTmuxSessionProjects(); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
+		m.err = nil
+		m.status = ""
+		return m, nil
 	case sessionCreatedMsg:
 		if msg.err != nil {
 			m.err = msg.err
 			m.status = msg.err.Error()
 			return m, nil
 		}
-		project := m.contextProject()
-		m.assignSessionProject(msg.session.Name, project)
+		m.assignSessionProject(msg.session.Name, msg.project)
 		m.setSessionType(msg.session.Name, msg.kind)
-		m.selectedProject = project
+		m.setSessionLabel(msg.session.Name, msg.label)
+		m.selectedProject = msg.project
 		m.selectedSession = msg.session.Name
 		m.mode = inputNone
 		if err := m.saveState(); err != nil {
@@ -61,6 +92,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		delete(m.sessionProjects, msg.name)
 		delete(m.sessionTypes, msg.name)
+		delete(m.sessionLabels, msg.name)
 		if m.selectedSession == msg.name {
 			m.selectedSession = ""
 		}
@@ -89,6 +121,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.assignSessionProject(msg.session.Name, msg.config.Name)
 			m.setSessionType(msg.session.Name, sessionTypeTerminal)
+			m.setSessionLabel(msg.session.Name, defaultProjectSessionName)
 			if current, ok := m.currentSessionInfo(); !ok || !current.Temporary {
 				m.selectedSession = msg.session.Name
 			}
@@ -120,6 +153,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			delete(m.sessionTypes, msg.oldName)
 			m.sessionTypes[msg.newName] = sessionType
 		}
+		label := msg.label
+		if label == "" {
+			label = m.sessionLabel(msg.oldName)
+		}
+		delete(m.sessionLabels, msg.oldName)
+		m.setSessionLabel(msg.newName, label)
 		if m.selectedSession == msg.oldName {
 			m.selectedSession = msg.newName
 		}
@@ -141,6 +180,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 			m.status = msg.err.Error()
 			return m, nil
+		}
+		for _, rename := range msg.sessionRenames {
+			m.applySessionRename(rename)
 		}
 		for name, project := range m.sessionProjects {
 			if normalizeProjectName(project) == msg.oldName {
@@ -184,7 +226,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
-		if strings.TrimSpace(msg.switchSession) != "" {
+		if msg.quit {
+			m.exitAction = menuExitQuit
+			m.exitSessionName = ""
+		} else if strings.TrimSpace(msg.switchSession) != "" {
 			m.exitAction = menuExitSwitchSession
 			m.exitSessionName = msg.switchSession
 		} else {
@@ -198,6 +243,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyCtrlF || msg.Type == tea.KeyCtrlC {
 			return m, m.closeMenuCmd()
 		}
+		if msg.Type == tea.KeyCtrlQ {
+			return m.beginQuit()
+		}
 		if m.mode != inputNone {
 			return m.updateModal(msg)
 		}
@@ -205,6 +253,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *model) applySessionRename(rename sessionRename) {
+	project := normalizeProjectName(m.sessionProjects[rename.oldName])
+	delete(m.sessionProjects, rename.oldName)
+	m.sessionProjects[rename.newName] = project
+	if sessionType, ok := m.sessionTypes[rename.oldName]; ok {
+		delete(m.sessionTypes, rename.oldName)
+		m.sessionTypes[rename.newName] = sessionType
+	}
+	label := m.sessionLabel(rename.oldName)
+	delete(m.sessionLabels, rename.oldName)
+	m.setSessionLabel(rename.newName, label)
+	for index := range m.sessions {
+		if m.sessions[index].Name == rename.oldName {
+			m.sessions[index].Name = rename.newName
+		}
+	}
+	if m.selectedSession == rename.oldName {
+		m.selectedSession = rename.newName
+	}
+	if m.currentSession == rename.oldName {
+		m.currentSession = rename.newName
+	}
 }
 
 func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -234,8 +306,12 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.beginProjectSwitch()
 	case "d":
 		return m.beginDelete()
+	case "D":
+		return m.beginProjectDelete()
 	case "r":
 		return m.beginRename()
+	case "R":
+		return m.beginProjectRename()
 	case "e":
 		return m.editProject()
 	}
@@ -256,9 +332,22 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.status = "Session creation cancelled."
 			return m, nil
 		case tea.KeyEnter:
-			name := strings.TrimSpace(m.input.Value())
-			if name == "" {
+			label := sanitizeSessionName(m.input.Value())
+			if label == "" {
 				m.status = "Session name is empty."
+				return m, nil
+			}
+			project := m.contextProject()
+			if m.hasSessionLabel(project, label, "") {
+				m.status = "Session name already exists in this project."
+				return m, nil
+			}
+			name := label
+			if project != "" {
+				name = projectSessionName(project, label)
+			}
+			if _, ok := m.findSession(name); ok {
+				m.status = "Session name already exists."
 				return m, nil
 			}
 			command, err := m.sessionStartupCommand(m.createSessionKind)
@@ -270,12 +359,14 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mode = inputNone
 			m.input.Blur()
 			m.input.Prompt = ""
+			dir := m.createSessionDir()
+			kind := sessionTypeFromKind(m.createSessionKind)
 			return m, func() tea.Msg {
-				s, err := m.tmux.CreateSession(name, m.createSessionDir(), command)
+				s, err := m.tmux.CreateSession(name, dir, command)
 				if err != nil {
 					return sessionCreatedMsg{err: err}
 				}
-				return sessionCreatedMsg{session: s, kind: sessionTypeFromKind(m.createSessionKind), err: nil}
+				return sessionCreatedMsg{session: s, kind: kind, project: project, label: label}
 			}
 		}
 		next, cmd := m.input.Update(msg)
@@ -337,6 +428,19 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "y":
 			return m.confirmProjectSwitch()
+		}
+	case inputConfirmQuit:
+		switch msg.Type {
+		case tea.KeyEsc:
+			m.mode = inputNone
+			m.status = "Quit cancelled."
+			return m, nil
+		case tea.KeyEnter:
+			return m.confirmQuit()
+		}
+		switch msg.String() {
+		case "y":
+			return m.confirmQuit()
 		}
 	case inputEditProject:
 		switch msg.Type {

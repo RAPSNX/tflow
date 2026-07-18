@@ -109,6 +109,10 @@ func (m *model) ensureSessionProjects() bool {
 		m.sessionTypes = map[string]sessionType{}
 		changed = true
 	}
+	if m.sessionLabels == nil {
+		m.sessionLabels = map[string]string{}
+		changed = true
+	}
 	for _, s := range m.sessions {
 		if s.Temporary {
 			continue
@@ -124,6 +128,10 @@ func (m *model) ensureSessionProjects() bool {
 		}
 		if _, ok := m.sessionTypes[s.Name]; !ok {
 			m.sessionTypes[s.Name] = sessionTypeTerminal
+			changed = true
+		}
+		if _, ok := m.sessionLabels[s.Name]; !ok {
+			m.sessionLabels[s.Name] = sanitizeSessionName(s.Name)
 			changed = true
 		}
 	}
