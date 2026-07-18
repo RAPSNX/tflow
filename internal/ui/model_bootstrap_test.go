@@ -887,3 +887,103 @@ func TestRunMenuExitActionQuitsCurrentInstance(t *testing.T) {
 		t.Fatal("QuitAll was not called")
 	}
 }
+
+func TestPrepareStartupValidatesStateBeforeTmuxWork(t *testing.T) {
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	path := filepath.Join(stateHome, "tflow", "store.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	called := false
+	_, err := prepareStartup(fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			called = true
+			return nil, nil
+		},
+	}, "/tmp/tflow", "/tmp/project", "instance-1")
+	if err == nil {
+		t.Fatal("prepareStartup returned nil error for invalid state")
+	}
+	if called {
+		t.Fatal("tmux work started before state validation")
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("error = %q, want state path", err)
+	}
+}
+
+func TestPrepareStartupRollsBackCreatedSessionOnLaterFailure(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		failTag     bool
+		failControl bool
+		want        []string
+	}{
+		{name: "tag", failTag: true, want: []string{"create", "tag", "kill"}},
+		{name: "control", failControl: true, want: []string{"create", "tag", "control", "kill"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			var calls []string
+			manager := fakeTmuxController{
+				listSessions: func() ([]session, error) { return nil, nil },
+				createSession: func(name, cwd, command string) (session, error) {
+					calls = append(calls, "create")
+					return session{Name: name}, nil
+				},
+				setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+					calls = append(calls, "tag")
+					if test.failTag {
+						return fmt.Errorf("tag failed")
+					}
+					return nil
+				},
+				ensureControlMode: func(binaryPath string) error {
+					calls = append(calls, "control")
+					if test.failControl {
+						return fmt.Errorf("control failed")
+					}
+					return nil
+				},
+				killSession: func(name string) error {
+					calls = append(calls, "kill")
+					return nil
+				},
+			}
+			if _, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err == nil {
+				t.Fatal("prepareStartup returned nil error")
+			}
+			if got, want := fmt.Sprint(calls), fmt.Sprint(test.want); got != want {
+				t.Fatalf("calls = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
+func TestStartWithManagerCleansUpWhenAttachCommandFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var cleaned []string
+	manager := fakeTmuxController{
+		listSessions:        func() ([]session, error) { return nil, nil },
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error { return nil },
+		attachCommand: func(name string) (*exec.Cmd, error) {
+			return nil, fmt.Errorf("attach unavailable")
+		},
+		cleanupVolatile: func(instanceID string) error {
+			cleaned = append(cleaned, instanceID)
+			return nil
+		},
+	}
+
+	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err == nil {
+		t.Fatal("startWithManager returned nil error")
+	}
+	if got, want := fmt.Sprint(cleaned), "[instance-1]"; got != want {
+		t.Fatalf("cleanup calls = %s, want %s", got, want)
+	}
+}

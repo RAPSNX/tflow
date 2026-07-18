@@ -256,3 +256,71 @@ func TestProjectNormalizationPreservesOrderAndDeduplicates(t *testing.T) {
 		t.Fatalf("normalizeProjectList = %#v, want %#v", got, want)
 	}
 }
+
+func TestCreateUnscopedSessionIsVolatileAndDoesNotPersistMetadata(t *testing.T) {
+	var tagged []string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			return session{Name: name, Windows: 1}, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			tagged = append(tagged, fmt.Sprintf("%s:%t:%s", name, temporary, instanceID))
+			return nil
+		},
+	}, "scratch-temp").(model)
+	m.statePath = t.TempDir() + "/store.json"
+	m.instanceID = "instance-1"
+	m.sessions = []session{{Name: "scratch-temp", Temporary: true, Instance: "instance-1"}}
+	m.selectedProject = "old-project"
+	m.mode = inputCreateSession
+	m.input.SetValue("notes")
+
+	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected session creation command")
+	}
+	msg := cmd().(sessionCreatedMsg)
+	if msg.err != nil {
+		t.Fatalf("session creation returned error: %v", msg.err)
+	}
+	if !msg.volatile {
+		t.Fatal("created unscoped session is not volatile")
+	}
+	if got, want := fmt.Sprint(tagged), "[notes:true:instance-1]"; got != want {
+		t.Fatalf("temporary tags = %s, want %s", got, want)
+	}
+	got := updated.(model)
+	updated, _ = got.Update(msg)
+	got = updated.(model)
+	if got.selectedProject != "" || got.selectedSession != "notes" {
+		t.Fatalf("selection = project %q session %q, want volatile notes", got.selectedProject, got.selectedSession)
+	}
+	if _, ok := got.sessionProjects["notes"]; ok {
+		t.Fatalf("volatile session metadata persisted: %#v", got.sessionProjects)
+	}
+}
+
+func TestVolatileContextShowsOnlyCurrentInstanceSessions(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "scratch-temp").(model)
+	m.instanceID = "instance-1"
+	m.projects = []string{"project"}
+	m.sessions = []session{
+		{Name: "scratch-temp", Temporary: true, Instance: "instance-1"},
+		{Name: "notes", Temporary: true, Instance: "instance-1"},
+		{Name: "other", Temporary: true, Instance: "instance-2"},
+		{Name: "project--code"},
+	}
+	m.sessionProjects = map[string]string{"project--code": "project"}
+	m.syncSelection()
+
+	if m.selectedProject != "" {
+		t.Fatalf("selectedProject = %q, want volatile context", m.selectedProject)
+	}
+	var names []string
+	for _, s := range m.contextSessions() {
+		names = append(names, s.Name)
+	}
+	if got, want := fmt.Sprint(names), "[scratch-temp notes]"; got != want {
+		t.Fatalf("visible sessions = %s, want %s", got, want)
+	}
+}
