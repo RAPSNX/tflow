@@ -106,7 +106,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 
 ## Dialog, status, and lifecycle follow-up
 
-- [x] Replace inline project switching with a searchable dialog that supports `j`/`k` selection and `Enter` activation.
+- [x] Replace inline project switching with a searchable dialog that supports `Up`/`Down` selection and `Enter` activation.
 - [x] Render management flows as dialogs and keep the conditional bottom status row visible while a dialog is open.
 - [x] Render recoverable action problems as yellow warnings and operation failures as red errors.
 - [x] Start every new project with a renameable `code` session.

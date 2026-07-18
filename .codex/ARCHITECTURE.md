@@ -86,7 +86,7 @@ When a new session is created:
 
 Switching to another project is always supported.
 
-Switching to a project opens a dialog with a focused search field and matching-project list. `j` and `k` select a match, and `Enter` switches to the selected project.
+Switching to a project opens a dialog with a focused search field and matching-project list. `Up` and `Down` select a match, and `Enter` switches to the selected project.
 
 Switching to a project selects that project's first session and closes the sidebar.
 

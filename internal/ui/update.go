@@ -123,7 +123,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		deleted, found := m.findSession(msg.name)
 		deletingProject := found && !deleted.Temporary && project != "" && m.isLastProjectSession(project, msg.name)
-		nextProject := m.nextProjectAfter(project, deletingProject)
 		m.sessions = filterSessions(m.sessions, func(s session) bool { return s.Name != msg.name })
 		delete(m.sessionProjects, msg.name)
 		delete(m.sessionTypes, msg.name)
@@ -152,6 +151,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.status = ""
+		if found && deleted.Temporary {
+			m.syncSelection()
+			if _, currentExists := m.currentSessionInfo(); currentExists {
+				return m, m.closeMenuCmd()
+			}
+			return m.createVolatileFallback()
+		}
+		nextProject := m.nextProjectAfter(project, deletingProject)
 		if nextProject != "" {
 			return m.switchToProject(nextProject)
 		}
@@ -484,15 +491,13 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.input = next
 		return m, cmd
 	case inputSwitchProject:
-		switch msg.String() {
-		case "j":
+		switch msg.Type {
+		case tea.KeyDown:
 			m.shiftProjectSwitch(1)
 			return m, nil
-		case "k":
+		case tea.KeyUp:
 			m.shiftProjectSwitch(-1)
 			return m, nil
-		}
-		switch msg.Type {
 		case tea.KeyEsc:
 			m.mode = inputNone
 			m.input.Blur()
