@@ -37,8 +37,11 @@ func (m *model) cancelProjectEdit() (tea.Model, tea.Cmd) {
 }
 
 func (m *model) commitProjectEditField() (tea.Model, tea.Cmd) {
-	m.projectEditConfig.Workdir = strings.TrimSpace(m.input.Value())
-	m.setProjectConfig(m.projectEditConfig)
+	config := projectConfig{
+		Name:    m.projectEditConfig.Name,
+		Workdir: strings.TrimSpace(m.input.Value()),
+	}
+	m.setProjectConfig(config)
 	m.mode = inputNone
 	m.projectEditConfig = projectConfig{}
 	m.input.Blur()

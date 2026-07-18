@@ -544,7 +544,12 @@ func TestEditProjectSavesOnlyWorkdirToStoreState(t *testing.T) {
 	m.statePath = tmp + "/store.json"
 	m.projects = []string{"small"}
 	m.selectedProject = "small"
-	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}}
+	m.projectConfigs = map[string]projectConfig{"small": {
+		Name:        "small",
+		Protect:     true,
+		AgentBinary: "codex",
+		Cluster:     clusterConfig{Path: "/tmp/kubeconfig", ConnectionCmd: "connect"},
+	}}
 
 	updated, _ := m.editProject()
 	step := updated.(model)
@@ -557,11 +562,17 @@ func TestEditProjectSavesOnlyWorkdirToStoreState(t *testing.T) {
 	if got := final.projectConfigs["small"].Workdir; got != "/tmp/small" {
 		t.Fatalf("workdir = %q", got)
 	}
+	if got := final.projectConfigs["small"]; got.Protect || got.AgentBinary != "" || got.Cluster != (clusterConfig{}) {
+		t.Fatalf("legacy project fields remain: %#v", got)
+	}
 	state, err := loadAppState(m.statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := state.ProjectConfigs["small"].Workdir; got != "/tmp/small" {
 		t.Fatalf("saved workdir = %q", got)
+	}
+	if got := state.ProjectConfigs["small"]; got.Protect || got.AgentBinary != "" || got.Cluster != (clusterConfig{}) {
+		t.Fatalf("saved legacy project fields remain: %#v", got)
 	}
 }

@@ -142,7 +142,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		msg.config = normalizeProjectConfig(msg.config)
 		m.addProject(msg.config.Name)
 		m.setProjectConfig(msg.config)
-		keepContext := m.volatileContext()
+		keepContext := m.selectedProject != "" || m.selectedSession != "" || m.volatileContext()
 		if !keepContext {
 			m.selectedProject = msg.config.Name
 			m.selectedSession = ""
