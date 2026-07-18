@@ -33,7 +33,7 @@ func (m *model) beginProjectSwitch() (tea.Model, tea.Cmd) {
 	m.mode = inputSwitchProject
 	m.switchProjectTarget = ""
 	m.projectSwitchIndex = 0
-	m.input.Prompt = "project: "
+	m.input.Prompt = ""
 	m.input.SetValue("")
 	m.input.Focus()
 	m.status = ""
@@ -42,7 +42,7 @@ func (m *model) beginProjectSwitch() (tea.Model, tea.Cmd) {
 
 func (m *model) beginProjectCreate() (tea.Model, tea.Cmd) {
 	m.mode = inputCreateProject
-	m.input.Prompt = "project: "
+	m.input.Prompt = ""
 	m.input.SetValue("")
 	m.input.Focus()
 	m.status = ""
@@ -194,7 +194,7 @@ func (m *model) beginRename() (tea.Model, tea.Cmd) {
 	m.renameTarget = renameTarget{session: s.Name}
 	m.input.SetValue(m.sessionLabel(s.Name))
 	m.input.CursorEnd()
-	m.input.Prompt = "session: "
+	m.input.Prompt = ""
 	m.input.Focus()
 	m.status = ""
 	return m, nil

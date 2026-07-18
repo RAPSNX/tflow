@@ -162,7 +162,7 @@ func TestCtrlCClosesMenu(t *testing.T) {
 func TestCtrlCClosesMenuFromModalMode(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 	m.mode = inputRename
-	m.input.Prompt = "session: "
+	m.input.Prompt = ""
 	m.input.SetValue("dev")
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
@@ -197,7 +197,7 @@ func TestCtrlFClosesMenuFromNormalMode(t *testing.T) {
 func TestCtrlFClosesMenuFromModalMode(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 	m.mode = inputRename
-	m.input.Prompt = "session: "
+	m.input.Prompt = ""
 	m.input.SetValue("dev")
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
@@ -255,7 +255,7 @@ func TestProjectSwitchSearchAcceptsJAndKAndUsesArrowNavigation(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 	m.projects = []string{"kjobs", "other"}
 	m.mode = inputSwitchProject
-	m.input.Prompt = "project: "
+	m.input.Prompt = ""
 	m.input.Focus()
 
 	for _, key := range []rune{'k', 'j'} {
@@ -280,7 +280,7 @@ func TestEscCancelsPromptWithoutClosingMenu(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 	m.projects = []string{"small", "storage"}
 	m.mode = inputSwitchProject
-	m.input.Prompt = "project: "
+	m.input.Prompt = ""
 	m.input.SetValue("sto")
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -345,7 +345,7 @@ func TestNStartsPlainSessionPrompt(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{110}})
 	got := *(updated.(*model))
-	if cmd != nil || got.mode != inputCreateSession || got.input.Prompt != "session: " {
-		t.Fatalf("n should open a plain session prompt: %#v", got)
+	if cmd != nil || got.mode != inputCreateSession || got.input.Prompt != "" {
+		t.Fatalf("n should open a bare session input: %#v", got)
 	}
 }

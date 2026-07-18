@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -84,9 +83,9 @@ func (m model) createSessionDir() string {
 
 func (m *model) startSessionCreate() (tea.Model, tea.Cmd) {
 	m.mode = inputCreateSession
-	m.input.Prompt = "session: "
+	m.input.Prompt = ""
 	m.input.SetValue("")
 	m.input.Focus()
-	m.status = fmt.Sprintf("Create a new terminal session in %s.", fallbackText(m.contextProject(), "current directory"))
+	m.status = ""
 	return m, nil
 }

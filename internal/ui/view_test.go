@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"charm.land/lipgloss/v2"
 	"regexp"
 	"strings"
 	"testing"
@@ -159,13 +160,50 @@ func TestConfirmationOverlaysAdvertiseAcceptedKeys(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(render(), "")
-			for _, keycap := range []string{"Enter", "Esc", "Cancel"} {
-				if !strings.Contains(plain, keycap) {
-					t.Fatalf("confirmation missing %q in %q", keycap, plain)
+			if strings.Contains(plain, "Cancel") {
+				t.Fatalf("confirmation retained action text in %q", plain)
+			}
+			footerFound := false
+			for _, line := range strings.Split(plain, "\n") {
+				if strings.Contains(line, "Enter") {
+					footerFound = true
+					if !strings.Contains(line, "Esc") {
+						t.Fatalf("keycaps are not on one line in %q", plain)
+					}
 				}
+			}
+			if !footerFound {
+				t.Fatalf("confirmation missing keycap footer in %q", plain)
 			}
 		})
 	}
+}
+
+func TestDialogFitsNarrowViewportAndCentersKeycaps(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 28
+	m.height = 16
+	m.input.Prompt = ""
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderInputOverlay("New Session"), "")
+	for _, line := range strings.Split(plain, "\n") {
+		if lipgloss.Width(line) > m.width {
+			t.Fatalf("dialog line width = %d, want at most %d: %q", lipgloss.Width(line), m.width, line)
+		}
+	}
+	for _, line := range strings.Split(plain, "\n") {
+		if !strings.Contains(line, "Enter") {
+			continue
+		}
+		inner := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(line), "│"), "│")
+		left := len(inner) - len(strings.TrimLeft(inner, " "))
+		right := len(inner) - len(strings.TrimRight(inner, " "))
+		if difference := left - right; difference < -1 || difference > 1 {
+			t.Fatalf("keycaps are not centered: %q", line)
+		}
+		return
+	}
+	t.Fatal("dialog keycaps not rendered")
 }
 
 func TestRenderProjectSwitchDialogListsMatchingProjects(t *testing.T) {
@@ -173,7 +211,7 @@ func TestRenderProjectSwitchDialogListsMatchingProjects(t *testing.T) {
 	m.width = 48
 	m.projects = []string{"small", "storage"}
 	m.mode = inputSwitchProject
-	m.input.Prompt = "project: "
+	m.input.Prompt = ""
 
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderProjectSwitchOverlay(), "")
 	lines := strings.Split(plain, "\n")
@@ -224,30 +262,73 @@ func TestDialogsUseSharedStructuredCardLayout(t *testing.T) {
 	m := NewMenu().(model)
 	m.width = 64
 	m.height = 24
-	m.input.Prompt = "name: "
+	m.input.Prompt = ""
+	m.selectedProject = "small"
+	m.sessionLabels = map[string]string{"small--otter": "otter"}
 	m.renameTarget = renameTarget{session: "small--otter"}
 	m.deleteTarget = deleteTarget{session: "small--otter"}
 	m.switchProjectTarget = "small"
 	tests := []struct {
-		name   string
-		render func() string
-		badge  string
-		title  string
+		name     string
+		render   func() string
+		badge    string
+		title    string
+		copy     string
+		unwanted []string
 	}{
-		{"create", func() string { return m.renderInputOverlay("New Session") }, "CREATE", "New Session"},
-		{"settings", func() string { return m.renderInputOverlay("Project Settings") }, "SETTINGS", "Project Settings"},
-		{"rename", m.renderRenameOverlay, "RENAME", "Rename Session"},
-		{"switch", m.renderProjectSwitchOverlay, "SWITCH", "Switch Project"},
-		{"delete", m.renderDeleteOverlay, "DELETE", "Confirm Delete"},
-		{"confirm", m.renderProjectSwitchConfirmOverlay, "CONFIRM", "Confirm Project Switch"},
+		{"create session", func() string { return m.renderInputOverlay("New Session") }, "CREATE", "Session", "", []string{"project: small"}},
+		{"create project", func() string { return m.renderInputOverlay("New Project") }, "CREATE", "Project", "", []string{"project:"}},
+		{"settings", func() string { return m.renderInputOverlay("Project Settings") }, "SETTINGS", "Project", "", nil},
+		{"rename", m.renderRenameOverlay, "RENAME", "Session", "Current: otter", nil},
+		{"switch", m.renderProjectSwitchOverlay, "SWITCH", "Project", "Choose a project.", nil},
+		{"delete", m.renderDeleteOverlay, "DELETE", "Session", "Delete otter?", nil},
+		{"confirm", m.renderProjectSwitchConfirmOverlay, "CONFIRM", "Project Switch", "Switch to small?", nil},
+		{"quit", m.renderQuitConfirmOverlay, "CONFIRM", "Quit", "Remove this instance’s volatile sessions and quit?", nil},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(test.render(), "")
-			for _, want := range []string{test.badge, test.title, "──", "Enter", "Esc", "Cancel"} {
+			for _, want := range []string{test.badge, test.title, "──", "Enter", "Esc"} {
 				if !strings.Contains(plain, want) {
 					t.Fatalf("dialog missing %q in %q", want, plain)
 				}
+			}
+			if test.copy != "" && !strings.Contains(strings.Join(strings.Fields(strings.ReplaceAll(plain, "│", "")), " "), test.copy) {
+				t.Fatalf("dialog missing copy %q in %q", test.copy, plain)
+			}
+			if strings.Contains(plain, "Cancel") {
+				t.Fatalf("dialog retained action text in %q", plain)
+			}
+			for _, unwanted := range test.unwanted {
+				if strings.Contains(plain, unwanted) {
+					t.Fatalf("dialog unexpectedly contains %q in %q", unwanted, plain)
+				}
+			}
+		})
+	}
+}
+
+func TestDeleteDialogExplainsProjectConsequences(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 64
+	m.sessionProjects = map[string]string{"small--otter": "small", "small--fox": "small"}
+	m.sessionLabels = map[string]string{"small--otter": "otter", "small--fox": "fox"}
+	tests := []struct {
+		name     string
+		sessions []session
+		target   deleteTarget
+		want     string
+	}{
+		{"last session", []session{{Name: "small--otter"}}, deleteTarget{session: "small--otter"}, "Delete project small and its session?"},
+		{"project", []session{{Name: "small--otter"}, {Name: "small--fox"}}, deleteTarget{project: "small"}, "Delete project small and all its sessions?"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			m.sessions, m.deleteTarget = test.sessions, test.target
+			plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderDeleteOverlay(), "")
+			plain = strings.Join(strings.Fields(strings.ReplaceAll(plain, "│", "")), " ")
+			if !strings.Contains(plain, test.want) {
+				t.Fatalf("delete dialog = %q, want %q", plain, test.want)
 			}
 		})
 	}
@@ -271,7 +352,7 @@ func TestDialogKeepsStatusVisibleInFooter(t *testing.T) {
 	if !strings.Contains(plain, "Saved project settings.") {
 		t.Fatalf("dialog status missing from %q", plain)
 	}
-	if strings.LastIndex(plain, "Saved project settings.") < strings.LastIndex(plain, "Cancel") {
+	if strings.LastIndex(plain, "Saved project settings.") < strings.LastIndex(plain, "Esc") {
 		t.Fatalf("status was not rendered below the dialog: %q", plain)
 	}
 }
