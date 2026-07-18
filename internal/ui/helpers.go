@@ -34,6 +34,10 @@ func sanitizeProjectName(name string) string {
 	return normalizeProjectName(name)
 }
 
+func projectSessionName(project, name string) string {
+	return sanitizeSessionName(project) + "--" + sanitizeSessionName(name)
+}
+
 func projectAccentColor(project string) string {
 	palette := []string{
 		"#89b4fa",

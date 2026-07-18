@@ -59,8 +59,9 @@ func (m *model) commitProjectCreate() (tea.Model, tea.Cmd) {
 	if cwd == "" {
 		cwd = m.cwd
 	}
+	tmuxName := projectSessionName(name, defaultProjectSessionName)
 	return m, func() tea.Msg {
-		s, err := m.tmux.CreateSession(defaultProjectSessionName, cwd, "")
+		s, err := m.tmux.CreateSession(tmuxName, cwd, "")
 		if err != nil {
 			return projectCreatedMsg{
 				config: cfg,

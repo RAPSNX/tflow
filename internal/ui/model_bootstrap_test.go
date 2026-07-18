@@ -346,7 +346,7 @@ func TestCreateProjectCreatesDefaultCodeSession(t *testing.T) {
 			return session{Name: name, Windows: 1}, nil
 		},
 		listSessions: func() ([]session, error) {
-			return []session{{Name: defaultProjectSessionName, Windows: 1}}, nil
+			return []session{{Name: projectSessionName("small", defaultProjectSessionName), Windows: 1}}, nil
 		},
 	}, "").(model)
 	m.statePath = tmp + "/store.json"
@@ -364,8 +364,8 @@ func TestCreateProjectCreatesDefaultCodeSession(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("project create returned error: %v", msg.err)
 	}
-	if createdName != defaultProjectSessionName {
-		t.Fatalf("created session name = %q, want %q", createdName, defaultProjectSessionName)
+	if createdName != projectSessionName("small", defaultProjectSessionName) {
+		t.Fatalf("created session name = %q, want %q", createdName, projectSessionName("small", defaultProjectSessionName))
 	}
 	if createdDir != "/tmp/workspace" {
 		t.Fatalf("created session dir = %q, want /tmp/workspace", createdDir)
@@ -382,27 +382,55 @@ func TestCreateProjectCreatesDefaultCodeSession(t *testing.T) {
 	if got.selectedProject != "small" {
 		t.Fatalf("selectedProject = %q, want small", got.selectedProject)
 	}
-	if got.selectedSession != defaultProjectSessionName {
-		t.Fatalf("selectedSession = %q, want %q", got.selectedSession, defaultProjectSessionName)
+	if got.selectedSession != projectSessionName("small", defaultProjectSessionName) {
+		t.Fatalf("selectedSession = %q, want %q", got.selectedSession, projectSessionName("small", defaultProjectSessionName))
 	}
 	if !containsString(got.projects, "small") {
 		t.Fatalf("projects = %#v, want small project", got.projects)
 	}
-	if got.sessionProjects[defaultProjectSessionName] != "small" {
-		t.Fatalf("sessionProjects[%q] = %q, want small", defaultProjectSessionName, got.sessionProjects[defaultProjectSessionName])
+	if got.sessionProjects[projectSessionName("small", defaultProjectSessionName)] != "small" {
+		t.Fatalf("sessionProjects[%q] = %q, want small", projectSessionName("small", defaultProjectSessionName), got.sessionProjects[projectSessionName("small", defaultProjectSessionName)])
 	}
-	if got.sessionTypes[defaultProjectSessionName] != sessionTypeTerminal {
-		t.Fatalf("sessionTypes[%q] = %q, want %q", defaultProjectSessionName, got.sessionTypes[defaultProjectSessionName], sessionTypeTerminal)
+	if got.sessionTypes[projectSessionName("small", defaultProjectSessionName)] != sessionTypeTerminal {
+		t.Fatalf("sessionTypes[%q] = %q, want %q", projectSessionName("small", defaultProjectSessionName), got.sessionTypes[projectSessionName("small", defaultProjectSessionName)], sessionTypeTerminal)
 	}
 	state, err := loadAppState(m.statePath)
 	if err != nil {
 		t.Fatalf("loadAppState returned error: %v", err)
 	}
-	if state.SessionProjects[defaultProjectSessionName] != "small" {
-		t.Fatalf("saved sessionProjects[%q] = %q, want small", defaultProjectSessionName, state.SessionProjects[defaultProjectSessionName])
+	if state.SessionProjects[projectSessionName("small", defaultProjectSessionName)] != "small" {
+		t.Fatalf("saved sessionProjects[%q] = %q, want small", projectSessionName("small", defaultProjectSessionName), state.SessionProjects[projectSessionName("small", defaultProjectSessionName)])
 	}
 	if state.ProjectConfigs["small"].Name != "small" {
 		t.Fatalf("saved project config = %#v", state.ProjectConfigs["small"])
+	}
+}
+
+func TestProjectDefaultSessionNamesAreScoped(t *testing.T) {
+	created := map[string]bool{}
+	m := newModel(fakeTmuxController{
+		createSession: func(name, _ string, _ string) (session, error) {
+			if created[name] {
+				return session{}, fmt.Errorf("duplicate session %q", name)
+			}
+			created[name] = true
+			return session{Name: name}, nil
+		},
+	}, "").(model)
+
+	for _, project := range []string{"one", "two"} {
+		m.input.SetValue(project)
+		_, cmd := m.commitProjectCreate()
+		msg := cmd().(projectCreatedMsg)
+		if msg.err != nil {
+			t.Fatalf("create project %q: %v", project, msg.err)
+		}
+	}
+
+	for _, name := range []string{"one--code", "two--code"} {
+		if !created[name] {
+			t.Fatalf("created sessions = %#v, missing %q", created, name)
+		}
 	}
 }
 
