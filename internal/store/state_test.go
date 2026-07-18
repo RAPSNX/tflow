@@ -116,6 +116,37 @@ func TestNormalizeProjectListMatchesFormerCallSiteBehavior(t *testing.T) {
 	}
 }
 
+func TestNormalizeCWDFallsBackToHomeWhenCurrentDirectoryIsUnavailable(t *testing.T) {
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get current directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(originalDir); err != nil {
+			t.Errorf("restore current directory: %v", err)
+		}
+	})
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	missingDir := filepath.Join(t.TempDir(), "missing")
+	if err := os.Mkdir(missingDir, 0o755); err != nil {
+		t.Fatalf("create missing directory: %v", err)
+	}
+	if err := os.Chdir(missingDir); err != nil {
+		t.Fatalf("change to missing directory: %v", err)
+	}
+	if err := os.Remove(missingDir); err != nil {
+		t.Fatalf("remove current directory: %v", err)
+	}
+
+	for _, cwd := range []string{"", "."} {
+		if got := NormalizeCWD(cwd); got != home {
+			t.Fatalf("NormalizeCWD(%q) = %q, want %q", cwd, got, home)
+		}
+	}
+}
+
 func TestEnsureStartupStateCreatesEmptyStoreAtStatePath(t *testing.T) {
 	stateHome := t.TempDir()
 	configHome := t.TempDir()

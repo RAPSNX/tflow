@@ -276,7 +276,7 @@ func newModel(manager tmuxController, current string) tea.Model {
 }
 
 func buildModel(manager tmuxController, current string) (model, error) {
-	cwd, _ := os.Getwd()
+	cwd := defaultSessionDir()
 
 	input := textinput.New()
 	input.CharLimit = 40
