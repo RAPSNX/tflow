@@ -172,9 +172,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if strings.TrimSpace(msg.switchSession) != "" {
 			m.exitAction = menuExitSwitchSession
 			m.exitSessionName = msg.switchSession
-		} else if msg.quitAll {
-			m.exitAction = menuExitQuitAll
-			m.exitSessionName = ""
 		} else {
 			m.exitAction = menuExitNone
 			m.exitSessionName = ""

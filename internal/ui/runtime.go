@@ -26,7 +26,6 @@ type tmuxController interface {
 	SyncSessionProjects(sessionProjects map[string]string) error
 	ToggleMenu(binaryPath string) error
 	CloseMenu() error
-	QuitAll() error
 	CleanupVolatileSessions(instanceID string) error
 }
 
@@ -94,16 +93,8 @@ func (m sessionManager) CloseMenu() error {
 	return m.inner.CloseMenu()
 }
 
-func (m sessionManager) QuitAll() error {
-	return m.inner.QuitAll()
-}
-
 func (m sessionManager) CleanupVolatileSessions(instanceID string) error {
 	return m.inner.CleanupVolatileSessions(instanceID)
-}
-
-func normalizeCWD(cwd string) string {
-	return runtmux.NormalizeCWD(cwd)
 }
 
 func sanitizeSessionName(name string) string {

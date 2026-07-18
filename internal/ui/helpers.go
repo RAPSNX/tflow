@@ -3,7 +3,6 @@ package ui
 import (
 	"hash/fnv"
 	"strings"
-	"unicode"
 )
 
 func (m model) saveState() error {
@@ -29,45 +28,6 @@ func (m model) saveState() error {
 		state.ProjectConfigs[project] = cfg
 	}
 	return saveAppState(m.statePath, normalizeAppState(state))
-}
-
-func normalizeProjectList(projects []string) []string {
-	seen := map[string]struct{}{}
-	result := make([]string, 0, len(projects))
-	add := func(name string) {
-		name = normalizeProjectName(name)
-		if name == "" {
-			return
-		}
-		if _, ok := seen[name]; ok {
-			return
-		}
-		seen[name] = struct{}{}
-		result = append(result, name)
-	}
-	for _, project := range projects {
-		add(project)
-	}
-	return result
-}
-
-func normalizeProjectName(name string) string {
-	name = strings.TrimSpace(strings.ToLower(name))
-	var builder strings.Builder
-	lastDash := false
-	for _, r := range name {
-		switch {
-		case unicode.IsLetter(r), unicode.IsDigit(r):
-			builder.WriteRune(r)
-			lastDash = false
-		case r == '-', r == '_', unicode.IsSpace(r), r == '/', r == '.':
-			if !lastDash && builder.Len() > 0 {
-				builder.WriteByte('-')
-				lastDash = true
-			}
-		}
-	}
-	return strings.Trim(builder.String(), "-")
 }
 
 func sanitizeProjectName(name string) string {
@@ -97,10 +57,6 @@ func fallbackText(value, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func containsString(values []string, want string) bool {
-	return indexOfString(values, want) >= 0
 }
 
 func indexOfString(values []string, want string) int {
