@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func normalizeCWD(cwd string) string {
+func NormalizeCWD(cwd string) string {
 	if strings.TrimSpace(cwd) == "" {
 		if wd, err := os.Getwd(); err == nil {
 			cwd = wd

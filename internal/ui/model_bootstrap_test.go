@@ -161,6 +161,15 @@ func TestNewInstanceIDWithEntropyFallsBackToPID(t *testing.T) {
 	}
 }
 
+func TestNewInstanceIDWithEntropyDiffersWithinSameTick(t *testing.T) {
+	now := time.Unix(0, 123456789)
+	first := newInstanceIDWithEntropy(now, bytes.NewReader([]byte{0, 1, 2, 3, 4, 5}), 99)
+	second := newInstanceIDWithEntropy(now, bytes.NewReader([]byte{6, 7, 8, 9, 10, 11}), 99)
+	if first == second {
+		t.Fatalf("same-tick instance ids matched: %q", first)
+	}
+}
+
 func TestMenuEnterSwitchesSessionAndClosesMenu(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "dev").(model)
 	m.projects = []string{defaultProjectName}
@@ -203,7 +212,7 @@ func TestMenuActionSwitchSessionTriggersQuit(t *testing.T) {
 }
 
 func TestPStartsProjectSwitchMode(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "dev", "").(model)
+	m := newModel(fakeTmuxController{}, "dev").(model)
 	m.projects = []string{"small", "storage"}
 	m.sessions = []session{{Name: "dev"}}
 	m.sessionProjects = map[string]string{"dev": "small"}
@@ -263,7 +272,7 @@ func TestProjectSwitchFromVolatileSessionRequiresConfirmation(t *testing.T) {
 			switched = append(switched, name)
 			return nil
 		},
-	}, "scratch-temp", "").(model)
+	}, "scratch-temp").(model)
 	m.projects = []string{"storage"}
 	m.sessions = []session{{Name: "scratch-temp", Temporary: true}, {Name: "keep"}}
 	m.sessionProjects = map[string]string{"keep": "storage"}
@@ -298,7 +307,7 @@ func TestDDeletesSelectedSession(t *testing.T) {
 			killed = append(killed, name)
 			return nil
 		},
-	}, "", "").(model)
+	}, "").(model)
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}}
 	m.sessionProjects = map[string]string{"dev": defaultProjectName}
@@ -324,7 +333,7 @@ func TestDDeletesSelectedSession(t *testing.T) {
 }
 
 func TestKFromFirstSessionWrapsToLastSession(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "", "").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
 	m.sessionProjects = map[string]string{"dev": defaultProjectName, "api": defaultProjectName}
@@ -345,7 +354,7 @@ func TestKFromFirstSessionWrapsToLastSession(t *testing.T) {
 }
 
 func TestJFromLastSessionWrapsToFirstSession(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "", "").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
 	m.sessionProjects = map[string]string{"dev": defaultProjectName, "api": defaultProjectName}
@@ -376,7 +385,7 @@ func TestCtrlCClosesMenu(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("close returned error: %v", msg.err)
 	}
-	if msg.switchSession != "" || msg.quitAll {
+	if msg.switchSession != "" {
 		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
 }
@@ -392,7 +401,7 @@ func TestCtrlFClosesMenuFromNormalMode(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("close returned error: %v", msg.err)
 	}
-	if msg.switchSession != "" || msg.quitAll {
+	if msg.switchSession != "" {
 		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
 }
@@ -411,13 +420,13 @@ func TestCtrlFClosesMenuFromModalMode(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("close returned error: %v", msg.err)
 	}
-	if msg.switchSession != "" || msg.quitAll {
+	if msg.switchSession != "" {
 		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
 }
 
 func TestNStartsNewPrefixMode(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "", "").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 
 	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 	got := updated.(model)
@@ -441,7 +450,7 @@ func TestNewModelStartsWithoutProjectsWhenStateIsEmpty(t *testing.T) {
 	_ = os.Setenv("XDG_STATE_HOME", stateHome)
 	_ = os.Setenv("XDG_CONFIG_HOME", configHome)
 
-	m := newModel(fakeTmuxController{}, "", "").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 	if len(m.projects) != 0 {
 		t.Fatalf("projects = %#v, want none", m.projects)
 	}
@@ -470,7 +479,7 @@ func TestBuildModelFailsWhenStoreIsInvalid(t *testing.T) {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
 
-	_, err := buildModel(fakeTmuxController{}, "", "")
+	_, err := buildModel(fakeTmuxController{}, "")
 	if err == nil {
 		t.Fatal("buildModel returned nil error")
 	}
@@ -480,7 +489,7 @@ func TestBuildModelFailsWhenStoreIsInvalid(t *testing.T) {
 }
 
 func TestNewPrefixTStartsTerminalCreate(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "", "").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 	m.mode = inputNew
 	m.selectedProject = "small"
 
@@ -498,7 +507,7 @@ func TestNewPrefixTStartsTerminalCreate(t *testing.T) {
 }
 
 func TestNewPrefixUnknownKeyShowsHint(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "", "").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 	m.mode = inputNew
 
 	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
@@ -524,21 +533,5 @@ func TestRunMenuExitActionSwitchesClientAfterExit(t *testing.T) {
 	}
 	if got, want := fmt.Sprint(switched), fmt.Sprint([]string{"dev"}); got != want {
 		t.Fatalf("switches = %s, want %s", got, want)
-	}
-}
-
-func TestRunMenuExitActionQuitsAllAfterExit(t *testing.T) {
-	quitAllCalls := 0
-	err := runMenuExitAction(fakeTmuxController{
-		quitAll: func() error {
-			quitAllCalls++
-			return nil
-		},
-	}, model{exitAction: menuExitQuitAll})
-	if err != nil {
-		t.Fatalf("runMenuExitAction returned error: %v", err)
-	}
-	if quitAllCalls != 1 {
-		t.Fatalf("quitAllCalls = %d, want 1", quitAllCalls)
 	}
 }

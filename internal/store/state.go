@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode"
 )
@@ -104,7 +105,7 @@ func EnsureStartupState() error {
 }
 
 func NormalizeAppState(state AppState) AppState {
-	state.Projects = normalizeProjectList(state.Projects)
+	state.Projects = NormalizeProjectList(state.Projects)
 	if state.SessionProjects == nil {
 		state.SessionProjects = map[string]string{}
 	}
@@ -115,12 +116,12 @@ func NormalizeAppState(state AppState) AppState {
 		state.ProjectConfigs = map[string]ProjectConfig{}
 	}
 	for _, name := range sortedStringKeys(state.SessionProjects) {
-		project := normalizeProjectName(state.SessionProjects[name])
+		project := NormalizeProjectName(state.SessionProjects[name])
 		if project == "" {
 			delete(state.SessionProjects, name)
 		} else {
 			state.SessionProjects[name] = project
-			if !containsString(state.Projects, project) {
+			if !ContainsString(state.Projects, project) {
 				state.Projects = append(state.Projects, project)
 			}
 		}
@@ -132,21 +133,21 @@ func NormalizeAppState(state AppState) AppState {
 	normalizedConfigs := map[string]ProjectConfig{}
 	for _, project := range sortedStringKeys(state.ProjectConfigs) {
 		cfg := state.ProjectConfigs[project]
-		normalized := normalizeProjectName(project)
+		normalized := NormalizeProjectName(project)
 		if cfg.Name != "" {
-			normalized = normalizeProjectName(cfg.Name)
+			normalized = NormalizeProjectName(cfg.Name)
 		}
 		if normalized == "" {
 			continue
 		}
 		cfg.Name = normalized
 		normalizedConfigs[normalized] = NormalizeProjectConfig(cfg)
-		if !containsString(state.Projects, normalized) {
+		if !ContainsString(state.Projects, normalized) {
 			state.Projects = append(state.Projects, normalized)
 		}
 	}
 	state.ProjectConfigs = normalizedConfigs
-	state.Projects = normalizeProjectList(state.Projects)
+	state.Projects = NormalizeProjectList(state.Projects)
 	for _, project := range state.Projects {
 		cfg := NormalizeProjectConfig(state.ProjectConfigs[project])
 		cfg.Name = project
@@ -155,11 +156,11 @@ func NormalizeAppState(state AppState) AppState {
 	return state
 }
 
-func normalizeProjectList(projects []string) []string {
+func NormalizeProjectList(projects []string) []string {
 	seen := map[string]struct{}{}
 	result := make([]string, 0, len(projects))
 	for _, project := range projects {
-		project = normalizeProjectName(project)
+		project = NormalizeProjectName(project)
 		if project == "" {
 			continue
 		}
@@ -172,7 +173,7 @@ func normalizeProjectList(projects []string) []string {
 	return result
 }
 
-func normalizeProjectName(name string) string {
+func NormalizeProjectName(name string) string {
 	name = strings.TrimSpace(strings.ToLower(name))
 	var builder strings.Builder
 	lastDash := false
@@ -191,7 +192,7 @@ func normalizeProjectName(name string) string {
 	return strings.Trim(builder.String(), "-")
 }
 
-func containsString(values []string, want string) bool {
+func ContainsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
 			return true
@@ -206,21 +207,9 @@ func sortedStringKeys[V any](values map[string]V) []string {
 		keys = append(keys, key)
 	}
 	if len(keys) > 1 {
-		slicesSort(keys)
+		sort.Strings(keys)
 	}
 	return keys
-}
-
-func slicesSort(values []string) {
-	for i := 1; i < len(values); i++ {
-		current := values[i]
-		j := i - 1
-		for j >= 0 && values[j] > current {
-			values[j+1] = values[j]
-			j--
-		}
-		values[j+1] = current
-	}
 }
 
 func emptyAppState() AppState {
@@ -300,7 +289,7 @@ func decodeStoredState(data []byte) (AppState, error) {
 
 	extraProjects := make([]string, 0, len(stored.Projects))
 	for project, cfg := range stored.Projects {
-		project = normalizeProjectName(project)
+		project = NormalizeProjectName(project)
 		if project == "" {
 			continue
 		}
@@ -319,9 +308,9 @@ func decodeStoredState(data []byte) (AppState, error) {
 		}
 		state.ProjectConfigs[project] = NormalizeProjectConfig(projectConfig)
 	}
-	slicesSort(extraProjects)
+	sort.Strings(extraProjects)
 	for _, project := range extraProjects {
-		if !containsString(state.Projects, project) {
+		if !ContainsString(state.Projects, project) {
 			state.Projects = append(state.Projects, project)
 		}
 	}
@@ -357,7 +346,7 @@ func decodeLegacySessionSnapshotState(data []byte) (AppState, error) {
 
 	state := emptyAppState()
 	for _, project := range legacy.Projects {
-		name := normalizeProjectName(project.Name)
+		name := NormalizeProjectName(project.Name)
 		if name == "" {
 			continue
 		}
@@ -411,7 +400,7 @@ func cloneStringMap(values map[string]string) map[string]string {
 func legacyProjectConfigs(projectDirs map[string]string) map[string]ProjectConfig {
 	configs := map[string]ProjectConfig{}
 	for project, dir := range projectDirs {
-		project = normalizeProjectName(project)
+		project = NormalizeProjectName(project)
 		dir = strings.TrimSpace(dir)
 		if project == "" || dir == "" {
 			continue

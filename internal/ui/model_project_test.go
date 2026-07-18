@@ -38,7 +38,7 @@ func TestRenameProjectUpdatesAssignments(t *testing.T) {
 			synced = cloneStringMap(sessionProjects)
 			return nil
 		},
-	}, "", "").(model)
+	}, "").(model)
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{defaultProjectName, "small"}
 	m.sessions = []session{{Name: "dev"}}
@@ -75,7 +75,7 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 			renamed = []string{oldName, newName}
 			return nil
 		},
-	}, "dev", "").(model)
+	}, "dev").(model)
 	m.statePath = tmp + "/state.json"
 	m.sessions = []session{{Name: "dev"}}
 	m.projects = []string{defaultProjectName}
@@ -216,7 +216,7 @@ func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 			killed = append(killed, name)
 			return nil
 		},
-	}, "", "").(model)
+	}, "").(model)
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{"small", "storage"}
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}, {Name: "keep"}}
@@ -258,7 +258,7 @@ func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 }
 
 func TestEditProjectRequiresProjectContext(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "", "").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 
 	updated, cmd := m.editProject()
 	got := updated.(model)
@@ -274,7 +274,7 @@ func TestEditProjectRequiresProjectContext(t *testing.T) {
 }
 
 func TestEditProjectStartsInlineSettingsFlow(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "", "").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 	m.projects = []string{"small"}
 	m.selectedProject = "small"
 	m.projectConfigs = map[string]projectConfig{
@@ -299,7 +299,7 @@ func TestEditProjectStartsInlineSettingsFlow(t *testing.T) {
 
 func TestEditProjectSavesSettingsToStoreState(t *testing.T) {
 	tmp := t.TempDir()
-	m := newModel(fakeTmuxController{}, "", "").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 	m.statePath = tmp + "/store.json"
 	m.projects = []string{"small"}
 	m.selectedProject = "small"
@@ -364,7 +364,7 @@ func TestEditProjectSavesSettingsToStoreState(t *testing.T) {
 }
 
 func TestEditProjectRejectsInvalidProtectValue(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "", "").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 	m.projects = []string{"small"}
 	m.selectedProject = "small"
 	m.projectConfigs = map[string]projectConfig{

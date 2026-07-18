@@ -69,7 +69,6 @@ type projectDeletedMsg struct {
 type menuActionMsg struct {
 	err           error
 	switchSession string
-	quitAll       bool
 }
 
 type menuExitAction int
@@ -77,7 +76,6 @@ type menuExitAction int
 const (
 	menuExitNone menuExitAction = iota
 	menuExitSwitchSession
-	menuExitQuitAll
 )
 
 type renameTarget struct {
@@ -237,7 +235,7 @@ func defaultSessionDir() string {
 	return "."
 }
 
-func newModel(manager tmuxController, current string, _ ...string) tea.Model {
+func newModel(manager tmuxController, current string) tea.Model {
 	menu, err := buildModel(manager, current)
 	if err != nil {
 		menu.err = err
@@ -246,7 +244,7 @@ func newModel(manager tmuxController, current string, _ ...string) tea.Model {
 	return menu
 }
 
-func buildModel(manager tmuxController, current string, _ ...string) (model, error) {
+func buildModel(manager tmuxController, current string) (model, error) {
 	cwd, _ := os.Getwd()
 
 	input := textinput.New()
@@ -292,8 +290,6 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 			return nil
 		}
 		return manager.SwitchClient(menu.exitSessionName)
-	case menuExitQuitAll:
-		return manager.QuitAll()
 	default:
 		return nil
 	}

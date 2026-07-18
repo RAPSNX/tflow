@@ -16,10 +16,10 @@ type ProjectConfig struct {
 }
 
 func NormalizeProjectConfig(cfg ProjectConfig) ProjectConfig {
-	cfg.Name = normalizeProjectName(cfg.Name)
+	cfg.Name = NormalizeProjectName(cfg.Name)
 	cfg.Workdir = strings.TrimSpace(cfg.Workdir)
 	if cfg.Workdir != "" {
-		cfg.Workdir = normalizeCWD(cfg.Workdir)
+		cfg.Workdir = NormalizeCWD(cfg.Workdir)
 	}
 	cfg.Cluster.Path = strings.TrimSpace(cfg.Cluster.Path)
 	cfg.Cluster.ConnectionCmd = strings.TrimSpace(cfg.Cluster.ConnectionCmd)
