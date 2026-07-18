@@ -64,12 +64,19 @@ func (m model) renderSessionPanel(width int) string {
 }
 
 func (m model) renderSessionRow(index int, s session) string {
-	content := m.sessionLabel(s.Name)
-	if s.Name == m.currentSession {
-		content = currentBadgeStyle.Render("live") + " " + content
-	}
+	label := m.sessionLabel(s.Name)
 	project := normalizeProjectName(m.sessionProjects[s.Name])
-	style := m.rowStyle(index == m.selectedSessionIndex(), project)
+	selected := index == m.selectedSessionIndex()
+	style := m.rowStyle(selected, project)
+	content := label
+	if s.Name == m.currentSession {
+		content = currentBadgeStyle.Render("live") + " " + label
+		if selected {
+			// The live badge resets terminal styles after rendering. Reapply the
+			// selected row style so the label stays highlighted beside the badge.
+			content = currentBadgeStyle.Render("live") + selectedSessionStyle.Copy().Padding(0).Render(" "+label)
+		}
+	}
 	return style.Width(max(16, m.width-12)).Render(content)
 }
 

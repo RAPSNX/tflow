@@ -214,6 +214,10 @@ func TestRenderBadgesUseFilledContrastingStyles(t *testing.T) {
 	if strings.Count(plain, "live") != 1 || !strings.Contains(plain, "live  dev") {
 		t.Fatalf("active row = %q", plain)
 	}
+	selectedLabel := selectedSessionStyle.Copy().Padding(0).Render(" dev")
+	if row := m.renderSessionRow(0, m.sessions[0]); !strings.Contains(row, selectedLabel) {
+		t.Fatalf("active selected row does not restore its highlight after the live badge: %q", row)
+	}
 }
 
 func TestDialogsUseSharedStructuredCardLayout(t *testing.T) {
