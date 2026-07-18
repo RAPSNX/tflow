@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"strings"
@@ -12,16 +13,24 @@ import (
 )
 
 var tempSessionAnimals = []string{
-	"otter",
-	"fox",
-	"lynx",
-	"koala",
-	"badger",
-	"panda",
-	"falcon",
-	"gecko",
-	"orca",
-	"wombat",
+	"otter", "fox", "lynx", "koala", "badger",
+	"panda", "falcon", "gecko", "orca", "wombat",
+	"beaver", "bison", "caracal", "dolphin", "elephant",
+	"ferret", "giraffe", "hedgehog", "iguana", "jaguar",
+	"kestrel", "lemur", "manatee", "narwhal", "penguin",
+}
+
+func ContainsAnimalName(name string) bool {
+	for _, animal := range tempSessionAnimals {
+		if name == animal {
+			return true
+		}
+	}
+	return false
+}
+
+func RandomAnimalName() string {
+	return tempSessionAnimals[rand.IntN(len(tempSessionAnimals))]
 }
 
 func NormalizeCWD(cwd string) string {
@@ -54,17 +63,38 @@ func NextTempSessionName(existing []Session) string {
 	for _, session := range existing {
 		used[session.Name] = struct{}{}
 	}
+
+	singles := make([]string, 0, len(tempSessionAnimals))
 	for _, animal := range tempSessionAnimals {
-		name := animal + "-temp"
-		if _, ok := used[name]; !ok {
-			return name
+		if _, exists := used[animal]; !exists {
+			singles = append(singles, animal)
 		}
 	}
-	for i := 2; ; i++ {
-		for _, animal := range tempSessionAnimals {
-			name := fmt.Sprintf("%s-temp-%d", animal, i)
-			if _, ok := used[name]; !ok {
+	if len(singles) > 0 {
+		return singles[rand.IntN(len(singles))]
+	}
+
+	for _, first := range tempSessionAnimals {
+		for _, second := range tempSessionAnimals {
+			if first == second {
+				continue
+			}
+			name := first + "-" + second
+			if _, exists := used[name]; !exists {
 				return name
+			}
+		}
+	}
+	for suffix := 2; ; suffix++ {
+		for _, first := range tempSessionAnimals {
+			for _, second := range tempSessionAnimals {
+				if first == second {
+					continue
+				}
+				name := fmt.Sprintf("%s-%s-%d", first, second, suffix)
+				if _, exists := used[name]; !exists {
+					return name
+				}
 			}
 		}
 	}

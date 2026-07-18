@@ -63,7 +63,6 @@ func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
 	deletedSessions := m.projectSessions(project)
 	for _, s := range deletedSessions {
 		delete(m.sessionProjects, s.Name)
-		delete(m.sessionTypes, s.Name)
 		delete(m.sessionLabels, s.Name)
 		if m.selectedSession == s.Name {
 			m.selectedSession = ""

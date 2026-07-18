@@ -76,6 +76,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
+		if !containsSessionName(m.sessions, msg.session.Name) {
+			msg.session.Temporary = msg.volatile
+			m.sessions = append(m.sessions, msg.session)
+		}
 		if msg.volatile {
 			if m.clearSessionMetadata(msg.session.Name) {
 				if err := m.saveState(); err != nil {
@@ -88,7 +92,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selectedSession = msg.session.Name
 		} else {
 			m.assignSessionProject(msg.session.Name, msg.project)
-			m.setSessionType(msg.session.Name, msg.kind)
 			m.setSessionLabel(msg.session.Name, msg.label)
 			m.selectedProject = msg.project
 			m.selectedSession = msg.session.Name
@@ -99,10 +102,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.mode = inputNone
-		if !containsSessionName(m.sessions, msg.session.Name) {
-			msg.session.Temporary = msg.volatile
-			m.sessions = append(m.sessions, msg.session)
-		}
 		if err := m.syncTmuxSessionProjects(); err != nil {
 			m.err = err
 			m.status = err.Error()
@@ -125,7 +124,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		deletingProject := found && !deleted.Temporary && project != "" && m.isLastProjectSession(project, msg.name)
 		m.sessions = filterSessions(m.sessions, func(s session) bool { return s.Name != msg.name })
 		delete(m.sessionProjects, msg.name)
-		delete(m.sessionTypes, msg.name)
 		delete(m.sessionLabels, msg.name)
 		if m.selectedSession == msg.name {
 			m.selectedSession = ""
@@ -182,8 +180,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.sessions = append(m.sessions, msg.session)
 			}
 			m.assignSessionProject(msg.session.Name, msg.config.Name)
-			m.setSessionType(msg.session.Name, sessionTypeTerminal)
-			m.setSessionLabel(msg.session.Name, defaultProjectSessionName)
+			m.setSessionLabel(msg.session.Name, msg.label)
 			if !keepContext {
 				m.selectedSession = msg.session.Name
 			}
@@ -242,10 +239,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		project := normalizeProjectName(m.sessionProjects[msg.oldName])
 		delete(m.sessionProjects, msg.oldName)
 		m.sessionProjects[msg.newName] = project
-		if sessionType, ok := m.sessionTypes[msg.oldName]; ok {
-			delete(m.sessionTypes, msg.oldName)
-			m.sessionTypes[msg.newName] = sessionType
-		}
 		label := msg.label
 		if label == "" {
 			label = m.sessionLabel(msg.oldName)
@@ -362,10 +355,6 @@ func (m *model) applySessionRename(rename sessionRename) {
 	project := normalizeProjectName(m.sessionProjects[rename.oldName])
 	delete(m.sessionProjects, rename.oldName)
 	m.sessionProjects[rename.newName] = project
-	if sessionType, ok := m.sessionTypes[rename.oldName]; ok {
-		delete(m.sessionTypes, rename.oldName)
-		m.sessionTypes[rename.newName] = sessionType
-	}
 	label := m.sessionLabel(rename.oldName)
 	delete(m.sessionLabels, rename.oldName)
 	m.setSessionLabel(rename.newName, label)
@@ -475,7 +464,7 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 					return sessionCreatedMsg{session: s, volatile: true, label: label}
 				}
-				return sessionCreatedMsg{session: s, kind: sessionTypeTerminal, project: project, label: label}
+				return sessionCreatedMsg{session: s, project: project, label: label}
 			}
 		}
 		next, cmd := m.input.Update(msg)

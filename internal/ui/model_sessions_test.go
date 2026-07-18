@@ -194,10 +194,33 @@ func TestCreateUnscopedSessionIsVolatileAndDoesNotPersistMetadata(t *testing.T) 
 	}
 }
 
+func TestCreateProjectSessionPersistsMetadata(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.statePath = filepath.Join(t.TempDir(), "store.json")
+	m.projects = []string{"small"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/tmp/small"}}
+
+	updated, _ := m.Update(sessionCreatedMsg{
+		session: session{Name: "small--otter"},
+		project: "small",
+		label:   "otter",
+	})
+	got := updated.(model)
+	if _, exists := got.findSession("small--otter"); !exists {
+		t.Fatal("new project session was not added to the model")
+	}
+	state, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.SessionProjects["small--otter"] != "small" || state.SessionLabels["small--otter"] != "otter" {
+		t.Fatalf("saved metadata = %#v / %#v", state.SessionProjects, state.SessionLabels)
+	}
+}
+
 func TestCreateVolatileSessionClearsStaleMetadata(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "scratch-temp").(model)
 	m.sessionProjects = map[string]string{"notes": "old-project"}
-	m.sessionTypes = map[string]sessionType{"notes": sessionTypeAgent}
 	m.sessionLabels = map[string]string{"notes": "old label"}
 	m.statePath = t.TempDir() + "/store.json"
 	if err := m.saveState(); err != nil {
@@ -213,9 +236,6 @@ func TestCreateVolatileSessionClearsStaleMetadata(t *testing.T) {
 	if _, ok := got.sessionProjects["notes"]; ok {
 		t.Fatalf("stale project metadata remains: %#v", got.sessionProjects)
 	}
-	if _, ok := got.sessionTypes["notes"]; ok {
-		t.Fatalf("stale type metadata remains: %#v", got.sessionTypes)
-	}
 	if _, ok := got.sessionLabels["notes"]; ok {
 		t.Fatalf("stale label metadata remains: %#v", got.sessionLabels)
 	}
@@ -225,9 +245,6 @@ func TestCreateVolatileSessionClearsStaleMetadata(t *testing.T) {
 	}
 	if _, ok := state.SessionProjects["notes"]; ok {
 		t.Fatalf("stale project state remains: %#v", state.SessionProjects)
-	}
-	if _, ok := state.SessionTypes["notes"]; ok {
-		t.Fatalf("stale type state remains: %#v", state.SessionTypes)
 	}
 	if _, ok := state.SessionLabels["notes"]; ok {
 		t.Fatalf("stale label state remains: %#v", state.SessionLabels)
@@ -247,7 +264,6 @@ func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
 	m.selectedSession = "notes"
 	m.renameTarget = renameTarget{session: "notes"}
 	m.sessionProjects = map[string]string{"notes": "old-project", "dev": "other-project"}
-	m.sessionTypes = map[string]sessionType{"notes": sessionTypeAgent, "dev": sessionTypeAgent}
 	m.sessionLabels = map[string]string{"notes": "old-notes", "dev": "old-dev"}
 	m.statePath = t.TempDir() + "/store.json"
 	if err := m.saveState(); err != nil {
@@ -277,9 +293,6 @@ func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
 		if _, ok := got.sessionProjects[name]; ok {
 			t.Fatalf("stale project metadata remains for %s: %#v", name, got.sessionProjects)
 		}
-		if _, ok := got.sessionTypes[name]; ok {
-			t.Fatalf("stale type metadata remains for %s: %#v", name, got.sessionTypes)
-		}
 		if _, ok := got.sessionLabels[name]; ok {
 			t.Fatalf("stale label metadata remains for %s: %#v", name, got.sessionLabels)
 		}
@@ -291,9 +304,6 @@ func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
 	for _, name := range []string{"notes", "dev"} {
 		if _, ok := state.SessionProjects[name]; ok {
 			t.Fatalf("stale project state remains for %s: %#v", name, state.SessionProjects)
-		}
-		if _, ok := state.SessionTypes[name]; ok {
-			t.Fatalf("stale type state remains for %s: %#v", name, state.SessionTypes)
 		}
 		if _, ok := state.SessionLabels[name]; ok {
 			t.Fatalf("stale label state remains for %s: %#v", name, state.SessionLabels)

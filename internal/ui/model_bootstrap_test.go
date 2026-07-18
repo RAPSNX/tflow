@@ -11,6 +11,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	runtmux "tflow/internal/tmux"
 )
 
 func TestMenuStartsWithCurrentSessionSelected(t *testing.T) {
@@ -67,8 +69,8 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareStartup returned error: %v", err)
 	}
-	if !strings.HasSuffix(name, "-temp") {
-		t.Fatalf("name = %q, want temp session name", name)
+	if !runtmux.ContainsAnimalName(name) {
+		t.Fatalf("name = %q, want a plain animal name", name)
 	}
 
 	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{"create:" + name, "temporary:" + name + ":true:instance-1", "control:/tmp/tflow"}); got != want {
@@ -79,40 +81,17 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 func TestPrepareStartupRetriesWhenTempSessionNameAlreadyExists(t *testing.T) {
 	var calls []string
 	manager := fakeTmuxController{
-		listSessions: func() ([]session, error) {
-			return []session{{Name: "otter-temp"}}, nil
-		},
 		createSession: func(name, cwd, command string) (session, error) {
-			calls = append(calls, "create:"+name)
-			if name == "fox-temp" {
-				return session{}, fmt.Errorf("duplicate session: fox-temp")
+			calls = append(calls, name)
+			if len(calls) == 1 {
+				return session{}, fmt.Errorf("duplicate session")
 			}
 			return session{Name: name}, nil
 		},
-		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
-			calls = append(calls, fmt.Sprintf("temporary:%s:%t:%s", name, temporary, instanceID))
-			return nil
-		},
-		ensureControlMode: func(binaryPath string) error {
-			calls = append(calls, "control:"+binaryPath)
-			return nil
-		},
 	}
-
 	name, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1")
-	if err != nil {
-		t.Fatalf("prepareStartup returned error: %v", err)
-	}
-	if got, want := name, "lynx-temp"; got != want {
-		t.Fatalf("name = %q, want %q", got, want)
-	}
-	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{
-		"create:fox-temp",
-		"create:lynx-temp",
-		"temporary:lynx-temp:true:instance-1",
-		"control:/tmp/tflow",
-	}); got != want {
-		t.Fatalf("calls = %s, want %s", got, want)
+	if err != nil || len(calls) != 2 || calls[0] == calls[1] || name != calls[1] {
+		t.Fatalf("retry name = %q calls = %#v err = %v", name, calls, err)
 	}
 }
 
@@ -369,120 +348,55 @@ func TestProjectSwitchConfirmationRejectsLegacyYBinding(t *testing.T) {
 	}
 }
 
-func TestCreateProjectCreatesDefaultCodeSession(t *testing.T) {
-	tmp := t.TempDir()
-	var createdName, createdDir, createdCommand string
+func TestCreateProjectCreatesAnimalNamedSession(t *testing.T) {
+	var createdName, createdDir string
 	m := newModel(fakeTmuxController{
 		createSession: func(name, cwd, command string) (session, error) {
-			createdName = name
-			createdDir = cwd
-			createdCommand = command
-			return session{Name: name, Windows: 1}, nil
-		},
-		listSessions: func() ([]session, error) {
-			return []session{{Name: "small--code", Windows: 1}}, nil
-		},
-	}, "").(model)
-	m.statePath = tmp + "/store.json"
-	m.cwd = "/tmp/workspace"
-	m.mode = inputCreateProject
-	m.input.Prompt = "project: "
-	m.input.SetValue("Small")
-
-	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	pending := *(updated.(*model))
-	if cmd == nil {
-		t.Fatal("expected create project command")
-	}
-	msg := cmd().(projectCreatedMsg)
-	if msg.err != nil {
-		t.Fatalf("project create returned error: %v", msg.err)
-	}
-	if msg.config.Workdir != "/tmp/workspace" {
-		t.Fatalf("project workdir = %q, want current directory", msg.config.Workdir)
-	}
-	if createdName != "small--code" {
-		t.Fatalf("created session name = %q, want small--code", createdName)
-	}
-	if createdDir != "/tmp/workspace" {
-		t.Fatalf("created session dir = %q, want /tmp/workspace", createdDir)
-	}
-	if createdCommand != "" {
-		t.Fatalf("created session command = %q, want empty", createdCommand)
-	}
-
-	updated, followUp := pending.Update(msg)
-	got := updated.(model)
-	if followUp == nil {
-		t.Fatal("expected reload command")
-	}
-	if got.selectedProject != "small" {
-		t.Fatalf("selectedProject = %q, want small", got.selectedProject)
-	}
-	if got.selectedSession != "small--code" {
-		t.Fatalf("selectedSession = %q, want small--code", got.selectedSession)
-	}
-	if !containsString(got.projects, "small") {
-		t.Fatalf("projects = %#v, want small project", got.projects)
-	}
-	if got.sessionProjects["small--code"] != "small" {
-		t.Fatalf("sessionProjects[small--code] = %q, want small", got.sessionProjects["small--code"])
-	}
-	if got.sessionTypes["small--code"] != sessionTypeTerminal {
-		t.Fatalf("sessionTypes[small--code] = %q, want %q", got.sessionTypes["small--code"], sessionTypeTerminal)
-	}
-	if got.sessionLabel("small--code") != defaultProjectSessionName {
-		t.Fatalf("session label = %q, want %q", got.sessionLabel("small--code"), defaultProjectSessionName)
-	}
-	state, err := loadAppState(m.statePath)
-	if err != nil {
-		t.Fatalf("loadAppState returned error: %v", err)
-	}
-	if state.SessionProjects["small--code"] != "small" {
-		t.Fatalf("saved sessionProjects[small--code] = %q, want small", state.SessionProjects["small--code"])
-	}
-	if state.SessionLabels["small--code"] != defaultProjectSessionName {
-		t.Fatalf("saved session label = %q, want %q", state.SessionLabels["small--code"], defaultProjectSessionName)
-	}
-	if state.ProjectConfigs["small"].Name != "small" {
-		t.Fatalf("saved project config = %#v", state.ProjectConfigs["small"])
-	}
-	if got := state.ProjectConfigs["small"].Workdir; got != "/tmp/workspace" {
-		t.Fatalf("saved project workdir = %q, want /tmp/workspace", got)
-	}
-}
-
-func TestCreateProjectsUseDistinctScopedDefaultSessions(t *testing.T) {
-	var created []string
-	m := newModel(fakeTmuxController{
-		createSession: func(name, cwd, command string) (session, error) {
-			created = append(created, name)
+			createdName, createdDir = name, cwd
 			return session{Name: name, Windows: 1}, nil
 		},
 	}, "").(model)
 	m.statePath = t.TempDir() + "/store.json"
+	m.cwd = "/tmp/workspace"
+	m.mode = inputCreateProject
+	m.input.SetValue("small")
+	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected create command")
+	}
+	msg := cmd().(projectCreatedMsg)
+	if msg.err != nil {
+		t.Fatalf("create project: %v", msg.err)
+	}
+	if !runtmux.ContainsAnimalName(msg.label) || createdName != "small--"+msg.label || createdDir != "/tmp/workspace" {
+		t.Fatalf("created = %q in %q with label %q", createdName, createdDir, msg.label)
+	}
+	pending := *(updated.(*model))
+	updated, _ = pending.Update(msg)
+	got := updated.(model)
+	if got.sessionProjects[createdName] != "small" || got.sessionLabel(createdName) != msg.label {
+		t.Fatalf("project state = %#v labels = %#v", got.sessionProjects, got.sessionLabels)
+	}
+}
 
+func TestCreateProjectsUseAnimalNamedSessions(t *testing.T) {
+	var created []string
+	m := newModel(fakeTmuxController{createSession: func(name, cwd, command string) (session, error) {
+		created = append(created, name)
+		return session{Name: name}, nil
+	}}, "").(model)
+	m.statePath = t.TempDir() + "/store.json"
 	for _, project := range []string{"small", "garden"} {
 		m.mode = inputCreateProject
 		m.input.SetValue(project)
 		updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-		if cmd == nil {
-			t.Fatalf("expected create command for %s", project)
-		}
 		msg := cmd().(projectCreatedMsg)
-		if msg.err != nil {
-			t.Fatalf("create project %s: %v", project, msg.err)
-		}
 		pending := *(updated.(*model))
 		updated, _ = pending.Update(msg)
 		m = updated.(model)
 	}
-
-	if got, want := fmt.Sprint(created), fmt.Sprint([]string{"small--code", "garden--code"}); got != want {
-		t.Fatalf("created sessions = %s, want %s", got, want)
-	}
-	if m.sessionLabel("small--code") != "code" || m.sessionLabel("garden--code") != "code" {
-		t.Fatalf("labels = %#v", m.sessionLabels)
+	if len(created) != 2 || !strings.HasPrefix(created[0], "small--") || !strings.HasPrefix(created[1], "garden--") {
+		t.Fatalf("created sessions = %#v", created)
 	}
 }
 

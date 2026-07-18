@@ -1,9 +1,9 @@
 package store
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,54 +12,21 @@ import (
 )
 
 type AppState struct {
-	Projects        []string                 `json:"projects"`
-	SessionProjects map[string]string        `json:"session_projects"`
-	SessionTypes    map[string]string        `json:"session_types"`
-	SessionLabels   map[string]string        `json:"session_labels"`
-	ProjectConfigs  map[string]ProjectConfig `json:"project_configs"`
+	Projects        []string
+	SessionProjects map[string]string
+	SessionLabels   map[string]string
+	ProjectConfigs  map[string]ProjectConfig
 }
 
 type storedState struct {
 	ProjectOrder    []string                 `json:"project_order"`
 	Projects        map[string]storedProject `json:"projects"`
 	SessionProjects map[string]string        `json:"session_projects"`
-	SessionTypes    map[string]string        `json:"session_types"`
 	SessionLabels   map[string]string        `json:"session_labels"`
 }
 
 type storedProject struct {
-	Workdir     string         `json:"workdir,omitempty"`
-	Protect     bool           `json:"protect,omitempty"`
-	AgentBinary string         `json:"agent_binary,omitempty"`
-	Cluster     *storedCluster `json:"cluster,omitempty"`
-}
-
-type storedCluster struct {
-	Path          string `json:"path,omitempty"`
-	ConnectionCmd string `json:"connection_cmd,omitempty"`
-}
-
-type legacyStringListState struct {
-	Projects         []string          `json:"projects"`
-	SessionProjects  map[string]string `json:"session_projects"`
-	SessionTypes     map[string]string `json:"session_types"`
-	ProjectDirs      map[string]string `json:"project_dirs"`
-	ExpandedProjects map[string]bool   `json:"expanded_projects"`
-}
-
-type legacySessionSnapshotState struct {
-	Projects []legacyProject `json:"projects"`
-}
-
-type legacyProject struct {
-	Name     string          `json:"name"`
-	Sessions []legacySession `json:"sessions"`
-}
-
-type legacySession struct {
-	Name     string `json:"name"`
-	TmuxName string `json:"tmux_name"`
-	Type     string `json:"type"`
+	Workdir string `json:"workdir"`
 }
 
 func AppStatePath() string {
@@ -70,31 +37,25 @@ func LoadAppState(path string) (AppState, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			if legacyState, ok, err := loadLegacyState(path); ok {
-				return legacyState, err
-			}
 			return emptyAppState(), nil
 		}
 		return AppState{}, err
 	}
-
-	state, err := decodeAppState(data)
-	if err != nil {
-		return AppState{}, err
-	}
-	return state, nil
+	return decodeAppState(data)
 }
 
 func SaveAppState(path string, state AppState) error {
-	state = NormalizeAppState(state)
-	data, err := encodeAppState(state)
+	data, err := encodeAppState(NormalizeAppState(state))
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
 }
 
 func EnsureStartupState() error {
@@ -103,7 +64,7 @@ func EnsureStartupState() error {
 	if err != nil {
 		return err
 	}
-	return SaveAppState(path, NormalizeAppState(state))
+	return SaveAppState(path, state)
 }
 
 func NormalizeAppState(state AppState) AppState {
@@ -111,69 +72,58 @@ func NormalizeAppState(state AppState) AppState {
 	if state.SessionProjects == nil {
 		state.SessionProjects = map[string]string{}
 	}
-	if state.SessionTypes == nil {
-		state.SessionTypes = map[string]string{}
-	}
 	if state.SessionLabels == nil {
 		state.SessionLabels = map[string]string{}
 	}
 	if state.ProjectConfigs == nil {
 		state.ProjectConfigs = map[string]ProjectConfig{}
 	}
-	for _, name := range sortedStringKeys(state.SessionProjects) {
-		project := NormalizeProjectName(state.SessionProjects[name])
-		if project == "" {
-			delete(state.SessionProjects, name)
-		} else {
-			state.SessionProjects[name] = project
-			if !ContainsString(state.Projects, project) {
-				state.Projects = append(state.Projects, project)
-			}
+
+	normalizedProjects := map[string]ProjectConfig{}
+	for _, project := range sortedStringKeys(state.ProjectConfigs) {
+		cfg := NormalizeProjectConfig(state.ProjectConfigs[project])
+		name := NormalizeProjectName(project)
+		if cfg.Name != "" {
+			name = cfg.Name
 		}
-		if _, ok := state.SessionTypes[name]; !ok {
-			state.SessionTypes[name] = "terminal"
-		}
-		if _, ok := state.SessionLabels[name]; !ok {
-			state.SessionLabels[name] = sessionLabelFromKey(name, project)
-		}
-	}
-	for _, name := range sortedStringKeys(state.SessionTypes) {
-		if _, ok := state.SessionLabels[name]; !ok {
-			state.SessionLabels[name] = strings.TrimSpace(name)
-		}
-	}
-	for _, name := range sortedStringKeys(state.SessionLabels) {
-		label := strings.TrimSpace(state.SessionLabels[name])
-		if strings.TrimSpace(name) == "" || label == "" {
-			delete(state.SessionLabels, name)
+		if name == "" {
 			continue
 		}
-		state.SessionLabels[name] = label
+		cfg.Name = name
+		normalizedProjects[name] = cfg
+		if !ContainsString(state.Projects, name) {
+			state.Projects = append(state.Projects, name)
+		}
 	}
 
-	normalizedConfigs := map[string]ProjectConfig{}
-	for _, project := range sortedStringKeys(state.ProjectConfigs) {
-		cfg := state.ProjectConfigs[project]
-		normalized := NormalizeProjectName(project)
-		if cfg.Name != "" {
-			normalized = NormalizeProjectName(cfg.Name)
-		}
-		if normalized == "" {
+	normalizedSessions := map[string]string{}
+	normalizedLabels := map[string]string{}
+	for _, name := range sortedStringKeys(state.SessionProjects) {
+		name = strings.TrimSpace(name)
+		project := NormalizeProjectName(state.SessionProjects[name])
+		if name == "" || project == "" {
 			continue
 		}
-		cfg.Name = normalized
-		normalizedConfigs[normalized] = NormalizeProjectConfig(cfg)
-		if !ContainsString(state.Projects, normalized) {
-			state.Projects = append(state.Projects, normalized)
+		normalizedSessions[name] = project
+		if !ContainsString(state.Projects, project) {
+			state.Projects = append(state.Projects, project)
 		}
+		label := strings.TrimSpace(state.SessionLabels[name])
+		if label == "" {
+			label = sessionLabelFromKey(name, project)
+		}
+		normalizedLabels[name] = label
 	}
-	state.ProjectConfigs = normalizedConfigs
+
 	state.Projects = NormalizeProjectList(state.Projects)
 	for _, project := range state.Projects {
-		cfg := NormalizeProjectConfig(state.ProjectConfigs[project])
+		cfg := normalizedProjects[project]
 		cfg.Name = project
-		state.ProjectConfigs[project] = cfg
+		normalizedProjects[project] = NormalizeProjectConfig(cfg)
 	}
+	state.ProjectConfigs = normalizedProjects
+	state.SessionProjects = normalizedSessions
+	state.SessionLabels = normalizedLabels
 	return state
 }
 
@@ -216,9 +166,9 @@ func NormalizeProjectName(name string) string {
 		case unicode.IsLetter(r), unicode.IsDigit(r):
 			builder.WriteRune(r)
 			lastDash = false
-		case r == '-', r == '_', unicode.IsSpace(r), r == '/', r == '.':
+		case r == 45, r == 95, unicode.IsSpace(r), r == 47, r == 46:
 			if !lastDash && builder.Len() > 0 {
-				builder.WriteByte('-')
+				builder.WriteByte(45)
 				lastDash = true
 			}
 		}
@@ -240,9 +190,7 @@ func sortedStringKeys[V any](values map[string]V) []string {
 	for key := range values {
 		keys = append(keys, key)
 	}
-	if len(keys) > 1 {
-		sort.Strings(keys)
-	}
+	sort.Strings(keys)
 	return keys
 }
 
@@ -250,183 +198,46 @@ func emptyAppState() AppState {
 	return AppState{
 		Projects:        []string{},
 		SessionProjects: map[string]string{},
-		SessionTypes:    map[string]string{},
 		SessionLabels:   map[string]string{},
 		ProjectConfigs:  map[string]ProjectConfig{},
-	}
-}
-
-func decodeAppState(data []byte) (AppState, error) {
-	var envelope struct {
-		Projects json.RawMessage `json:"projects"`
-	}
-	if err := json.Unmarshal(data, &envelope); err != nil {
-		return AppState{}, err
-	}
-
-	projectsValue := bytes.TrimSpace(envelope.Projects)
-	if len(projectsValue) == 0 || bytes.Equal(projectsValue, []byte("null")) || projectsValue[0] == '{' {
-		return decodeStoredState(data)
-	}
-	if projectsValue[0] != '[' {
-		return AppState{}, fmt.Errorf("invalid projects field")
-	}
-
-	elementKind, err := arrayElementKind(projectsValue)
-	if err != nil {
-		return AppState{}, err
-	}
-	switch elementKind {
-	case '"', 0:
-		return decodeLegacyStringListState(data)
-	case '{':
-		return decodeLegacySessionSnapshotState(data)
-	default:
-		return AppState{}, fmt.Errorf("unsupported projects array format")
 	}
 }
 
 func encodeAppState(state AppState) ([]byte, error) {
 	stored := storedState{
 		ProjectOrder:    append([]string(nil), state.Projects...),
-		Projects:        map[string]storedProject{},
+		Projects:        make(map[string]storedProject, len(state.Projects)),
 		SessionProjects: cloneStringMap(state.SessionProjects),
-		SessionTypes:    cloneStringMap(state.SessionTypes),
 		SessionLabels:   cloneStringMap(state.SessionLabels),
 	}
-
 	for _, project := range state.Projects {
-		cfg := NormalizeProjectConfig(state.ProjectConfigs[project])
-		projectState := storedProject{
-			Workdir:     cfg.Workdir,
-			Protect:     cfg.Protect,
-			AgentBinary: cfg.AgentBinary,
-		}
-		if cfg.Cluster.Path != "" || cfg.Cluster.ConnectionCmd != "" {
-			projectState.Cluster = &storedCluster{
-				Path:          cfg.Cluster.Path,
-				ConnectionCmd: cfg.Cluster.ConnectionCmd,
-			}
-		}
-		stored.Projects[project] = projectState
+		stored.Projects[project] = storedProject{Workdir: state.ProjectConfigs[project].Workdir}
 	}
-
 	return json.MarshalIndent(stored, "", "  ")
 }
 
-func decodeStoredState(data []byte) (AppState, error) {
+func decodeAppState(data []byte) (AppState, error) {
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
 	var stored storedState
-	if err := json.Unmarshal(data, &stored); err != nil {
-		return AppState{}, err
+	if err := decoder.Decode(&stored); err != nil {
+		return AppState{}, fmt.Errorf("invalid state: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return AppState{}, fmt.Errorf("invalid state: expected one JSON object")
+		}
+		return AppState{}, fmt.Errorf("invalid state: %w", err)
 	}
 
 	state := emptyAppState()
 	state.Projects = append(state.Projects, stored.ProjectOrder...)
-
-	extraProjects := make([]string, 0, len(stored.Projects))
 	for project, cfg := range stored.Projects {
-		project = NormalizeProjectName(project)
-		if project == "" {
-			continue
-		}
-		extraProjects = append(extraProjects, project)
-		projectConfig := ProjectConfig{
-			Name:        project,
-			Workdir:     cfg.Workdir,
-			Protect:     cfg.Protect,
-			AgentBinary: cfg.AgentBinary,
-		}
-		if cfg.Cluster != nil {
-			projectConfig.Cluster = ClusterConfig{
-				Path:          cfg.Cluster.Path,
-				ConnectionCmd: cfg.Cluster.ConnectionCmd,
-			}
-		}
-		state.ProjectConfigs[project] = NormalizeProjectConfig(projectConfig)
+		state.ProjectConfigs[project] = ProjectConfig{Name: project, Workdir: cfg.Workdir}
 	}
-	sort.Strings(extraProjects)
-	for _, project := range extraProjects {
-		if !ContainsString(state.Projects, project) {
-			state.Projects = append(state.Projects, project)
-		}
-	}
-
-	for name, project := range stored.SessionProjects {
-		state.SessionProjects[name] = project
-	}
-	for name, sessionType := range stored.SessionTypes {
-		state.SessionTypes[name] = sessionType
-	}
-	for name, label := range stored.SessionLabels {
-		state.SessionLabels[name] = label
-	}
-
+	state.SessionProjects = cloneStringMap(stored.SessionProjects)
+	state.SessionLabels = cloneStringMap(stored.SessionLabels)
 	return NormalizeAppState(state), nil
-}
-
-func decodeLegacyStringListState(data []byte) (AppState, error) {
-	var legacy legacyStringListState
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return AppState{}, err
-	}
-	return NormalizeAppState(AppState{
-		Projects:        append([]string(nil), legacy.Projects...),
-		SessionProjects: cloneStringMap(legacy.SessionProjects),
-		SessionTypes:    cloneStringMap(legacy.SessionTypes),
-		SessionLabels:   map[string]string{},
-		ProjectConfigs:  legacyProjectConfigs(legacy.ProjectDirs),
-	}), nil
-}
-
-func decodeLegacySessionSnapshotState(data []byte) (AppState, error) {
-	var legacy legacySessionSnapshotState
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return AppState{}, err
-	}
-
-	state := emptyAppState()
-	for _, project := range legacy.Projects {
-		name := NormalizeProjectName(project.Name)
-		if name == "" {
-			continue
-		}
-		state.Projects = append(state.Projects, name)
-		for _, session := range project.Sessions {
-			sessionKey := strings.TrimSpace(session.TmuxName)
-			if sessionKey == "" {
-				sessionKey = strings.TrimSpace(session.Name)
-			}
-			if sessionKey == "" {
-				continue
-			}
-			state.SessionProjects[sessionKey] = name
-			if label := strings.TrimSpace(session.Name); label != "" {
-				state.SessionLabels[sessionKey] = label
-			}
-			if strings.TrimSpace(session.Type) == "" {
-				state.SessionTypes[sessionKey] = "terminal"
-				continue
-			}
-			state.SessionTypes[sessionKey] = strings.TrimSpace(session.Type)
-		}
-	}
-
-	return NormalizeAppState(state), nil
-}
-
-func arrayElementKind(raw json.RawMessage) (byte, error) {
-	var elements []json.RawMessage
-	if err := json.Unmarshal(raw, &elements); err != nil {
-		return 0, err
-	}
-	for _, element := range elements {
-		element = bytes.TrimSpace(element)
-		if len(element) == 0 {
-			continue
-		}
-		return element[0], nil
-	}
-	return 0, nil
 }
 
 func cloneStringMap(values map[string]string) map[string]string {
@@ -440,43 +251,6 @@ func cloneStringMap(values map[string]string) map[string]string {
 	return cloned
 }
 
-func legacyProjectConfigs(projectDirs map[string]string) map[string]ProjectConfig {
-	configs := map[string]ProjectConfig{}
-	for project, dir := range projectDirs {
-		project = NormalizeProjectName(project)
-		dir = strings.TrimSpace(dir)
-		if project == "" || dir == "" {
-			continue
-		}
-		configs[project] = NormalizeProjectConfig(ProjectConfig{
-			Name:    project,
-			Workdir: dir,
-		})
-	}
-	return configs
-}
-
-func loadLegacyState(path string) (AppState, bool, error) {
-	if path != AppStatePath() {
-		return AppState{}, false, nil
-	}
-
-	legacyPath := legacyAppStatePath()
-	data, err := os.ReadFile(legacyPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return AppState{}, false, nil
-		}
-		return AppState{}, true, err
-	}
-
-	state, err := decodeAppState(data)
-	if err != nil {
-		return AppState{}, true, fmt.Errorf("decode legacy state %q: %w", legacyPath, err)
-	}
-	return state, true, nil
-}
-
 func stateHomeDir() string {
 	if dir := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); dir != "" {
 		return dir
@@ -485,18 +259,4 @@ func stateHomeDir() string {
 		return filepath.Join(home, ".local", "state")
 	}
 	return filepath.Join(".", ".local", "state")
-}
-
-func legacyAppStatePath() string {
-	return filepath.Join(configHomeDir(), "tflow", "state.json")
-}
-
-func configHomeDir() string {
-	if dir, err := os.UserConfigDir(); err == nil && strings.TrimSpace(dir) != "" {
-		return dir
-	}
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, ".config")
-	}
-	return "."
 }

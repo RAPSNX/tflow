@@ -7,23 +7,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func normalizeSessionTypes(raw map[string]string) map[string]sessionType {
-	result := make(map[string]sessionType, len(raw))
-	for name := range raw {
-		result[name] = sessionTypeTerminal
-	}
-	return result
-}
-
-func (m model) sessionType(name string) sessionType { return sessionTypeTerminal }
-
-func (m *model) setSessionType(name string, value sessionType) {
-	if m.sessionTypes == nil {
-		m.sessionTypes = map[string]sessionType{}
-	}
-	m.sessionTypes[name] = sessionTypeTerminal
-}
-
 func (m model) sessionLabel(name string) string {
 	if m.sessionLabels != nil {
 		if label := strings.TrimSpace(m.sessionLabels[name]); label != "" {
@@ -45,10 +28,6 @@ func (m *model) clearSessionMetadata(names ...string) bool {
 	for _, name := range names {
 		if _, ok := m.sessionProjects[name]; ok {
 			delete(m.sessionProjects, name)
-			changed = true
-		}
-		if _, ok := m.sessionTypes[name]; ok {
-			delete(m.sessionTypes, name)
 			changed = true
 		}
 		if _, ok := m.sessionLabels[name]; ok {
