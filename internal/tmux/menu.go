@@ -152,7 +152,7 @@ func (m Manager) resolveInstanceID(currentSession, currentClient string) (string
 	if instanceID != "" {
 		return instanceID, nil
 	}
-	return strings.TrimSpace(os.Getenv(CurrentInstanceEnv)), nil
+	return "", nil
 }
 
 func (m Manager) currentValue(format string) (string, error) {

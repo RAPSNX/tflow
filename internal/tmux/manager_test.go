@@ -112,13 +112,11 @@ func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
 		t.Fatalf("SetSessionTemporary returned error: %v", err)
 	}
 
-	wants := [][]string{
+	for _, want := range [][]string{
 		{"set-option", "-t", "otter-temp", "destroy-unattached", "off"},
-		{"set-hook", "-t", "otter-temp", "client-attached", "set-option -t 'otter-temp' destroy-unattached on; set-hook -u -t 'otter-temp' client-attached"},
 		{"set-option", "-t", "otter-temp", "@tflow-temp", "1"},
 		{"set-option", "-t", "otter-temp", "@tflow-instance", "instance-1"},
-	}
-	for _, want := range wants {
+	} {
 		found := false
 		for _, call := range calls {
 			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
@@ -128,6 +126,29 @@ func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("missing call %v in %#v", want, calls)
+		}
+	}
+
+	var hook string
+	for _, call := range calls {
+		if len(call) == 5 && call[0] == "set-hook" && call[1] == "-t" && call[2] == "otter-temp" && call[3] == "client-attached" {
+			hook = call[4]
+			break
+		}
+	}
+	if hook == "" {
+		t.Fatalf("missing client-attached hook in %#v", calls)
+	}
+	for _, want := range []string{
+		"run-shell",
+		"#{hook_client}",
+		menuInstancePrefix,
+		"instance-1",
+		"destroy-unattached",
+		"client-attached",
+	} {
+		if !strings.Contains(hook, want) {
+			t.Fatalf("hook = %q, want %q", hook, want)
 		}
 	}
 }

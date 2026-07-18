@@ -81,7 +81,7 @@ func (m Manager) SetSessionTemporary(name string, temporary bool, instanceID str
 		return err
 	}
 	if temporary {
-		hook := "set-option -t " + ShellQuote(name) + " destroy-unattached on; set-hook -u -t " + ShellQuote(name) + " client-attached"
+		hook := rememberClientInstanceHook(name, instanceID)
 		if _, err := m.runner()("set-hook", "-t", name, "client-attached", hook); err != nil {
 			return err
 		}
@@ -95,6 +95,16 @@ func (m Manager) SetSessionTemporary(name string, temporary bool, instanceID str
 	}
 	_, err := m.runner()("set-option", "-t", name, instanceMarker, instanceID)
 	return err
+}
+
+func rememberClientInstanceHook(sessionName, instanceID string) string {
+	script := strings.Join([]string{
+		"client_key=$(printf '%s' '#{hook_client}' | tr -c '[:alnum:]' '_')",
+		"tmux -L " + ShellQuote(socketName) + " set-environment -gh " + `"` + menuInstancePrefix + `${client_key}" ` + ShellQuote(instanceID) + " >/dev/null 2>&1",
+		shellTmuxCommand("set-option", "-t", sessionName, "destroy-unattached", "on") + " >/dev/null 2>&1",
+		shellTmuxCommand("set-hook", "-u", "-t", sessionName, "client-attached") + " >/dev/null 2>&1",
+	}, "; ")
+	return "run-shell " + ShellQuote(script)
 }
 
 func (Manager) AttachCommand(name string) (*exec.Cmd, error) {

@@ -320,6 +320,77 @@ func TestQuitAllPrefersStoredClientInstanceOverAmbientEnv(t *testing.T) {
 	}
 }
 
+func TestToggleMenuDoesNotFallBackToAmbientEnvWithoutSessionOrClientInstance(t *testing.T) {
+	t.Setenv(CurrentInstanceEnv, "instance-stale")
+
+	var popupArgs []string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "display-message":
+				switch args[2] {
+				case "#{session_name}":
+					return "dev", nil
+				case "#{client_name}":
+					return "@2", nil
+				default:
+					return "", fmt.Errorf("unexpected display-message format: %v", args)
+				}
+			case "show-options", "show-environment", "set-environment":
+				return "", nil
+			case "display-popup":
+				popupArgs = append([]string(nil), args...)
+				return "", nil
+			default:
+				return "", fmt.Errorf("unexpected command: %v", args)
+			}
+		},
+	}
+
+	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
+		t.Fatalf("ToggleMenu returned error: %v", err)
+	}
+
+	got := strings.Join(popupArgs, " ")
+	if strings.Contains(got, "-e "+CurrentInstanceEnv+"=instance-stale") {
+		t.Fatalf("display-popup command = %q, should not use ambient instance env without session or client ownership", got)
+	}
+}
+
+func TestQuitAllDoesNotFallBackToAmbientEnvWithoutSessionOrClientInstance(t *testing.T) {
+	t.Setenv(CurrentSessionEnv, "dev")
+	t.Setenv(CurrentClientEnv, "@2")
+	t.Setenv(CurrentInstanceEnv, "instance-stale")
+
+	var killed []string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "show-options", "show-environment", "run-shell":
+				return "", nil
+			case "list-sessions":
+				return strings.Join([]string{
+					"otter-temp\t1\t0\t1\tinstance-stale",
+					"fox-temp\t1\t0\t1\tinstance-live",
+				}, "\n"), nil
+			case "kill-session":
+				killed = append(killed, args[2])
+				return "", nil
+			default:
+				return "", nil
+			}
+		},
+	}
+
+	if err := manager.QuitAll(); err != nil {
+		t.Fatalf("QuitAll returned error: %v", err)
+	}
+
+	if len(killed) != 0 {
+		t.Fatalf("killed = %#v, want none", killed)
+	}
+}
+
 func TestToggleMenuUnmarksPopupIfOpenFails(t *testing.T) {
 	var calls [][]string
 	manager := Manager{
