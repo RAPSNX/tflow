@@ -21,6 +21,7 @@ type inputMode int
 const (
 	inputNone inputMode = iota
 	inputNew
+	inputHelp
 	inputCreateSession
 	inputCreateProject
 	inputSwitchProject

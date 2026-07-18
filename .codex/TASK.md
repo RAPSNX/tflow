@@ -27,13 +27,13 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 - [x] Render a flat session list for the active project context.
 - [x] Support `j` and `k` navigation with `Enter` switching to the selected session and closing the popup.
 - [x] Close the popup with `Ctrl+C` and cancel an active prompt or confirmation with `Esc`.
-- [ ] Center the `TFLOW` header and remove project/session metadata from the popup header.
-- [ ] Remove the always-visible shortcut line from the normal sidebar.
-- [ ] Add a `?` help view containing every supported shortcut on its own row.
-- [ ] Make `Esc` return from help to the session list without closing the popup.
-- [ ] Keep the inline command/status area available without showing metadata or help by default.
-- [ ] Remove undocumented normal-mode aliases and legacy confirmation shortcuts so key dispatch and help agree exactly.
-- [ ] Add table-driven coverage for every documented key and for removed bindings.
+- [x] Center the `TFLOW` header and remove project/session metadata from the popup header.
+- [x] Remove the always-visible shortcut line from the normal sidebar.
+- [x] Add a `?` help view containing every supported shortcut on its own row.
+- [x] Make `Esc` return from help to the session list without closing the popup.
+- [x] Keep the inline command/status area available without showing metadata or help by default.
+- [x] Remove undocumented normal-mode aliases and legacy confirmation shortcuts so key dispatch and help agree exactly.
+- [x] Add table-driven coverage for every documented key and for removed bindings.
 
 ## Projects and sessions
 
@@ -91,7 +91,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 ## Verification
 
 - [x] Add regression tests for global quit invocation and instance-scoped volatile session creation and cleanup.
-- [ ] Add rendering tests for the centered header, metadata-free default sidebar, and one-shortcut-per-row help view.
+- [x] Add rendering tests for the centered header, metadata-free default sidebar, and one-shortcut-per-row help view.
 - [ ] Add context tests covering volatile startup with existing projects and project creation without implicit switching.
 - [ ] Add tests for persisted project workdirs and final-session project deletion.
 - [ ] Add strict-store tests for every removed field, unknown fields, and the canonical round trip.
