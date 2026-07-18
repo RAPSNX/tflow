@@ -134,7 +134,7 @@ func NormalizeAppState(state AppState) AppState {
 			state.SessionTypes[name] = "terminal"
 		}
 		if _, ok := state.SessionLabels[name]; !ok {
-			state.SessionLabels[name] = strings.TrimSpace(name)
+			state.SessionLabels[name] = sessionLabelFromKey(name, project)
 		}
 	}
 	for _, name := range sortedStringKeys(state.SessionTypes) {
@@ -175,6 +175,19 @@ func NormalizeAppState(state AppState) AppState {
 		state.ProjectConfigs[project] = cfg
 	}
 	return state
+}
+
+func sessionLabelFromKey(name, project string) string {
+	name = strings.TrimSpace(name)
+	project = NormalizeProjectName(project)
+	if project == "" {
+		return name
+	}
+	prefix := project + "--"
+	if strings.HasPrefix(name, prefix) {
+		return strings.TrimPrefix(name, prefix)
+	}
+	return name
 }
 
 func NormalizeProjectList(projects []string) []string {

@@ -95,8 +95,8 @@ func TestLoadAppStateMigratesMissingSessionLabels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.SessionLabels["small--code"] != "small--code" {
-		t.Fatalf("migrated label = %q", state.SessionLabels["small--code"])
+	if state.SessionLabels["small--code"] != "code" {
+		t.Fatalf("migrated label = %q, want code", state.SessionLabels["small--code"])
 	}
 }
 
