@@ -104,7 +104,7 @@ func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	}
 }
 
-func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
+func TestSetSessionTemporaryKeepsSessionAliveWhenUnattached(t *testing.T) {
 	var calls [][]string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
@@ -119,6 +119,7 @@ func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
 
 	for _, want := range [][]string{
 		{"set-option", "-t", "otter-temp", "destroy-unattached", "off"},
+		{"set-hook", "-u", "-t", "otter-temp", "client-attached"},
 		{"set-option", "-t", "otter-temp", "@tflow-temp", "1"},
 		{"set-option", "-t", "otter-temp", "@tflow-instance", "instance-1"},
 	} {
@@ -134,26 +135,9 @@ func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
 		}
 	}
 
-	var hook string
 	for _, call := range calls {
-		if len(call) == 5 && call[0] == "set-hook" && call[1] == "-t" && call[2] == "otter-temp" && call[3] == "client-attached" {
-			hook = call[4]
-			break
-		}
-	}
-	if hook == "" {
-		t.Fatalf("missing client-attached hook in %#v", calls)
-	}
-	for _, want := range []string{
-		"run-shell",
-		"#{hook_client}",
-		menuInstancePrefix,
-		"instance-1",
-		"destroy-unattached",
-		"client-attached",
-	} {
-		if !strings.Contains(hook, want) {
-			t.Fatalf("hook = %q, want %q", hook, want)
+		if len(call) >= 4 && call[0] == "set-hook" && call[1] == "-t" && call[2] == "otter-temp" && call[3] == "client-attached" {
+			t.Fatalf("installed destructive client-attached hook: %#v", call)
 		}
 	}
 }
