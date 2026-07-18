@@ -255,7 +255,10 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 			m.status = ""
 			return m, nil
 		}
-		project := normalizeProjectName(m.sessionProjects[target.session])
+		project := ""
+		if selected, ok := m.findSession(target.session); !ok || !selected.Temporary {
+			project = normalizeProjectName(m.sessionProjects[target.session])
+		}
 		if m.hasSessionLabel(project, label, target.session) {
 			m.status = "Session name already exists in this project."
 			return m, nil

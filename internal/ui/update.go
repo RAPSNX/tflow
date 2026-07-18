@@ -165,6 +165,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		oldSession, wasVolatile := m.findSession(msg.oldName)
 		if wasVolatile && oldSession.Temporary {
+			delete(m.sessionProjects, msg.oldName)
+			delete(m.sessionProjects, msg.newName)
+			delete(m.sessionTypes, msg.oldName)
+			delete(m.sessionTypes, msg.newName)
+			delete(m.sessionLabels, msg.oldName)
+			delete(m.sessionLabels, msg.newName)
 			for index := range m.sessions {
 				if m.sessions[index].Name == msg.oldName {
 					m.sessions[index].Name = msg.newName

@@ -323,6 +323,54 @@ func TestCreateVolatileSessionClearsStaleMetadata(t *testing.T) {
 	}
 }
 
+func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
+	var renamed []string
+	m := newModel(fakeTmuxController{
+		renameSession: func(oldName, newName string) error {
+			renamed = []string{oldName, newName}
+			return nil
+		},
+	}, "notes").(model)
+	m.sessions = []session{{Name: "notes", Temporary: true, Instance: "instance-1"}}
+	m.currentSession = "notes"
+	m.selectedSession = "notes"
+	m.renameTarget = renameTarget{session: "notes"}
+	m.sessionProjects = map[string]string{"notes": "old-project", "dev": "other-project"}
+	m.sessionTypes = map[string]sessionType{"notes": sessionTypeAgent, "dev": sessionTypeAgent}
+	m.sessionLabels = map[string]string{"notes": "old-notes", "dev": "old-dev"}
+	m.input.SetValue("dev")
+
+	updated, cmd := m.commitRename()
+	if cmd == nil {
+		t.Fatal("expected rename command")
+	}
+	msg := cmd().(sessionRenamedMsg)
+	if msg.err != nil {
+		t.Fatalf("rename returned error: %v", msg.err)
+	}
+	if got, want := fmt.Sprint(renamed), "[notes dev]"; got != want {
+		t.Fatalf("renameSession calls = %s, want %s", got, want)
+	}
+
+	pending := *(updated.(*model))
+	updated, followUp := pending.Update(msg)
+	if followUp == nil {
+		t.Fatal("expected reload command after rename")
+	}
+	got := updated.(model)
+	for _, name := range []string{"notes", "dev"} {
+		if _, ok := got.sessionProjects[name]; ok {
+			t.Fatalf("stale project metadata remains for %s: %#v", name, got.sessionProjects)
+		}
+		if _, ok := got.sessionTypes[name]; ok {
+			t.Fatalf("stale type metadata remains for %s: %#v", name, got.sessionTypes)
+		}
+		if _, ok := got.sessionLabels[name]; ok {
+			t.Fatalf("stale label metadata remains for %s: %#v", name, got.sessionLabels)
+		}
+	}
+}
+
 func TestVolatileContextShowsOnlyCurrentInstanceSessions(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "scratch-temp").(model)
 	m.instanceID = "instance-1"
