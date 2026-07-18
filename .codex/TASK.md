@@ -40,10 +40,10 @@ Every previously open task is grouped below for a dedicated implementation sessi
 
 ### Session 4: Packaging and release verification
 
-- [ ] Remove Home Manager project settings and `home.file` generation for `store.json`; keep the module package-only.
-- [ ] Fix the Nix build target to compile `cmd/main.go` and install the executable as `bin/tflow`.
-- [ ] Add Home Manager evaluation coverage confirming it does not manage `store.json`.
-- [ ] Run `nix build --no-link .#tflow` and verify the output contains `bin/tflow`.
+- [x] Remove Home Manager project settings and `home.file` generation for `store.json`; keep the module package-only.
+- [x] Fix the Nix build target to compile `cmd/main.go` and install the executable as `bin/tflow`.
+- [x] Add Home Manager evaluation coverage confirming it does not manage `store.json`.
+- [x] Run `nix build --no-link .#tflow` and verify the output contains `bin/tflow`.
 
 ### Session 5: Post-feature refactoring
 
