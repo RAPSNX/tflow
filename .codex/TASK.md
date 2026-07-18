@@ -100,7 +100,6 @@
 ## Project creation and switching
 
 - [x] Create a default `code` session when creating a project.
-- [ ] Define a project-scoped tmux session naming scheme so multiple projects can each keep a default `code` session without cross-project name collisions.
 - [x] Support `p` to start project switching from the command line.
 - [x] Show all existing projects in a readable newline-separated list.
 - [x] Accept a unique typed prefix and switch on `Enter`.
@@ -110,6 +109,7 @@
 
 ## Session and project management
 
+- [ ] Define a project-scoped tmux session naming scheme so multiple projects can each keep a default `code` session without cross-project name collisions.
 - [ ] Support `n` to create a new session.
 - [ ] Start project sessions in the project `workdir` when one is set.
 - [ ] Start non-project sessions in the current working directory.
