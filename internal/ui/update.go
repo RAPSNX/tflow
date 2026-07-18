@@ -99,40 +99,70 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.mode = inputNone
+		if !containsSessionName(m.sessions, msg.session.Name) {
+			msg.session.Temporary = msg.volatile
+			m.sessions = append(m.sessions, msg.session)
+		}
+		if err := m.syncTmuxSessionProjects(); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
 		m.err = nil
 		m.status = ""
-		return m, m.loadSessionsCmd()
+		return m.switchSelectedSession()
 	case sessionKilledMsg:
 		if msg.err != nil {
 			m.err = msg.err
 			m.status = msg.err.Error()
 			return m, nil
 		}
-		deleted, wasVolatile := m.findSession(msg.name)
-		project := normalizeProjectName(m.sessionProjects[msg.name])
+		project := msg.project
+		if project == "" {
+			project = normalizeProjectName(m.sessionProjects[msg.name])
+		}
+		deleted, found := m.findSession(msg.name)
+		deletingProject := found && !deleted.Temporary && project != "" && m.isLastProjectSession(project, msg.name)
+		m.sessions = filterSessions(m.sessions, func(s session) bool { return s.Name != msg.name })
 		delete(m.sessionProjects, msg.name)
 		delete(m.sessionTypes, msg.name)
 		delete(m.sessionLabels, msg.name)
 		if m.selectedSession == msg.name {
 			m.selectedSession = ""
 		}
-		if !wasVolatile || !deleted.Temporary {
-			if project != "" && m.isLastProjectSession(project, msg.name) {
-				m.projects = removeProject(m.projects, project)
-				delete(m.projectConfigs, project)
-				if m.selectedProject == project {
-					m.selectedProject = ""
-				}
+		if deletingProject {
+			m.projects = removeProject(m.projects, project)
+			delete(m.projectConfigs, project)
+			if m.selectedProject == project {
+				m.selectedProject = ""
 			}
+		}
+		if found && !deleted.Temporary {
 			if err := m.saveState(); err != nil {
 				m.err = err
 				m.status = err.Error()
 				return m, nil
 			}
 		}
+		if err := m.syncTmuxSessionProjects(); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
 		m.err = nil
 		m.status = ""
-		return m, m.loadSessionsCmd()
+		if found && deleted.Temporary {
+			m.syncSelection()
+			if _, currentExists := m.currentSessionInfo(); currentExists {
+				return m, m.closeMenuCmd()
+			}
+			return m.createVolatileFallback()
+		}
+		nextProject := m.nextProjectAfter(project, deletingProject)
+		if nextProject != "" {
+			return m.switchToProject(nextProject)
+		}
+		return m.createVolatileFallback()
 	case projectCreatedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -171,7 +201,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.status = ""
-		return m, m.loadSessionsCmd()
+		return m, m.closeMenuCmd()
 	case sessionRenamedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -200,9 +230,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.mode = inputNone
 			m.renameTarget = renameTarget{}
+			if err := m.syncTmuxSessionProjects(); err != nil {
+				m.err = err
+				m.status = err.Error()
+				return m, nil
+			}
 			m.err = nil
 			m.status = ""
-			return m, m.loadSessionsCmd()
+			return m, m.closeMenuCmd()
 		}
 		project := normalizeProjectName(m.sessionProjects[msg.oldName])
 		delete(m.sessionProjects, msg.oldName)
@@ -223,6 +258,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.currentSession == msg.oldName {
 			m.currentSession = msg.newName
 		}
+		for index := range m.sessions {
+			if m.sessions[index].Name == msg.oldName {
+				m.sessions[index].Name = msg.newName
+			}
+		}
 		m.mode = inputNone
 		m.renameTarget = renameTarget{}
 		if err := m.saveState(); err != nil {
@@ -230,9 +270,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = err.Error()
 			return m, nil
 		}
+		if err := m.syncTmuxSessionProjects(); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
 		m.err = nil
 		m.status = ""
-		return m, m.loadSessionsCmd()
+		return m, m.closeMenuCmd()
 	case projectRenamedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -270,7 +315,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.status = ""
-		return m, nil
+		return m, m.closeMenuCmd()
 	case projectDeletedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -452,6 +497,12 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case inputSwitchProject:
 		switch msg.Type {
+		case tea.KeyDown:
+			m.shiftProjectSwitch(1)
+			return m, nil
+		case tea.KeyUp:
+			m.shiftProjectSwitch(-1)
+			return m, nil
 		case tea.KeyEsc:
 			m.mode = inputNone
 			m.input.Blur()
@@ -464,6 +515,7 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		next, cmd := m.input.Update(msg)
 		m.input = next
+		m.projectSwitchIndex = 0
 		return m, cmd
 	case inputConfirmDelete:
 		switch msg.Type {

@@ -32,10 +32,11 @@ func (m *model) beginProjectSwitch() (tea.Model, tea.Cmd) {
 	}
 	m.mode = inputSwitchProject
 	m.switchProjectTarget = ""
+	m.projectSwitchIndex = 0
 	m.input.Prompt = "project: "
 	m.input.SetValue("")
 	m.input.Focus()
-	m.status = "Type a project prefix to switch."
+	m.status = ""
 	return m, nil
 }
 
@@ -44,7 +45,7 @@ func (m *model) beginProjectCreate() (tea.Model, tea.Cmd) {
 	m.input.Prompt = "project: "
 	m.input.SetValue("")
 	m.input.Focus()
-	m.status = "Create a new project."
+	m.status = ""
 	return m, nil
 }
 
@@ -79,9 +80,9 @@ func (m *model) commitProjectCreate() (tea.Model, tea.Cmd) {
 }
 
 func (m *model) commitProjectSwitch() (tea.Model, tea.Cmd) {
-	project, ok := m.uniqueMatchingProject(m.input.Value())
+	project, ok := m.selectedMatchingProject()
 	if !ok {
-		m.status = "No unique project match."
+		m.status = "No matching project selected."
 		return m, nil
 	}
 	if current, ok := m.currentSessionInfo(); ok && current.Temporary {
@@ -90,7 +91,7 @@ func (m *model) commitProjectSwitch() (tea.Model, tea.Cmd) {
 		m.input.Blur()
 		m.input.Prompt = ""
 		m.input.SetValue("")
-		m.status = fmt.Sprintf("Confirm switch from volatile session to project %s.", project)
+		m.status = ""
 		return m, nil
 	}
 	return m.switchToProject(project)
@@ -131,7 +132,7 @@ func (m model) killSession(name string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, func() tea.Msg {
-		return sessionKilledMsg{name: name, err: m.tmux.KillSession(name)}
+		return sessionKilledMsg{name: name, project: normalizeProjectName(m.sessionProjects[name]), err: m.tmux.KillSession(name)}
 	}
 }
 
@@ -143,7 +144,7 @@ func (m *model) beginDelete() (tea.Model, tea.Cmd) {
 	}
 	m.mode = inputConfirmDelete
 	m.deleteTarget = deleteTarget{session: s.Name}
-	m.status = fmt.Sprintf("Confirm delete for session %s.", m.sessionLabel(s.Name))
+	m.status = ""
 	return m, nil
 }
 
@@ -152,6 +153,9 @@ func (m model) confirmDelete() (tea.Model, tea.Cmd) {
 	m.mode = inputNone
 	m.deleteTarget = deleteTarget{}
 	if target.session != "" {
+		if project := normalizeProjectName(m.sessionProjects[target.session]); project != "" && len(m.projectSessions(project)) == 1 {
+			return m.deleteProject(project)
+		}
 		return m.killSession(target.session)
 	}
 	return m.deleteProject(target.project)
@@ -168,7 +172,7 @@ func (m *model) beginQuit() (tea.Model, tea.Cmd) {
 	m.input.Blur()
 	m.input.Prompt = ""
 	m.input.SetValue("")
-	m.status = "Confirm shutdown of this tflow instance."
+	m.status = ""
 	return m, nil
 }
 
@@ -191,7 +195,7 @@ func (m *model) beginRename() (tea.Model, tea.Cmd) {
 	m.input.CursorEnd()
 	m.input.Prompt = "session: "
 	m.input.Focus()
-	m.status = "Rename the selected session."
+	m.status = ""
 	return m, nil
 }
 
@@ -278,5 +282,59 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 	default:
 		m.status = "Select a session or project to rename."
 		return m, nil
+	}
+}
+
+func (m *model) shiftProjectSwitch(delta int) {
+	matches := m.matchingProjects(m.input.Value())
+	if len(matches) == 0 {
+		m.projectSwitchIndex = 0
+		return
+	}
+	m.projectSwitchIndex = (m.projectSwitchIndex + delta + len(matches)) % len(matches)
+}
+
+func (m *model) selectedMatchingProject() (string, bool) {
+	matches := m.matchingProjects(m.input.Value())
+	if len(matches) == 0 {
+		return "", false
+	}
+	if m.projectSwitchIndex < 0 || m.projectSwitchIndex >= len(matches) {
+		m.projectSwitchIndex = 0
+	}
+	return matches[m.projectSwitchIndex], true
+}
+
+func (m model) nextProjectAfter(project string, deletingProject bool) string {
+	if len(m.projects) == 0 {
+		return ""
+	}
+	index := indexOfString(m.projects, project)
+	if index < 0 {
+		return m.projects[0]
+	}
+	if deletingProject && len(m.projects) == 1 {
+		return ""
+	}
+	return m.projects[(index+1)%len(m.projects)]
+}
+
+func (m model) createVolatileFallback() (tea.Model, tea.Cmd) {
+	if strings.TrimSpace(m.instanceID) == "" {
+		m.err = fmt.Errorf("tflow instance id is empty")
+		m.status = m.err.Error()
+		return m, nil
+	}
+	name := nextTempSessionName(m.sessions)
+	return m, func() tea.Msg {
+		s, err := m.tmux.CreateSession(name, m.cwd, "")
+		if err != nil {
+			return sessionCreatedMsg{err: err}
+		}
+		if err := m.tmux.SetSessionTemporary(s.Name, true, m.instanceID); err != nil {
+			_ = m.tmux.KillSession(s.Name)
+			return sessionCreatedMsg{err: fmt.Errorf("mark volatile fallback: %w", err)}
+		}
+		return sessionCreatedMsg{session: s, volatile: true, label: s.Name}
 	}
 }

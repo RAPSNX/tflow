@@ -59,8 +59,8 @@ func TestRenameProjectUpdatesAssignments(t *testing.T) {
 		}},
 	})
 	got := updated.(model)
-	if cmd != nil {
-		t.Fatal("expected no command")
+	if cmd == nil {
+		t.Fatal("expected close command")
 	}
 	if containsString(got.projects, "small") {
 		t.Fatalf("projects still contain old name: %#v", got.projects)
@@ -203,7 +203,12 @@ func TestSessionLoadMigratesProjectSessionsToScopedNames(t *testing.T) {
 func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	tmp := t.TempDir()
 	var renamed []string
+	var syncedProjects map[string]string
 	m := newModel(fakeTmuxController{
+		syncSessionProjects: func(projects map[string]string) error {
+			syncedProjects = cloneStringMap(projects)
+			return nil
+		},
 		renameSession: func(oldName, newName string) error {
 			renamed = []string{oldName, newName}
 			return nil
@@ -252,6 +257,18 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	}
 	if final.sessionLabel("default--lala") != "lala" {
 		t.Fatalf("session label = %q, want lala", final.sessionLabel("default--lala"))
+	}
+	if _, found := final.findSession("default--lala"); !found {
+		t.Fatalf("renamed session missing from sessions: %#v", final.sessions)
+	}
+	if _, found := final.findSession("default--dev"); found {
+		t.Fatalf("old session remains in sessions: %#v", final.sessions)
+	}
+	if got := syncedProjects["default--lala"]; got != defaultProjectName {
+		t.Fatalf("synced project = %q, want %q", got, defaultProjectName)
+	}
+	if _, found := syncedProjects["default--dev"]; found {
+		t.Fatalf("old session was synced: %#v", syncedProjects)
 	}
 	if _, ok := final.sessionProjects["default--dev"]; ok {
 		t.Fatalf("old session project still present: %#v", final.sessionProjects)
@@ -425,22 +442,22 @@ func TestConfirmationOverlaysAdvertiseAcceptedKeys(t *testing.T) {
 	}
 }
 
-func TestRenderFooterListsProjectsOnSeparateLinesDuringProjectSwitch(t *testing.T) {
+func TestRenderProjectSwitchDialogListsMatchingProjects(t *testing.T) {
 	m := NewMenu().(model)
 	m.width = 48
 	m.projects = []string{"small", "storage"}
 	m.mode = inputSwitchProject
 	m.input.Prompt = "project: "
 
-	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderFooter(40), "")
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderProjectSwitchOverlay(), "")
 	lines := strings.Split(plain, "\n")
 	foundSmall := false
 	foundStorage := false
 	for _, line := range lines {
-		switch strings.TrimSpace(line) {
-		case "small":
+		if strings.Contains(line, "small") {
 			foundSmall = true
-		case "storage":
+		}
+		if strings.Contains(line, "storage") {
 			foundStorage = true
 		}
 	}
@@ -486,9 +503,12 @@ func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 		t.Fatalf("killed = %#v", killed)
 	}
 	updated, followUp := pending.Update(msg)
-	got := updated.(model)
-	if followUp != nil {
-		t.Fatal("expected no follow-up command")
+	got, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatalf("updated model = %T", updated)
+	}
+	if followUp == nil {
+		t.Fatal("expected session switch command")
 	}
 	if containsString(got.projects, "small") {
 		t.Fatalf("projects still contain deleted project: %#v", got.projects)
@@ -556,7 +576,7 @@ func TestEditProjectSavesOnlyWorkdirToStoreState(t *testing.T) {
 	step.input.SetValue("/tmp/small")
 	updated, cmd := step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
 	final := *(updated.(*model))
-	if cmd != nil || final.mode != inputNone {
+	if cmd == nil || final.mode != inputNone {
 		t.Fatalf("unexpected edit result: %#v", final)
 	}
 	if got := final.projectConfigs["small"].Workdir; got != "/tmp/small" {

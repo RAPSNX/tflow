@@ -244,7 +244,7 @@ func TestNStartsProjectCreateMode(t *testing.T) {
 	if got.input.Prompt != "project: " {
 		t.Fatalf("prompt = %q, want project prompt", got.input.Prompt)
 	}
-	if got.status != "Create a new project." {
+	if got.status != "" {
 		t.Fatalf("status = %q", got.status)
 	}
 }
@@ -509,12 +509,43 @@ func TestDDeletesSelectedSession(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected kill command")
 	}
-	msg := cmd().(sessionKilledMsg)
+	msg := cmd().(projectDeletedMsg)
 	if msg.err != nil {
-		t.Fatalf("kill returned error: %v", msg.err)
+		t.Fatalf("delete returned error: %v", msg.err)
 	}
 	if got, want := fmt.Sprint(killed), fmt.Sprint([]string{"dev"}); got != want {
 		t.Fatalf("killed = %s, want %s", got, want)
+	}
+}
+
+func TestDeletingNoncurrentVolatileSessionKeepsCurrentVolatileContext(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "scratch-current").(model)
+	m.instanceID = "instance-1"
+	m.statePath = filepath.Join(t.TempDir(), "store.json")
+	m.projects = []string{"small"}
+	m.sessions = []session{
+		{Name: "scratch-current", Temporary: true, Instance: "instance-1"},
+		{Name: "scratch-other", Temporary: true, Instance: "instance-1"},
+		{Name: "small--code"},
+	}
+	m.sessionProjects = map[string]string{"small--code": "small"}
+	m.sessionLabels = map[string]string{"small--code": "code"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}}
+	m.selectedSession = "scratch-other"
+
+	updated, cmd := m.Update(sessionKilledMsg{name: "scratch-other"})
+	got := updated.(model)
+	if cmd == nil {
+		t.Fatal("expected close command")
+	}
+	if msg := cmd().(menuActionMsg); msg.switchSession != "" {
+		t.Fatalf("close action = %#v, want no session switch", msg)
+	}
+	if got.selectedProject != "" || got.selectedSession != "scratch-current" {
+		t.Fatalf("selection = project %q, session %q", got.selectedProject, got.selectedSession)
+	}
+	if _, exists := got.findSession("scratch-other"); exists {
+		t.Fatal("deleted volatile session remains")
 	}
 }
 
@@ -695,6 +726,31 @@ func TestQuitConfirmationCancelsAndConfirms(t *testing.T) {
 	updated, _ = updated.(model).Update(msg)
 	if got := updated.(model); got.exitAction != menuExitQuit {
 		t.Fatalf("exitAction = %v, want menuExitQuit", got.exitAction)
+	}
+}
+
+func TestProjectSwitchSearchAcceptsJAndKAndUsesArrowNavigation(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.projects = []string{"kjobs", "other"}
+	m.mode = inputSwitchProject
+	m.input.Prompt = "project: "
+	m.input.Focus()
+
+	for _, key := range []rune{'k', 'j'} {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+		m = updated.(model)
+	}
+	if got := m.input.Value(); got != "kj" {
+		t.Fatalf("project search = %q, want kj", got)
+	}
+
+	m.input.SetValue("")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if cmd != nil {
+		t.Fatal("expected no command while navigating")
+	}
+	if got := updated.(model).projectSwitchIndex; got != 1 {
+		t.Fatalf("project switch index = %d, want 1", got)
 	}
 }
 
@@ -1046,7 +1102,10 @@ func TestDeletingFinalProjectSessionRemovesProjectMetadata(t *testing.T) {
 	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}}
 
 	updated, _ := m.Update(sessionKilledMsg{name: "small--code"})
-	got := updated.(model)
+	got, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatalf("updated model = %T", updated)
+	}
 	if len(got.projects) != 0 || len(got.projectConfigs) != 0 {
 		t.Fatal("final session left project metadata")
 	}
