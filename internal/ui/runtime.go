@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	menuCurrentEnv = runtmux.CurrentSessionEnv
-	menuClientEnv  = runtmux.CurrentClientEnv
+	menuCurrentEnv  = runtmux.CurrentSessionEnv
+	menuClientEnv   = runtmux.CurrentClientEnv
+	menuInstanceEnv = runtmux.CurrentInstanceEnv
 )
 
 type session = runtmux.Session
@@ -16,7 +17,7 @@ type session = runtmux.Session
 type tmuxController interface {
 	ListSessions() ([]session, error)
 	CreateSession(name, cwd, command string) (session, error)
-	SetSessionTemporary(name string, temporary bool) error
+	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	AttachCommand(name string) (*exec.Cmd, error)
 	KillSession(name string) error
 	RenameSession(oldName, newName string) error
@@ -26,6 +27,7 @@ type tmuxController interface {
 	ToggleMenu(binaryPath string) error
 	CloseMenu() error
 	QuitAll() error
+	CleanupVolatileSessions(instanceID string) error
 }
 
 type sessionManager struct {
@@ -48,8 +50,8 @@ func (m sessionManager) CreateSession(name, cwd, command string) (session, error
 	return m.inner.CreateSession(name, cwd, command)
 }
 
-func (m sessionManager) SetSessionTemporary(name string, temporary bool) error {
-	return m.inner.SetSessionTemporary(name, temporary)
+func (m sessionManager) SetSessionTemporary(name string, temporary bool, instanceID string) error {
+	return m.inner.SetSessionTemporary(name, temporary, instanceID)
 }
 
 func (m sessionManager) AttachCommand(name string) (*exec.Cmd, error) {
@@ -96,6 +98,10 @@ func (m sessionManager) QuitAll() error {
 	return m.inner.QuitAll()
 }
 
+func (m sessionManager) CleanupVolatileSessions(instanceID string) error {
+	return m.inner.CleanupVolatileSessions(instanceID)
+}
+
 func normalizeCWD(cwd string) string {
 	return runtmux.NormalizeCWD(cwd)
 }
@@ -110,4 +116,8 @@ func shellQuote(value string) string {
 
 func nextTempSessionName(existing []session) string {
 	return runtmux.NextTempSessionName(existing)
+}
+
+func isSessionExists(err error) bool {
+	return runtmux.IsSessionExists(err)
 }

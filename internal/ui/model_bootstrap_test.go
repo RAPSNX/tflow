@@ -1,11 +1,14 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -50,8 +53,8 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 			}
 			return session{Name: name}, nil
 		},
-		setSessionTemporary: func(name string, temporary bool) error {
-			calls = append(calls, fmt.Sprintf("temporary:%s:%t", name, temporary))
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			calls = append(calls, fmt.Sprintf("temporary:%s:%t:%s", name, temporary, instanceID))
 			return nil
 		},
 		ensureControlMode: func(binaryPath string) error {
@@ -60,7 +63,7 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 		},
 	}
 
-	name, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project")
+	name, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1")
 	if err != nil {
 		t.Fatalf("prepareStartup returned error: %v", err)
 	}
@@ -68,8 +71,93 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 		t.Fatalf("name = %q, want temp session name", name)
 	}
 
-	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{"create:" + name, "temporary:" + name + ":true", "control:/tmp/tflow"}); got != want {
+	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{"create:" + name, "temporary:" + name + ":true:instance-1", "control:/tmp/tflow"}); got != want {
 		t.Fatalf("calls = %s, want %s", got, want)
+	}
+}
+
+func TestPrepareStartupRetriesWhenTempSessionNameAlreadyExists(t *testing.T) {
+	var calls []string
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "otter-temp"}}, nil
+		},
+		createSession: func(name, cwd, command string) (session, error) {
+			calls = append(calls, "create:"+name)
+			if name == "fox-temp" {
+				return session{}, fmt.Errorf("duplicate session: fox-temp")
+			}
+			return session{Name: name}, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			calls = append(calls, fmt.Sprintf("temporary:%s:%t:%s", name, temporary, instanceID))
+			return nil
+		},
+		ensureControlMode: func(binaryPath string) error {
+			calls = append(calls, "control:"+binaryPath)
+			return nil
+		},
+	}
+
+	name, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1")
+	if err != nil {
+		t.Fatalf("prepareStartup returned error: %v", err)
+	}
+	if got, want := name, "lynx-temp"; got != want {
+		t.Fatalf("name = %q, want %q", got, want)
+	}
+	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{
+		"create:fox-temp",
+		"create:lynx-temp",
+		"temporary:lynx-temp:true:instance-1",
+		"control:/tmp/tflow",
+	}); got != want {
+		t.Fatalf("calls = %s, want %s", got, want)
+	}
+}
+
+func TestStartWithManagerCleansUpInstanceVolatileSessionsAfterAttach(t *testing.T) {
+	var cleaned []string
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return nil, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			return nil
+		},
+		attachCommand: func(name string) (*exec.Cmd, error) {
+			return exec.Command("sh", "-c", ":"), nil
+		},
+		cleanupVolatile: func(instanceID string) error {
+			cleaned = append(cleaned, instanceID)
+			return nil
+		},
+	}
+
+	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-2"); err != nil {
+		t.Fatalf("startWithManager returned error: %v", err)
+	}
+	if got, want := fmt.Sprint(cleaned), fmt.Sprint([]string{"instance-2"}); got != want {
+		t.Fatalf("cleanup calls = %s, want %s", got, want)
+	}
+	if got := os.Getenv(menuInstanceEnv); got != "instance-2" {
+		t.Fatalf("%s = %q, want instance-2", menuInstanceEnv, got)
+	}
+}
+
+func TestNewInstanceIDWithEntropyUsesRandomToken(t *testing.T) {
+	now := time.Unix(0, 123456789)
+	got := newInstanceIDWithEntropy(now, bytes.NewReader([]byte{0, 1, 2, 3, 4, 5}), 99)
+	if want := "tflow-21i3v9-000102030405"; got != want {
+		t.Fatalf("newInstanceIDWithEntropy = %q, want %q", got, want)
+	}
+}
+
+func TestNewInstanceIDWithEntropyFallsBackToPID(t *testing.T) {
+	now := time.Unix(0, 123456789)
+	got := newInstanceIDWithEntropy(now, bytes.NewReader([]byte{0, 1}), 4242)
+	if want := "tflow-21i3v9-4242"; got != want {
+		t.Fatalf("newInstanceIDWithEntropy = %q, want %q", got, want)
 	}
 }
 
@@ -91,6 +179,26 @@ func TestMenuEnterSwitchesSessionAndClosesMenu(t *testing.T) {
 	}
 	if msg.switchSession != "dev" {
 		t.Fatalf("switchSession = %q, want dev", msg.switchSession)
+	}
+}
+
+func TestMenuActionSwitchSessionTriggersQuit(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "dev").(model)
+
+	updated, cmd := m.Update(menuActionMsg{switchSession: "dev"})
+	got := updated.(model)
+	if cmd == nil {
+		t.Fatal("expected quit command")
+	}
+	if got.exitAction != menuExitSwitchSession {
+		t.Fatalf("exitAction = %v, want menuExitSwitchSession", got.exitAction)
+	}
+	if got.exitSessionName != "dev" {
+		t.Fatalf("exitSessionName = %q, want dev", got.exitSessionName)
+	}
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("cmd() = %T, want tea.QuitMsg", msg)
 	}
 }
 

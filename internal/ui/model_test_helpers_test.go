@@ -11,7 +11,7 @@ const defaultProjectName = "default"
 type fakeTmuxController struct {
 	listSessions        func() ([]session, error)
 	createSession       func(name, cwd, command string) (session, error)
-	setSessionTemporary func(name string, temporary bool) error
+	setSessionTemporary func(name string, temporary bool, instanceID string) error
 	attachCommand       func(name string) (*exec.Cmd, error)
 	killSession         func(name string) error
 	renameSession       func(oldName, newName string) error
@@ -20,6 +20,7 @@ type fakeTmuxController struct {
 	toggleMenu          func(binaryPath string) error
 	closeMenu           func() error
 	quitAll             func() error
+	cleanupVolatile     func(instanceID string) error
 	syncSessionProjects func(sessionProjects map[string]string) error
 }
 
@@ -37,9 +38,9 @@ func (f fakeTmuxController) CreateSession(name, cwd, command string) (session, e
 	return session{Name: name, Windows: 1}, nil
 }
 
-func (f fakeTmuxController) SetSessionTemporary(name string, temporary bool) error {
+func (f fakeTmuxController) SetSessionTemporary(name string, temporary bool, instanceID string) error {
 	if f.setSessionTemporary != nil {
-		return f.setSessionTemporary(name, temporary)
+		return f.setSessionTemporary(name, temporary, instanceID)
 	}
 	return nil
 }
@@ -96,6 +97,13 @@ func (f fakeTmuxController) CloseMenu() error {
 func (f fakeTmuxController) QuitAll() error {
 	if f.quitAll != nil {
 		return f.quitAll()
+	}
+	return nil
+}
+
+func (f fakeTmuxController) CleanupVolatileSessions(instanceID string) error {
+	if f.cleanupVolatile != nil {
+		return f.cleanupVolatile(instanceID)
 	}
 	return nil
 }

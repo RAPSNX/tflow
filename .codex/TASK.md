@@ -1,3 +1,29 @@
+# Review follow-ups
+
+## Instance ID collision (P1)
+
+- [ ] Replace `time.Now().UnixNano()` in `newInstanceID` with a collision-resistant identifier (PID + random suffix, or crypto/rand).
+- [ ] Add a regression test that starts two instances within the same nanosecond tick and asserts they receive different instance IDs.
+- [ ] Add a regression test confirming `CleanupVolatileSessions` never kills a volatile session belonging to a different, still-running instance.
+
+## Deduplicate normalization helpers
+
+- [ ] Pick one canonical `normalizeProjectName` implementation (in `store`) and remove the duplicates in `internal/tmux` and `internal/ui`.
+- [ ] Pick one canonical `normalizeProjectList` implementation; resolve the sort-order mismatch between `internal/tmux` (sorted) and `store`/`internal/ui` (insertion order) before merging.
+- [ ] Remove the duplicated `normalizeCWD`/`expandHomeDir` pair from `internal/tmux/util.go` in favor of `store`'s version, or extract both into a shared internal package.
+- [ ] Remove the duplicated `containsString` helper from `internal/ui` in favor of `store`'s version.
+- [ ] Add a test asserting the merged `normalizeProjectList` behaves identically for all former call sites.
+
+## Style cleanup
+
+- [ ] Replace the hand-rolled O(n²) `slicesSort` in `internal/store/state.go` with `sort.Strings`, per `AGENTS.md`'s "use standard Go idioms".
+- [ ] Remove the unused variadic `...string` parameter from `newModel` and `buildModel`, and update call sites/tests to drop the stray empty-string arguments.
+- [ ] Add a short comment near `isNoSession`/`IsNoServer`/`"can't find window"` string-matching noting the tmux version these error strings were captured against.
+
+## Dead / unreachable behavior
+
+- [ ] Remove `quitAllCmd`/`menuActionMsg.quitAll` handling until implemented (overlaps with the still-open "Quit flow" section in `.codex/TASK.md`).
+
 # Alpha implementation checklist
 
 ## Bug fixes
@@ -51,16 +77,17 @@
 - [x] Start with one volatile tmux session and attach the user to it.
 - [x] Keep the active terminal as a real tmux terminal.
 - [x] Keep persistent sessions as ordinary tmux sessions grouped by metadata.
-- [ ] Track volatile sessions per `tflow` instance.
-- [ ] Remove only the current instance's volatile sessions on normal exit or confirmed `Ctrl+Q`.
+- [x] Track volatile sessions per `tflow` instance.
+- [x] Remove only the current instance's volatile sessions on normal exit or confirmed `Ctrl+Q`.
+- [x] Propagate the current `tflow` instance id through popup and menu commands so volatile-session cleanup targets the correct tmux sessions.
 
 ## Sidebar popup and top badges
 
-- [ ] Toggle the sidebar as a real tmux popup with `Ctrl+F`.
-- [ ] Show current project and session in the top UI.
-- [ ] Keep the project badge empty in volatile mode.
-- [ ] Render the sidebar with a `TFLOW` header, a flat session list, and a command/status area.
-- [ ] Close the sidebar after switching sessions.
+- [x] Toggle the sidebar as a real tmux popup with `Ctrl+F`.
+- [x] Show current project and session in the top UI.
+- [x] Keep the project badge empty in volatile mode.
+- [x] Render the sidebar with a `TFLOW` header, a flat session list, and a command/status area.
+- [x] Close the sidebar after switching sessions.
 
 ## Session list navigation
 

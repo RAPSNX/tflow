@@ -1,9 +1,14 @@
 package ui
 
 import (
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -130,9 +135,10 @@ const (
 type sessionType string
 
 const (
-	sessionTypeTerminal sessionType = "terminal"
-	sessionTypeK9s      sessionType = "k9s"
-	sessionTypeAgent    sessionType = "agent"
+	sessionTypeTerminal      sessionType = "terminal"
+	sessionTypeK9s           sessionType = "k9s"
+	sessionTypeAgent         sessionType = "agent"
+	startupSessionRetryLimit             = 128
 )
 
 func NewMenu() tea.Model {
@@ -145,9 +151,14 @@ func Start() error {
 	if err != nil {
 		return err
 	}
+	return startWithManager(newSessionManager(), exe, cwd, newInstanceID())
+}
 
-	manager := newSessionManager()
-	sessionName, err := prepareStartup(manager, exe, cwd)
+func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string) error {
+	if err := os.Setenv(menuInstanceEnv, instanceID); err != nil {
+		return err
+	}
+	sessionName, err := prepareStartup(manager, binaryPath, cwd, instanceID)
 	if err != nil {
 		return err
 	}
@@ -159,7 +170,15 @@ func Start() error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	runErr := cmd.Run()
+	cleanupErr := manager.CleanupVolatileSessions(instanceID)
+	if runErr != nil {
+		if cleanupErr != nil {
+			return fmt.Errorf("attach session: %w; cleanup volatile sessions: %v", runErr, cleanupErr)
+		}
+		return runErr
+	}
+	return cleanupErr
 }
 
 func OpenMenu() error {
@@ -174,16 +193,29 @@ func OpenMenu() error {
 	return runMenuExitAction(newSessionManager(), finalModel)
 }
 
-func prepareStartup(manager tmuxController, binaryPath, cwd string) (string, error) {
+func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) (string, error) {
 	existing, err := manager.ListSessions()
 	if err != nil {
 		return "", err
 	}
-	name := nextTempSessionName(existing)
-	if _, err := manager.CreateSession(name, cwd, ""); err != nil {
-		return "", err
+	var name string
+	created := false
+	for attempts := 0; attempts < startupSessionRetryLimit; attempts++ {
+		name = nextTempSessionName(existing)
+		if _, err := manager.CreateSession(name, cwd, ""); err != nil {
+			if !isSessionExists(err) {
+				return "", err
+			}
+			existing = append(existing, session{Name: name})
+			continue
+		}
+		created = true
+		break
 	}
-	if err := manager.SetSessionTemporary(name, true); err != nil {
+	if !created {
+		return "", fmt.Errorf("allocate startup session after %d retries", startupSessionRetryLimit)
+	}
+	if err := manager.SetSessionTemporary(name, true, instanceID); err != nil {
 		return "", err
 	}
 	if err := manager.EnsureControlMode(binaryPath); err != nil {
@@ -279,4 +311,24 @@ func unwrapMenuModel(value tea.Model) (model, bool) {
 	default:
 		return model{}, false
 	}
+}
+
+func newInstanceID() string {
+	return newInstanceIDWithEntropy(time.Now(), cryptorand.Reader, os.Getpid())
+}
+
+func newInstanceIDWithEntropy(now time.Time, entropy io.Reader, pid int) string {
+	token, err := randomInstanceToken(entropy, 6)
+	if err != nil {
+		token = strconv.Itoa(pid)
+	}
+	return "tflow-" + strconv.FormatInt(now.UnixNano(), 36) + "-" + token
+}
+
+func randomInstanceToken(entropy io.Reader, size int) (string, error) {
+	buf := make([]byte, size)
+	if _, err := io.ReadFull(entropy, buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
 }

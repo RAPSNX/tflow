@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -76,7 +77,7 @@ func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			return "otter-temp\t1\t1\t1\nsmall\t2\t0\t0\n", nil
+			return "otter-temp\t1\t1\t1\tinstance-1\nsmall\t2\t0\t0\t\n", nil
 		},
 	}
 
@@ -89,6 +90,9 @@ func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	}
 	if !sessions[0].Temporary {
 		t.Fatal("expected first session to be temporary")
+	}
+	if sessions[0].Instance != "instance-1" {
+		t.Fatalf("first session instance = %q", sessions[0].Instance)
 	}
 	if sessions[1].Temporary {
 		t.Fatal("expected second session to be persistent")
@@ -104,14 +108,69 @@ func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
 		},
 	}
 
-	if err := manager.SetSessionTemporary("otter-temp", true); err != nil {
+	if err := manager.SetSessionTemporary("otter-temp", true, "instance-1"); err != nil {
+		t.Fatalf("SetSessionTemporary returned error: %v", err)
+	}
+
+	for _, want := range [][]string{
+		{"set-option", "-t", "otter-temp", "destroy-unattached", "off"},
+		{"set-option", "-t", "otter-temp", "@tflow-temp", "1"},
+		{"set-option", "-t", "otter-temp", "@tflow-instance", "instance-1"},
+	} {
+		found := false
+		for _, call := range calls {
+			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing call %v in %#v", want, calls)
+		}
+	}
+
+	var hook string
+	for _, call := range calls {
+		if len(call) == 5 && call[0] == "set-hook" && call[1] == "-t" && call[2] == "otter-temp" && call[3] == "client-attached" {
+			hook = call[4]
+			break
+		}
+	}
+	if hook == "" {
+		t.Fatalf("missing client-attached hook in %#v", calls)
+	}
+	for _, want := range []string{
+		"run-shell",
+		"#{hook_client}",
+		menuInstancePrefix,
+		"instance-1",
+		"destroy-unattached",
+		"client-attached",
+	} {
+		if !strings.Contains(hook, want) {
+			t.Fatalf("hook = %q, want %q", hook, want)
+		}
+	}
+}
+
+func TestSetSessionTemporaryClearsDeferredCleanupWhenMadePersistent(t *testing.T) {
+	var calls [][]string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
+			return "", nil
+		},
+	}
+
+	if err := manager.SetSessionTemporary("otter-temp", false, ""); err != nil {
 		t.Fatalf("SetSessionTemporary returned error: %v", err)
 	}
 
 	wants := [][]string{
 		{"set-option", "-t", "otter-temp", "destroy-unattached", "off"},
-		{"set-hook", "-t", "otter-temp", "client-attached", "set-option -t 'otter-temp' destroy-unattached on; set-hook -u -t 'otter-temp' client-attached"},
-		{"set-option", "-t", "otter-temp", "@tflow-temp", "1"},
+		{"set-hook", "-u", "-t", "otter-temp", "client-attached"},
+		{"set-option", "-t", "otter-temp", "@tflow-temp", "0"},
+		{"set-option", "-t", "otter-temp", "@tflow-instance", ""},
 	}
 	for _, want := range wants {
 		found := false
@@ -127,35 +186,62 @@ func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
 	}
 }
 
-func TestSetSessionTemporaryClearsDeferredCleanupWhenMadePersistent(t *testing.T) {
-	var calls [][]string
+func TestSetSessionTemporaryRequiresInstanceIDWhenVolatile(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			calls = append(calls, append([]string(nil), args...))
 			return "", nil
 		},
 	}
 
-	if err := manager.SetSessionTemporary("otter-temp", false); err != nil {
-		t.Fatalf("SetSessionTemporary returned error: %v", err)
+	if err := manager.SetSessionTemporary("otter-temp", true, ""); err == nil {
+		t.Fatal("SetSessionTemporary returned nil error, want missing instance failure")
+	}
+}
+
+func TestCreateSessionReturnsDuplicateSessionError(t *testing.T) {
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			if args[0] == "new-session" {
+				return "", fmt.Errorf("duplicate session: otter-temp")
+			}
+			return "", nil
+		},
 	}
 
-	wants := [][]string{
-		{"set-option", "-t", "otter-temp", "destroy-unattached", "off"},
-		{"set-hook", "-u", "-t", "otter-temp", "client-attached"},
-		{"set-option", "-t", "otter-temp", "@tflow-temp", "0"},
+	_, err := manager.CreateSession("otter-temp", "/tmp", "")
+	if err == nil {
+		t.Fatal("CreateSession returned nil error, want duplicate session failure")
 	}
-	for _, want := range wants {
-		found := false
-		for _, call := range calls {
-			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-				found = true
-				break
+	if !IsSessionExists(err) {
+		t.Fatalf("CreateSession error = %v, want duplicate session classification", err)
+	}
+}
+
+func TestCleanupVolatileSessionsKillsOnlyMatchingInstance(t *testing.T) {
+	var killed []string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "list-sessions":
+				return strings.Join([]string{
+					"otter-temp\t1\t0\t1\tinstance-1",
+					"fox-temp\t1\t0\t1\tinstance-2",
+					"small\t1\t0\t0\tinstance-1",
+				}, "\n"), nil
+			case "kill-session":
+				killed = append(killed, args[2])
+				return "", nil
+			default:
+				return "", nil
 			}
-		}
-		if !found {
-			t.Fatalf("missing call %v in %#v", want, calls)
-		}
+		},
+	}
+
+	if err := manager.CleanupVolatileSessions("instance-1"); err != nil {
+		t.Fatalf("CleanupVolatileSessions returned error: %v", err)
+	}
+	if got, want := strings.Join(killed, ","), "otter-temp"; got != want {
+		t.Fatalf("killed = %q, want %q", got, want)
 	}
 }
 
