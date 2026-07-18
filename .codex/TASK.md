@@ -99,13 +99,14 @@
 
 ## Project creation and switching
 
-- [ ] Create a default `code` session when creating a project.
-- [ ] Support `p` to start project switching from the command line.
-- [ ] Show all existing projects in a readable newline-separated list.
-- [ ] Accept a unique typed prefix and switch on `Enter`.
-- [ ] Switch to the first session of the selected project and close the sidebar.
-- [ ] Require confirmation when switching from a volatile session to a project.
-- [ ] Switch directly when moving from one project to another.
+- [x] Create a default `code` session when creating a project.
+- [ ] Define a project-scoped tmux session naming scheme so multiple projects can each keep a default `code` session without cross-project name collisions.
+- [x] Support `p` to start project switching from the command line.
+- [x] Show all existing projects in a readable newline-separated list.
+- [x] Accept a unique typed prefix and switch on `Enter`.
+- [x] Switch to the first session of the selected project and close the sidebar.
+- [x] Require confirmation when switching from a volatile session to a project.
+- [x] Switch directly when moving from one project to another.
 
 ## Session and project management
 

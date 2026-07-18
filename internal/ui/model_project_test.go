@@ -233,6 +233,30 @@ func TestRenderMenuIncludesBrandSessionPanelAndStatusArea(t *testing.T) {
 	}
 }
 
+func TestRenderFooterListsProjectsOnSeparateLinesDuringProjectSwitch(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.projects = []string{"small", "storage"}
+	m.mode = inputSwitchProject
+	m.input.Prompt = "project: "
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderFooter(40), "")
+	lines := strings.Split(plain, "\n")
+	foundSmall := false
+	foundStorage := false
+	for _, line := range lines {
+		switch strings.TrimSpace(line) {
+		case "small":
+			foundSmall = true
+		case "storage":
+			foundStorage = true
+		}
+	}
+	if !foundSmall || !foundStorage {
+		t.Fatalf("renderFooter missing newline-separated project list in %q", plain)
+	}
+}
+
 func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 	tmp := t.TempDir()
 	var killed []string

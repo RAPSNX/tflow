@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -36,6 +37,38 @@ func (m *model) beginProjectSwitch() (tea.Model, tea.Cmd) {
 	m.input.Focus()
 	m.status = "Type a project prefix to switch."
 	return m, nil
+}
+
+func (m *model) commitProjectCreate() (tea.Model, tea.Cmd) {
+	name := sanitizeProjectName(m.input.Value())
+	if name == "" {
+		m.status = "Project name is empty."
+		return m, nil
+	}
+	if containsString(m.projects, name) {
+		m.status = "Project already exists."
+		return m, nil
+	}
+
+	m.mode = inputNone
+	m.input.Blur()
+	m.input.Prompt = ""
+	m.input.SetValue("")
+	cfg := projectConfig{Name: name}
+	cwd := strings.TrimSpace(cfg.Workdir)
+	if cwd == "" {
+		cwd = m.cwd
+	}
+	return m, func() tea.Msg {
+		s, err := m.tmux.CreateSession(defaultProjectSessionName, cwd, "")
+		if err != nil {
+			return projectCreatedMsg{
+				config: cfg,
+				err:    fmt.Errorf("create default project session %q: %w", defaultProjectSessionName, err),
+			}
+		}
+		return projectCreatedMsg{config: cfg, session: s}
+	}
 }
 
 func (m *model) commitProjectSwitch() (tea.Model, tea.Cmd) {
