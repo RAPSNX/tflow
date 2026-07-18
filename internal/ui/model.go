@@ -20,7 +20,6 @@ type inputMode int
 
 const (
 	inputNone inputMode = iota
-	inputNew
 	inputHelp
 	inputCreateSession
 	inputCreateProject
@@ -134,9 +133,7 @@ type model struct {
 	renameTarget        renameTarget
 	deleteTarget        deleteTarget
 	switchProjectTarget string
-	createSessionKind   sessionKind
 	projectEditConfig   projectConfig
-	projectEditField    projectEditField
 
 	cwd       string
 	statePath string
@@ -146,14 +143,6 @@ type model struct {
 	status          string
 	err             error
 }
-
-type sessionKind int
-
-const (
-	sessionKindTerminal sessionKind = iota
-	sessionKindK9s
-	sessionKindAgent
-)
 
 type sessionType string
 

@@ -398,6 +398,9 @@ func TestCreateProjectCreatesDefaultCodeSession(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("project create returned error: %v", msg.err)
 	}
+	if msg.config.Workdir != "/tmp/workspace" {
+		t.Fatalf("project workdir = %q, want current directory", msg.config.Workdir)
+	}
 	if createdName != "small--code" {
 		t.Fatalf("created session name = %q, want small--code", createdName)
 	}
@@ -443,6 +446,9 @@ func TestCreateProjectCreatesDefaultCodeSession(t *testing.T) {
 	}
 	if state.ProjectConfigs["small"].Name != "small" {
 		t.Fatalf("saved project config = %#v", state.ProjectConfigs["small"])
+	}
+	if got := state.ProjectConfigs["small"].Workdir; got != "/tmp/workspace" {
+		t.Fatalf("saved project workdir = %q, want /tmp/workspace", got)
 	}
 }
 
@@ -757,16 +763,12 @@ func TestEscCancelsProjectSwitchConfirmationWithoutClosingMenu(t *testing.T) {
 	}
 }
 
-func TestNStartsNewPrefixMode(t *testing.T) {
+func TestNStartsPlainSessionPrompt(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
-
-	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
-	got := updated.(model)
-	if cmd != nil {
-		t.Fatal("expected no command")
-	}
-	if got.mode != inputNew {
-		t.Fatalf("mode = %v, want inputNew", got.mode)
+	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{110}})
+	got := *(updated.(*model))
+	if cmd != nil || got.mode != inputCreateSession || got.input.Prompt != "session: " {
+		t.Fatalf("n should open a plain session prompt: %#v", got)
 	}
 }
 
@@ -817,38 +819,6 @@ func TestBuildModelFailsWhenStoreIsInvalid(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), path) {
 		t.Fatalf("error = %q, want path %q", err, path)
-	}
-}
-
-func TestNewPrefixTStartsTerminalCreate(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "").(model)
-	m.mode = inputNew
-	m.selectedProject = "small"
-
-	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
-	got := *(updated.(*model))
-	if cmd != nil {
-		t.Fatal("expected no command")
-	}
-	if got.mode != inputCreateSession {
-		t.Fatalf("mode = %v, want inputCreateSession", got.mode)
-	}
-	if got.createSessionKind != sessionKindTerminal {
-		t.Fatalf("createSessionKind = %v", got.createSessionKind)
-	}
-}
-
-func TestNewPrefixUnknownKeyShowsHint(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "").(model)
-	m.mode = inputNew
-
-	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	got := updated.(model)
-	if cmd != nil {
-		t.Fatal("expected no command")
-	}
-	if got.status != "New: use p, t, k, or c." {
-		t.Fatalf("status = %q", got.status)
 	}
 }
 
@@ -1023,5 +993,61 @@ func TestUndocumentedKeysDoNotDispatch(t *testing.T) {
 				t.Fatalf("mode = %v, want %v", got.mode, test.mode)
 			}
 		})
+	}
+}
+
+func TestProjectCreationKeepsVolatileSidebarContext(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "scratch-temp").(model)
+	m.statePath = t.TempDir() + "/store.json"
+	m.cwd = "/tmp/workspace"
+	m.sessions = []session{{Name: "scratch-temp", Temporary: true, Instance: "instance-1"}}
+	m.instanceID = "instance-1"
+	m.mode = inputCreateProject
+	m.input.SetValue("small")
+
+	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	msg := cmd().(projectCreatedMsg)
+	pending := *(updated.(*model))
+	updated, _ = pending.Update(msg)
+	got := updated.(model)
+	if got.selectedProject != "" || got.selectedSession != "" {
+		t.Fatalf("project creation changed volatile context: project %q session %q", got.selectedProject, got.selectedSession)
+	}
+}
+
+func TestProjectCreationKeepsExistingProjectContext(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "existing--code").(model)
+	m.statePath = t.TempDir() + "/store.json"
+	m.projects = []string{"existing"}
+	m.sessions = []session{{Name: "existing--code"}}
+	m.selectedProject = "existing"
+	m.selectedSession = "existing--code"
+	m.sessionProjects = map[string]string{"existing--code": "existing"}
+	m.sessionLabels = map[string]string{"existing--code": "code"}
+
+	updated, _ := m.Update(projectCreatedMsg{
+		config:  projectConfig{Name: "new", Workdir: "/tmp/new"},
+		session: session{Name: "new--code"},
+	})
+	got := updated.(model)
+	if got.selectedProject != "existing" || got.selectedSession != "existing--code" {
+		t.Fatalf("project creation changed context: project %q session %q", got.selectedProject, got.selectedSession)
+	}
+}
+
+func TestDeletingFinalProjectSessionRemovesProjectMetadata(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.statePath = t.TempDir() + "/store.json"
+	m.projects = []string{"small"}
+	m.selectedProject = "small"
+	m.sessions = []session{{Name: "small--code"}}
+	m.sessionProjects = map[string]string{"small--code": "small"}
+	m.sessionLabels = map[string]string{"small--code": "code"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}}
+
+	updated, _ := m.Update(sessionKilledMsg{name: "small--code"})
+	got := updated.(model)
+	if len(got.projects) != 0 || len(got.projectConfigs) != 0 {
+		t.Fatal("final session left project metadata")
 	}
 }

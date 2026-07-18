@@ -50,16 +50,16 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 - [x] Require confirmation when switching from a volatile session to a project and switch directly between projects.
 - [x] Support `r` and `d` for the selected session and `R` and `D` for the current project.
 - [x] Require confirmation before deleting a session, including the final session of a project.
-- [ ] Persist the current working directory as a newly created project's default `workdir`.
-- [ ] Create the project's default `code` session in that persisted directory.
-- [ ] Keep sidebar context aligned with the active volatile session instead of selecting the first stored project automatically.
-- [ ] Keep project creation from changing the active sidebar context until the user switches projects.
-- [ ] Make `n` open the session-name prompt directly and create a plain terminal session.
-- [ ] Remove the terminal/k9s/agent session-kind submenu and all session-type badges and startup commands.
-- [ ] Make `e` edit and persist only the current project's `workdir`.
-- [ ] Remove project protection, cluster configuration, and agent-binary behavior.
-- [ ] On confirmation, delete the project metadata together with its final session so every remaining project stays switchable.
-- [ ] Ensure volatile session rename and deletion never write persistent project metadata.
+- [x] Persist the current working directory as a newly created project's default `workdir`.
+- [x] Create the project's default `code` session in that persisted directory.
+- [x] Keep sidebar context aligned with the active volatile session instead of selecting the first stored project automatically.
+- [x] Keep project creation from changing the active sidebar context until the user switches projects.
+- [x] Make `n` open the session-name prompt directly and create a plain terminal session.
+- [x] Remove the terminal/k9s/agent session-kind submenu and all session-type badges and startup commands.
+- [x] Make `e` edit and persist only the current project's `workdir`.
+- [x] Remove project protection, cluster configuration, and agent-binary behavior.
+- [x] On confirmation, delete the project metadata together with its final session so every remaining project stays switchable.
+- [x] Ensure volatile session rename and deletion never write persistent project metadata.
 
 ## State
 
@@ -92,8 +92,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were veri
 
 - [x] Add regression tests for global quit invocation and instance-scoped volatile session creation and cleanup.
 - [x] Add rendering tests for the centered header, metadata-free default sidebar, and one-shortcut-per-row help view.
-- [ ] Add context tests covering volatile startup with existing projects and project creation without implicit switching.
-- [ ] Add tests for persisted project workdirs and final-session project deletion.
+- [x] Add context tests covering volatile startup with existing projects and project creation without implicit switching.
+- [x] Add tests for persisted project workdirs and final-session project deletion.
 - [ ] Add strict-store tests for every removed field, unknown fields, and the canonical round trip.
 - [x] Add startup rollback tests for state validation and tmux setup failures.
 - [ ] Add Home Manager evaluation coverage confirming it does not manage `store.json`.

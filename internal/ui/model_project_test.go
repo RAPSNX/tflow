@@ -309,12 +309,12 @@ func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 
 	view := m.renderSessionPanel(40)
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(view, "")
-	for _, want := range []string{"Sessions", "[live]  [agent]  dev"} {
+	for _, want := range []string{"Sessions", "[live] dev"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("renderSessionPanel missing %q in %q", want, plain)
 		}
 	}
-	for _, unwanted := range []string{"Projects", "small", "[-]"} {
+	for _, unwanted := range []string{"Projects", "small", "[-]", "[agent]", "[k9s]"} {
 		if strings.Contains(plain, unwanted) {
 			t.Fatalf("renderSessionPanel unexpectedly contained %q in %q", unwanted, plain)
 		}
@@ -538,96 +538,41 @@ func TestEditProjectStartsInlineSettingsFlow(t *testing.T) {
 	}
 }
 
-func TestEditProjectSavesSettingsToStoreState(t *testing.T) {
+func TestEditProjectSavesOnlyWorkdirToStoreState(t *testing.T) {
 	tmp := t.TempDir()
 	m := newModel(fakeTmuxController{}, "").(model)
 	m.statePath = tmp + "/store.json"
 	m.projects = []string{"small"}
 	m.selectedProject = "small"
-	m.projectConfigs = map[string]projectConfig{
-		"small": {Name: "small"},
-	}
+	m.projectConfigs = map[string]projectConfig{"small": {
+		Name:        "small",
+		Protect:     true,
+		AgentBinary: "codex",
+		Cluster:     clusterConfig{Path: "/tmp/kubeconfig", ConnectionCmd: "connect"},
+	}}
 
 	updated, _ := m.editProject()
 	step := updated.(model)
-
 	step.input.SetValue("/tmp/small")
-	updated, _ = step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	step = *(updated.(*model))
-	step.input.SetValue("true")
-	updated, _ = step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	step = *(updated.(*model))
-	step.input.SetValue("aider")
-	updated, _ = step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	step = *(updated.(*model))
-	step.input.SetValue("/tmp/kubeconfig")
-	updated, _ = step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	step = *(updated.(*model))
-	step.input.SetValue("aws eks update-kubeconfig --name prod")
 	updated, cmd := step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
 	final := *(updated.(*model))
-
-	if cmd != nil {
-		t.Fatal("expected no command")
+	if cmd != nil || final.mode != inputNone {
+		t.Fatalf("unexpected edit result: %#v", final)
 	}
-	if final.mode != inputNone {
-		t.Fatalf("mode = %v, want inputNone", final.mode)
+	if got := final.projectConfigs["small"].Workdir; got != "/tmp/small" {
+		t.Fatalf("workdir = %q", got)
 	}
-
-	cfg := final.projectConfigs["small"]
-	if cfg.Workdir != "/tmp/small" {
-		t.Fatalf("workdir = %q", cfg.Workdir)
+	if got := final.projectConfigs["small"]; got.Protect || got.AgentBinary != "" || got.Cluster != (clusterConfig{}) {
+		t.Fatalf("legacy project fields remain: %#v", got)
 	}
-	if !cfg.Protect {
-		t.Fatal("protect = false, want true")
-	}
-	if cfg.AgentBinary != "aider" {
-		t.Fatalf("agentBinary = %q", cfg.AgentBinary)
-	}
-	if cfg.Cluster.Path != "/tmp/kubeconfig" {
-		t.Fatalf("cluster path = %q", cfg.Cluster.Path)
-	}
-	if cfg.Cluster.ConnectionCmd != "aws eks update-kubeconfig --name prod" {
-		t.Fatalf("connectionCmd = %q", cfg.Cluster.ConnectionCmd)
-	}
-
 	state, err := loadAppState(m.statePath)
 	if err != nil {
-		t.Fatalf("loadAppState returned error: %v", err)
+		t.Fatal(err)
 	}
-	saved := state.ProjectConfigs["small"]
-	if saved.Workdir != "/tmp/small" || !saved.Protect || saved.AgentBinary != "aider" {
-		t.Fatalf("saved project config = %#v", saved)
+	if got := state.ProjectConfigs["small"].Workdir; got != "/tmp/small" {
+		t.Fatalf("saved workdir = %q", got)
 	}
-	if saved.Cluster.Path != "/tmp/kubeconfig" || saved.Cluster.ConnectionCmd != "aws eks update-kubeconfig --name prod" {
-		t.Fatalf("saved cluster config = %#v", saved.Cluster)
-	}
-}
-
-func TestEditProjectRejectsInvalidProtectValue(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "").(model)
-	m.projects = []string{"small"}
-	m.selectedProject = "small"
-	m.projectConfigs = map[string]projectConfig{
-		"small": {Name: "small"},
-	}
-
-	updated, _ := m.editProject()
-	step := updated.(model)
-	step.input.SetValue("")
-	updated, _ = step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	step = *(updated.(*model))
-	step.input.SetValue("maybe")
-	updated, cmd := step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	got := *(updated.(*model))
-
-	if cmd != nil {
-		t.Fatal("expected no command")
-	}
-	if got.mode != inputEditProject {
-		t.Fatalf("mode = %v, want inputEditProject", got.mode)
-	}
-	if got.status != "Protect must be true or false." {
-		t.Fatalf("status = %q", got.status)
+	if got := state.ProjectConfigs["small"]; got.Protect || got.AgentBinary != "" || got.Cluster != (clusterConfig{}) {
+		t.Fatalf("saved legacy project fields remain: %#v", got)
 	}
 }

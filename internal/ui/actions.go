@@ -63,11 +63,8 @@ func (m *model) commitProjectCreate() (tea.Model, tea.Cmd) {
 	m.input.Blur()
 	m.input.Prompt = ""
 	m.input.SetValue("")
-	cfg := projectConfig{Name: name}
-	cwd := strings.TrimSpace(cfg.Workdir)
-	if cwd == "" {
-		cwd = m.cwd
-	}
+	cfg := projectConfig{Name: name, Workdir: m.cwd}
+	cwd := cfg.Workdir
 	tmuxName := projectSessionName(name, defaultProjectSessionName)
 	return m, func() tea.Msg {
 		s, err := m.tmux.CreateSession(tmuxName, cwd, "")
