@@ -64,6 +64,8 @@ The sidebar is shown on the left and contains:
 - a conditional status row anchored at the bottom
 - there is no metadata, help, or status row displayed by default
 
+Opening or refreshing the sidebar reads the authoritative session list once from the dedicated tmux socket, filters it locally to the active instance or project context, and renders the result without synchronous per-session tmux writes. Ordinary refreshes are read-only toward tmux. Project and label markers are written only when metadata changes through creation, rename, migration, or required reconciliation; unchanged sessions, and volatile sessions without persistent project metadata, are not rewritten just because the sidebar opened.
+
 All sidebar management workflows use centered dialog overlays. Dialogs never cover the bottom status row.
 
 The bottom status row is hidden unless feedback is needed. Recoverable user-action problems are yellow warnings; failed tmux, store, or other operations are red errors.
@@ -160,7 +162,7 @@ If the state file is invalid, startup should fail with a clear error.
 
 tflow updates state through durable atomic replacement: it writes a complete temporary file in the state directory, applies its permissions, flushes it, and atomically replaces `store.json`. An interrupted write must leave the prior valid store available.
 
-tflow reconciles persistent metadata with the authoritative list of sessions on its dedicated tmux socket before startup attaches and after every successful sidebar refresh. Reconciliation removes membership and display labels for sessions no longer present, then removes every project with no remaining live sessions. A confirmed absent dedicated tmux server is an authoritative empty list. Other tmux operational errors do not cause metadata cleanup or state writes.
+tflow reconciles persistent metadata with the authoritative list of sessions on its dedicated tmux socket before startup attaches and after every successful sidebar refresh. Reconciliation removes membership and display labels for sessions no longer present, then removes every project with no remaining live sessions. It is an exceptional state update and does not rewrite tmux markers for unchanged live sessions. A confirmed absent dedicated tmux server is an authoritative empty list. Other tmux operational errors do not cause metadata cleanup or state writes.
 
 Project and session mutations that cross tmux and state storage are compensatable. If either side fails, tflow reloads or reconciles rather than presenting a successful operation with divergent tmux and persisted state.
 

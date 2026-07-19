@@ -89,6 +89,17 @@ Every previously open task is grouped below for a dedicated implementation sessi
 - [ ] Test atomic-store failure behavior preserves the previously valid state file.
 - [ ] Run `go test ./...`, `go build ./...`, `go vet ./...`, and `git diff --check`.
 
+### Session 7: Sidebar refresh performance
+
+- [ ] Make normal sidebar opening perform one global session-list query and local context filtering, without a per-session tmux command loop.
+- [ ] Remove unconditional project and label marker synchronization from the session-loaded render path.
+- [ ] Synchronize markers only for actual metadata mutations, migrations, or reconciliation changes; exclude volatile sessions from persistent project-marker updates.
+- [ ] Ensure the populated session list renders before optional repair work that does not affect the visible result.
+- [ ] Add command-count regression tests showing an unchanged refresh performs one list query and no per-session `set-option` calls.
+- [ ] Add coverage with sessions from multiple volatile instances, confirming only the current instance is displayed while total server session count does not create additional tmux writes.
+- [ ] Add a regression test that normal sidebar open does not create or retain another popup/menu process.
+- [ ] Run `go test ./...`, `go build ./...`, `go vet ./...`, and `git diff --check`.
+
 ## Completed checklist
 
 ## Tmux runtime and lifecycle
