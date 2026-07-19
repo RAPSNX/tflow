@@ -16,6 +16,8 @@ func (m model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderProjectSwitchOverlay())
 	case inputCreateSession:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Session"))
+	case inputCreatingSession:
+		return appStyle.Width(m.width).Height(m.height).Render(m.renderSessionCreatePendingOverlay())
 	case inputCreateProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Project"))
 	case inputEditProject:
@@ -198,6 +200,15 @@ func (m model) renderInputOverlay(title string) string {
 		badge, title = "settings", "Project"
 	}
 	return m.renderDialogCard(badge, title, "", m.renderInputField(), false)
+}
+
+func (m model) renderSessionCreatePendingOverlay() string {
+	width := m.dialogCardWidth()
+	contentWidth := m.dialogContentWidth()
+	header := lipgloss.JoinHorizontal(lipgloss.Left, dialogHeaderBadgeStyle.Render("CREATE"), " ", titleStyle.Render("Session"))
+	divider := dialogDividerStyle.Render(strings.Repeat("─", contentWidth))
+	box := overlayStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, header, divider, mutedStyle.Render("Creating session…")))
+	return m.renderDialog(box)
 }
 
 func (m model) renderDeleteOverlay() string {

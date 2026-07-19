@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -405,5 +406,74 @@ func TestPersistentSessionCreationRetriesIDCollisions(t *testing.T) {
 	created, err := m.createPersistentSession("/tmp", "")
 	if err != nil || len(names) != 2 || names[0] == names[1] || created.Name != names[1] || !strings.HasPrefix(created.Name, "tflow-p-") {
 		t.Fatalf("creation = %#v, names = %#v, err = %v", created, names, err)
+	}
+}
+
+func TestCreateSessionFailureRestoresInputAfterPendingState(t *testing.T) {
+	createErr := errors.New("tmux session creation failed")
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			return session{}, createErr
+		},
+	}, "").(model)
+	m.mode = inputCreateSession
+	m.input.SetValue("dev")
+
+	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	pending := updated.(model)
+	if cmd == nil || pending.mode != inputCreatingSession {
+		t.Fatalf("submission = mode %v, command %v; want pending creation command", pending.mode, cmd != nil)
+	}
+
+	updated, followUp := pending.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	pending = updated.(model)
+	if followUp != nil || pending.mode != inputCreatingSession {
+		t.Fatalf("pending Ctrl+C = mode %v, command %v; want unchanged pending state", pending.mode, followUp != nil)
+	}
+
+	updated, followUp = pending.Update(cmd())
+	got := updated.(model)
+	if followUp != nil {
+		t.Fatal("unexpected follow-up command after failed creation")
+	}
+	if got.mode != inputCreateSession {
+		t.Fatalf("mode = %v, want inputCreateSession", got.mode)
+	}
+	if !got.input.Focused() || got.input.Value() != "dev" {
+		t.Fatalf("restored input = focused %t value %q, want focused dev", got.input.Focused(), got.input.Value())
+	}
+	if got.status != createErr.Error() {
+		t.Fatalf("status = %q, want %q", got.status, createErr)
+	}
+}
+
+func TestCreateSessionKeepsPendingStateUntilSwitchAction(t *testing.T) {
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			return session{Name: name, Windows: 1}, nil
+		},
+	}, "").(model)
+	m.mode = inputCreateSession
+	m.input.SetValue("dev")
+
+	updated, createCmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	pending := updated.(model)
+	if createCmd == nil || pending.mode != inputCreatingSession {
+		t.Fatalf("submission = mode %v, command %v; want pending creation command", pending.mode, createCmd != nil)
+	}
+
+	updated, switchCmd := pending.Update(createCmd())
+	pending = updated.(model)
+	if pending.mode != inputCreatingSession {
+		t.Fatalf("mode after creation = %v, want inputCreatingSession", pending.mode)
+	}
+	if switchCmd == nil {
+		t.Fatal("expected session switch command")
+	}
+
+	updated, quitCmd := pending.Update(switchCmd())
+	got := updated.(model)
+	if quitCmd == nil || got.exitAction != menuExitSwitchSession {
+		t.Fatalf("switch action = exit %v command %v", got.exitAction, quitCmd != nil)
 	}
 }

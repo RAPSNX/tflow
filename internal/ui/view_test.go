@@ -372,3 +372,23 @@ func TestDialogKeepsStatusVisibleInFooter(t *testing.T) {
 		t.Fatalf("status was not rendered below the dialog: %q", plain)
 	}
 }
+
+func TestCreatingSessionOverlayHidesSidebarUntilCreationCompletes(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.height = 16
+	m.mode = inputCreatingSession
+	m.sessions = []session{{Name: "dev"}}
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.View(), "")
+	for _, want := range []string{"CREATE", "Session", "Creating session…"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("pending overlay missing %q in %q", want, plain)
+		}
+	}
+	for _, unwanted := range []string{"Sessions", "dev", "Enter", "Esc"} {
+		if strings.Contains(plain, unwanted) {
+			t.Fatalf("pending overlay unexpectedly contained %q in %q", unwanted, plain)
+		}
+	}
+}

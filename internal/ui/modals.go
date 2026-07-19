@@ -29,7 +29,7 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = "Session name already exists."
 				return m, nil
 			}
-			m.mode = inputNone
+			m.mode = inputCreatingSession
 			m.input.Blur()
 			m.input.Prompt = ""
 			dir := m.createSessionDir()
