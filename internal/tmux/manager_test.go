@@ -123,6 +123,15 @@ func TestListSessionsTreatsAbsentDedicatedServerAsEmpty(t *testing.T) {
 	}
 }
 
+func TestKillSessionIgnoresMissingSessionAndServer(t *testing.T) {
+	for _, message := range []string{"can't find session: gone", "no server running on /tmp/tmux-1000/tflow"} {
+		manager := Manager{Run: func(args ...string) (string, error) { return "", fmt.Errorf("%s", message) }}
+		if err := manager.KillSession("gone"); err != nil {
+			t.Fatalf("KillSession(%q) returned %v", message, err)
+		}
+	}
+}
+
 func TestSetSessionTemporaryKeepsSessionAliveWhenUnattached(t *testing.T) {
 	var calls [][]string
 	manager := Manager{

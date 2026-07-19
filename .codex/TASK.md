@@ -60,13 +60,13 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P0: Operation failure handling
 
-* [ ] Kill a newly created tmux session when its metadata cannot be persisted.
-* [ ] Treat cleanup of an already missing session or popup as successful.
-* [ ] Return the original operation error to the user.
-* [ ] Remove project-wide rename rollback logic.
-* [ ] Remove generalized compensation or transaction helpers.
-* [ ] Leave non-critical inconsistencies for the next startup reconciliation.
-* [ ] Test failed session creation persistence and already-missing cleanup.
+* [x] Kill a newly created tmux session when its metadata cannot be persisted.
+* [x] Treat cleanup of an already missing session or popup as successful.
+* [x] Return the original operation error to the user.
+* [x] Remove project-wide rename rollback logic.
+* [x] Remove generalized compensation or transaction helpers.
+* [x] Leave non-critical inconsistencies for the next startup reconciliation.
+* [x] Test failed session creation persistence and already-missing cleanup.
 
 ### P1: Volatile instance lifecycle
 
