@@ -77,7 +77,7 @@ Deleting the final session of a project also deletes the project. If no project 
 
 Persistent state is stored at:
 
-* `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set
+* `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set and non-empty
 * `~/.local/state/tflow/store.json` otherwise
 
 The store contains only project and persistent-session metadata. Volatile ownership and other runtime information are not persisted.
@@ -162,4 +162,3 @@ Performance optimizations should be based on tmux command count or measurements 
 * Lip Gloss provides terminal styling
 
 Implementation should prefer direct, testable code over additional lifecycle, persistence, or recovery frameworks.
-
