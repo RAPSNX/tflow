@@ -3,6 +3,8 @@ package ui
 import "tflow/internal/store"
 
 type appState = store.AppState
+type storedProject = store.Project
+type persistentSession = store.PersistentSession
 type projectConfig = store.ProjectConfig
 
 func loadAppState(path string) (appState, error) {

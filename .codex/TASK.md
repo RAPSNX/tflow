@@ -17,21 +17,21 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P0: Persistent state model
 
-* [ ] Replace parallel session maps with projects containing ordered session records.
-* [ ] Store only:
+* [x] Replace parallel session maps with projects containing ordered session records.
+* [x] Store only:
 
   * project name
   * project workdir
   * ordered persistent sessions
   * internal tmux session ID
   * session display label
-* [ ] Keep volatile sessions and instance ownership out of the store.
-* [ ] Ignore unknown JSON fields.
-* [ ] Reject malformed JSON with a clear path-qualified error.
-* [ ] Keep the state path at `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set and non-empty, falling back to `~/.local/state/tflow/store.json`.
-* [ ] Set the state directory mode to `0700`.
-* [ ] Set the state file mode to `0600`.
-* [ ] Update state codec and normalization tests for the new schema.
+* [x] Keep volatile sessions and instance ownership out of the store.
+* [x] Ignore unknown JSON fields.
+* [x] Reject malformed JSON with a clear path-qualified error.
+* [x] Keep the state path at `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set and non-empty, falling back to `~/.local/state/tflow/store.json`.
+* [x] Set the state directory mode to `0700`.
+* [x] Set the state file mode to `0600`.
+* [x] Update state codec and normalization tests for the new schema.
 
 ### P0: Simple atomic state updates
 
@@ -115,7 +115,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Delete all persistent sessions and metadata when a project is deleted.
 * [ ] Switch from an active deleted project to the first session of the next project.
 * [ ] Create a volatile fallback when no project session remains.
-* [ ] Keep project and session order stable.
+* [x] Keep project and session order stable.
 * [ ] Test creation, rename, moves, deletion, switching, active-project deletion, and fallback behavior.
 
 ### P1: Generated labels
@@ -143,8 +143,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Remove project names encoded into tmux session names.
 * [x] Remove session labels encoded into tmux session names.
 * [x] Remove project-wide tmux rename migration code.
-* [ ] Remove parallel `SessionProjects` and `SessionLabels` state maps.
-* [ ] Remove strict unknown-field rejection.
+* [x] Remove parallel `SessionProjects` and `SessionLabels` state maps.
+* [x] Remove strict unknown-field rejection.
 * [ ] Remove sidebar-triggered reconciliation writes.
 * [ ] Remove file and directory sync requirements.
 * [ ] Remove popup PID ownership requirements.

@@ -1,19 +1,31 @@
 package store
 
 type AppState struct {
-	Projects        []string
-	SessionProjects map[string]string
-	SessionLabels   map[string]string
-	ProjectConfigs  map[string]ProjectConfig
+	Projects []Project
+}
+
+type Project struct {
+	Name     string
+	Workdir  string
+	Sessions []PersistentSession
+}
+
+type PersistentSession struct {
+	ID    string
+	Label string
 }
 
 type storedState struct {
-	ProjectOrder    []string                 `json:"project_order"`
-	Projects        map[string]storedProject `json:"projects"`
-	SessionProjects map[string]string        `json:"session_projects"`
-	SessionLabels   map[string]string        `json:"session_labels"`
+	Projects []storedProject `json:"projects"`
 }
 
 type storedProject struct {
-	Workdir string `json:"workdir"`
+	Name     string                    `json:"name"`
+	Workdir  string                    `json:"workdir"`
+	Sessions []storedPersistentSession `json:"sessions"`
+}
+
+type storedPersistentSession struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
 }

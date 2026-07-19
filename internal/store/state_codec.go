@@ -8,30 +8,24 @@ import (
 )
 
 func emptyAppState() AppState {
-	return AppState{
-		Projects:        []string{},
-		SessionProjects: map[string]string{},
-		SessionLabels:   map[string]string{},
-		ProjectConfigs:  map[string]ProjectConfig{},
-	}
+	return AppState{Projects: []Project{}}
 }
 
 func encodeAppState(state AppState) ([]byte, error) {
-	stored := storedState{
-		ProjectOrder:    append([]string(nil), state.Projects...),
-		Projects:        make(map[string]storedProject, len(state.Projects)),
-		SessionProjects: cloneStringMap(state.SessionProjects),
-		SessionLabels:   cloneStringMap(state.SessionLabels),
-	}
+	state = NormalizeAppState(state)
+	stored := storedState{Projects: make([]storedProject, 0, len(state.Projects))}
 	for _, project := range state.Projects {
-		stored.Projects[project] = storedProject{Workdir: state.ProjectConfigs[project].Workdir}
+		encodedProject := storedProject{Name: project.Name, Workdir: project.Workdir, Sessions: make([]storedPersistentSession, 0, len(project.Sessions))}
+		for _, session := range project.Sessions {
+			encodedProject.Sessions = append(encodedProject.Sessions, storedPersistentSession{ID: session.ID, Label: session.Label})
+		}
+		stored.Projects = append(stored.Projects, encodedProject)
 	}
 	return json.MarshalIndent(stored, "", "  ")
 }
 
 func decodeAppState(data []byte) (AppState, error) {
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
-	decoder.DisallowUnknownFields()
 	var stored storedState
 	if err := decoder.Decode(&stored); err != nil {
 		return AppState{}, fmt.Errorf("invalid state: %w", err)
@@ -42,24 +36,13 @@ func decodeAppState(data []byte) (AppState, error) {
 		}
 		return AppState{}, fmt.Errorf("invalid state: %w", err)
 	}
-
 	state := emptyAppState()
-	state.Projects = append(state.Projects, stored.ProjectOrder...)
-	for project, cfg := range stored.Projects {
-		state.ProjectConfigs[project] = ProjectConfig{Name: project, Workdir: cfg.Workdir}
+	for _, project := range stored.Projects {
+		loaded := Project{Name: project.Name, Workdir: project.Workdir, Sessions: make([]PersistentSession, 0, len(project.Sessions))}
+		for _, session := range project.Sessions {
+			loaded.Sessions = append(loaded.Sessions, PersistentSession{ID: session.ID, Label: session.Label})
+		}
+		state.Projects = append(state.Projects, loaded)
 	}
-	state.SessionProjects = cloneStringMap(stored.SessionProjects)
-	state.SessionLabels = cloneStringMap(stored.SessionLabels)
 	return NormalizeAppState(state), nil
-}
-
-func cloneStringMap(values map[string]string) map[string]string {
-	if values == nil {
-		return map[string]string{}
-	}
-	cloned := make(map[string]string, len(values))
-	for key, value := range values {
-		cloned[key] = value
-	}
-	return cloned
 }

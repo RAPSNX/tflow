@@ -1,69 +1,42 @@
 package store
 
 import (
-	"sort"
 	"strings"
 	"unicode"
 )
 
 func NormalizeAppState(state AppState) AppState {
-	state.Projects = NormalizeProjectList(state.Projects)
-	if state.SessionProjects == nil {
-		state.SessionProjects = map[string]string{}
-	}
-	if state.SessionLabels == nil {
-		state.SessionLabels = map[string]string{}
-	}
-	if state.ProjectConfigs == nil {
-		state.ProjectConfigs = map[string]ProjectConfig{}
-	}
-
-	normalizedProjects := map[string]ProjectConfig{}
-	for _, project := range sortedStringKeys(state.ProjectConfigs) {
-		cfg := NormalizeProjectConfig(state.ProjectConfigs[project])
-		name := NormalizeProjectName(project)
-		if cfg.Name != "" {
-			name = cfg.Name
-		}
+	normalized := AppState{Projects: make([]Project, 0, len(state.Projects))}
+	seenProjects := map[string]struct{}{}
+	seenSessions := map[string]struct{}{}
+	for _, project := range state.Projects {
+		name := NormalizeProjectName(project.Name)
 		if name == "" {
 			continue
 		}
-		cfg.Name = name
-		normalizedProjects[name] = cfg
-		if !ContainsString(state.Projects, name) {
-			state.Projects = append(state.Projects, name)
-		}
-	}
-
-	normalizedSessions := map[string]string{}
-	normalizedLabels := map[string]string{}
-	for _, name := range sortedStringKeys(state.SessionProjects) {
-		name = strings.TrimSpace(name)
-		project := NormalizeProjectName(state.SessionProjects[name])
-		if name == "" || project == "" {
+		if _, exists := seenProjects[name]; exists {
 			continue
 		}
-		normalizedSessions[name] = project
-		if !ContainsString(state.Projects, project) {
-			state.Projects = append(state.Projects, project)
+		seenProjects[name] = struct{}{}
+		normalizedProject := Project{Name: name, Workdir: strings.TrimSpace(project.Workdir), Sessions: make([]PersistentSession, 0, len(project.Sessions))}
+		for _, session := range project.Sessions {
+			id := strings.TrimSpace(session.ID)
+			if id == "" {
+				continue
+			}
+			if _, exists := seenSessions[id]; exists {
+				continue
+			}
+			seenSessions[id] = struct{}{}
+			label := strings.TrimSpace(session.Label)
+			if label == "" {
+				label = sessionLabelFromKey(id, name)
+			}
+			normalizedProject.Sessions = append(normalizedProject.Sessions, PersistentSession{ID: id, Label: label})
 		}
-		label := strings.TrimSpace(state.SessionLabels[name])
-		if label == "" {
-			label = sessionLabelFromKey(name, project)
-		}
-		normalizedLabels[name] = label
+		normalized.Projects = append(normalized.Projects, normalizedProject)
 	}
-
-	state.Projects = NormalizeProjectList(state.Projects)
-	for _, project := range state.Projects {
-		cfg := normalizedProjects[project]
-		cfg.Name = project
-		normalizedProjects[project] = NormalizeProjectConfig(cfg)
-	}
-	state.ProjectConfigs = normalizedProjects
-	state.SessionProjects = normalizedSessions
-	state.SessionLabels = normalizedLabels
-	return state
+	return normalized
 }
 
 func sessionLabelFromKey(name, project string) string {
@@ -122,13 +95,4 @@ func ContainsString(values []string, want string) bool {
 		}
 	}
 	return false
-}
-
-func sortedStringKeys[V any](values map[string]V) []string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }
