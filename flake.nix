@@ -25,6 +25,9 @@
           src = self;
           vendorHash = "sha256-UORW9eGwCwt/rakuC10j3PEFCmlobyJk09jSIqVHZo8=";
           subPackages = [ "cmd" ];
+          postInstall = ''
+            mv "$out/bin/cmd" "$out/bin/tflow"
+          '';
         };
         homeManagerEvaluation = home-manager.lib.homeManagerConfiguration {
           inherit pkgs;
@@ -47,10 +50,16 @@
           pkgs.runCommand "tflow-home-manager-module-evaluation" { } ''
             touch $out
           '';
+        packageLayoutCheck = pkgs.runCommand "tflow-package-layout" { } ''
+          test -x "${tflow}/bin/tflow"
+          test ! -e "${tflow}/bin/cmd"
+          touch $out
+        '';
       in
       {
         checks.default = tflow;
         checks.home-manager-module = homeManagerCheck;
+        checks.package-layout = packageLayoutCheck;
         devShells.default = pkgs.mkShell {
           packages = [
             pkgs.go
