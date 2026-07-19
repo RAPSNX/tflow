@@ -19,11 +19,15 @@ Each session managed by `tflow` is an ordinary `tmux` session.
 
 On startup, `tflow` creates one volatile session and attaches the user to it.
 
-Volatile sessions belong only to the current `tflow` instance. They are used for scratch work and are removed when that instance exits normally or `Ctrl+Q` is confirmed.
+Volatile sessions belong only to the current `tflow` instance. They are used for scratch work and are removed when the tmux client that owns that instance detaches, including normal exit, terminal closure, or confirmed `Ctrl+Q`.
 
 Sessions created outside a project are volatile, belong to the current `tflow` instance, and follow the same cleanup rules.
 
-Managed panes use tmux’s `remain-on-exit` behavior. When a shell exits, its pane stays visible as exited rather than causing tmux to move the client to another session. `Ctrl+Q` remains the deliberate way to leave a tflow instance.
+Managed panes use tmux’s `remain-on-exit` behavior. When a shell exits, its pane stays visible as exited rather than causing tmux to move the client to another session. The user can open the sidebar with `Ctrl+F` and delete the exited session, or use `Ctrl+Q` to remove every volatile session owned by the instance. tflow does not automatically switch away from or respawn an exited session.
+
+Cleanup is idempotent. Explicit quit, the attaching tflow process returning, and tmux client-detach handling may all attempt to remove the same instance-owned volatile sessions without affecting persistent sessions or sessions owned by another instance.
+
+Every sidebar popup is owned by one tmux client. tflow keeps a client-scoped popup runtime record that identifies the popup wrapper/menu process. Closing or toggling the popup, quitting, and client detachment terminate and reap that process before removing its tmux environment records. The wrapper clears its own record after normal exit, a signal, or failed startup. Startup and recovery may remove stale popup records only when their client or recorded process no longer exists; they must not close a live popup owned by another client or instance.
 
 `tflow` contains a reviewed, compiled list of exactly 25 animal names. The list is fetched once from a public animal API during development and is never requested at runtime.
 
@@ -153,6 +157,12 @@ The state file is owned and updated by `tflow`. Packaging integrations such as H
 If the state file does not exist, `tflow` creates an empty one when needed.
 
 If the state file is invalid, startup should fail with a clear error.
+
+tflow updates state through durable atomic replacement: it writes a complete temporary file in the state directory, applies its permissions, flushes it, and atomically replaces `store.json`. An interrupted write must leave the prior valid store available.
+
+tflow reconciles persistent metadata with the authoritative list of sessions on its dedicated tmux socket before startup attaches and after every successful sidebar refresh. Reconciliation removes membership and display labels for sessions no longer present, then removes every project with no remaining live sessions. A confirmed absent dedicated tmux server is an authoritative empty list. Other tmux operational errors do not cause metadata cleanup or state writes.
+
+Project and session mutations that cross tmux and state storage are compensatable. If either side fails, tflow reloads or reconciles rather than presenting a successful operation with divergent tmux and persisted state.
 
 ## Key Interactions
 

@@ -53,6 +53,42 @@ Every previously open task is grouped below for a dedicated implementation sessi
 - [x] Split UI message handling, key dispatch, modal updates, and lifecycle orchestration into focused files.
 - [x] Split oversized store, tmux, and UI tests by the behavior they cover.
 
+### Session 6: Runtime cleanup, reconciliation, and recovery
+
+#### `internal/tmux`
+
+- [ ] Add client-detach cleanup that resolves the detached client instance identity and removes only its volatile sessions.
+- [ ] Make normal exit, confirmed quit, and client-detach cleanup idempotent.
+- [ ] Introduce client-scoped popup process ownership records.
+- [ ] Ensure popup close, toggle, quit, and stale-record recovery terminate and reap the wrapper/menu process before clearing popup state.
+- [ ] Reap stale popup records when their client or recorded process no longer exists, without affecting live popups of other instances.
+- [ ] Preserve `remain-on-exit`; do not automatically switch or respawn exited sessions.
+- [ ] Provide an authoritative session-list result that distinguishes an absent dedicated tmux server from other tmux failures.
+
+#### `internal/ui`
+
+- [ ] Reconcile persisted project/session metadata against the authoritative tmux session list before startup attaches and after successful sidebar refreshes.
+- [ ] Remove metadata for externally removed sessions and remove every project left with no live sessions.
+- [ ] Skip metadata GC when tmux cannot provide an authoritative session list.
+- [ ] Make create, rename, and delete flows compensate or reload/reconcile after tmux/store failures.
+- [ ] Keep exited sessions manually manageable through the existing sidebar deletion flow.
+
+#### `internal/store`
+
+- [ ] Replace direct state-file writes with durable atomic replacement.
+- [ ] Add failure-path handling that preserves the prior valid store when a write cannot complete.
+
+#### Verification
+
+- [ ] Test detach cleanup with multiple volatile instances and persistent sessions, including repeated cleanup calls.
+- [ ] Test that closing a popup terminates its wrapper/menu process and removes its client-scoped records.
+- [ ] Test stale popup recovery without disturbing a live popup for another client.
+- [ ] Test startup and sidebar-refresh metadata GC remove missing-session metadata and empty projects.
+- [ ] Test that an absent tflow server is reconciled as empty, while other tmux errors preserve metadata.
+- [ ] Test mutation failures do not leave a successful-looking but divergent UI/model state.
+- [ ] Test atomic-store failure behavior preserves the previously valid state file.
+- [ ] Run `go test ./...`, `go build ./...`, `go vet ./...`, and `git diff --check`.
+
 ## Completed checklist
 
 ## Tmux runtime and lifecycle
