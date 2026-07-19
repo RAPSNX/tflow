@@ -170,6 +170,83 @@ func TestPrepareStartupRollsBackCreatedSessionOnLaterFailure(t *testing.T) {
 	}
 }
 
+func TestPrepareStartupReconcilesStateWithOneSessionList(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/small", Sessions: []persistentSession{{ID: "tflow-p-keep", Label: "keep"}, {ID: "tflow-p-missing", Label: "missing"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	lists := 0
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			lists++
+			return []session{{Name: "tflow-p-keep"}}, nil
+		},
+	}
+	if _, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err != nil {
+		t.Fatal(err)
+	}
+	if lists != 1 {
+		t.Fatalf("session lists = %d, want 1", lists)
+	}
+	state, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Projects) != 1 || len(state.Projects[0].Sessions) != 1 || state.Projects[0].Sessions[0].ID != "tflow-p-keep" {
+		t.Fatalf("reconciled state = %#v", state)
+	}
+}
+
+func TestPrepareStartupPreservesStateWhenSessionListFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	state := appState{Projects: []storedProject{{Name: "small", Workdir: "/small", Sessions: []persistentSession{{ID: "tflow-p-keep", Label: "keep"}}}}}
+	if err := saveAppState(path, state); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareStartup(fakeTmuxController{
+		listSessions: func() ([]session, error) { return nil, fmt.Errorf("tmux unavailable") },
+	}, "/tmp/tflow", "/tmp/project", "instance-1"); err == nil {
+		t.Fatal("prepareStartup returned nil error")
+	}
+	got, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(got) != fmt.Sprint(state) {
+		t.Fatalf("state changed after session-list failure: %#v", got)
+	}
+}
+
+func TestSidebarRefreshDoesNotReconcilePersistentState(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	state := appState{Projects: []storedProject{{Name: "small", Workdir: "/small", Sessions: []persistentSession{{ID: "tflow-p-missing", Label: "missing"}}}}}
+	if err := saveAppState(path, state); err != nil {
+		t.Fatal(err)
+	}
+	menu, err := buildModel(fakeTmuxController{
+		listSessions: func() ([]session, error) { return nil, nil },
+	}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := menu.Update(menu.loadSessionsCmd()())
+	if got := updated.(model); got.err != nil {
+		t.Fatal(got.err)
+	}
+	got, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(got) != fmt.Sprint(state) {
+		t.Fatalf("sidebar refresh changed state: %#v", got)
+	}
+}
+
 func TestStartWithManagerCleansUpWhenAttachCommandFails(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	var cleaned []string

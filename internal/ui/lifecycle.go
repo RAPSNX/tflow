@@ -67,13 +67,21 @@ func OpenMenu() error {
 }
 
 func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) (string, error) {
-	if err := ensureStartupState(); err != nil {
-		return "", fmt.Errorf("initialize state %q: %w", appStatePath(), err)
+	path := appStatePath()
+	if _, err := loadAppState(path); err != nil {
+		return "", fmt.Errorf("load state %q: %w", path, err)
 	}
 
 	existing, err := manager.ListSessions()
 	if err != nil {
 		return "", err
+	}
+	existingNames := make(map[string]struct{}, len(existing))
+	for _, session := range existing {
+		existingNames[session.Name] = struct{}{}
+	}
+	if _, err := reconcileAppState(path, existingNames); err != nil {
+		return "", fmt.Errorf("reconcile state %q: %w", path, err)
 	}
 	label := nextTempSessionNameForInstance(existing, instanceID)
 	var name string

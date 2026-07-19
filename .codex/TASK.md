@@ -48,15 +48,15 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P0: Startup reconciliation
 
-* [ ] List tmux sessions once during startup.
-* [ ] Remove metadata for persistent sessions that no longer exist.
-* [ ] Remove projects that have no remaining sessions.
-* [ ] Persist reconciled state only when it changed.
-* [ ] Treat an absent dedicated tmux server as an empty session list.
-* [ ] Do not remove metadata when tmux returns another operational error.
-* [ ] Do not retain missing persistent-session metadata for lazy restoration.
-* [ ] Do not reconcile or write state during ordinary sidebar refreshes.
-* [ ] Test missing-session cleanup without lazy restoration, empty-project cleanup, and tmux-error preservation.
+* [x] List tmux sessions once during startup.
+* [x] Remove metadata for persistent sessions that no longer exist.
+* [x] Remove projects that have no remaining sessions.
+* [x] Persist reconciled state only when it changed.
+* [x] Treat an absent dedicated tmux server as an empty session list.
+* [x] Do not remove metadata when tmux returns another operational error.
+* [x] Do not retain missing persistent-session metadata for lazy restoration.
+* [x] Do not reconcile or write state during ordinary sidebar refreshes.
+* [x] Test missing-session cleanup without lazy restoration, empty-project cleanup, and tmux-error preservation.
 
 ### P0: Operation failure handling
 

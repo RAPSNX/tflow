@@ -209,6 +209,53 @@ func TestMutateAppStatePreservesConcurrentDisjointMutations(t *testing.T) {
 	}
 }
 
+func TestReconcileAppStateRemovesMissingSessionsAndEmptyProjects(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	state := AppState{Projects: []Project{
+		{Name: "small", Workdir: "/small", Sessions: []PersistentSession{{ID: "tflow-p-keep", Label: "keep"}, {ID: "tflow-p-missing", Label: "missing"}}},
+		{Name: "empty", Workdir: "/empty", Sessions: []PersistentSession{{ID: "tflow-p-gone", Label: "gone"}}},
+	}}
+	if err := SaveAppState(path, state); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := ReconcileAppState(path, map[string]struct{}{"tflow-p-keep": {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("ReconcileAppState reported no change")
+	}
+	got, err := LoadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Projects) != 1 || got.Projects[0].Name != "small" || len(got.Projects[0].Sessions) != 1 || got.Projects[0].Sessions[0].ID != "tflow-p-keep" {
+		t.Fatalf("reconciled state = %#v", got)
+	}
+}
+
+func TestReconcileAppStateDoesNotWriteUnchangedState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	state := AppState{Projects: []Project{{Name: "small", Workdir: "/small", Sessions: []PersistentSession{{ID: "tflow-p-keep", Label: "keep"}}}}}
+	if err := SaveAppState(path, state); err != nil {
+		t.Fatal(err)
+	}
+	originalRename := renameAppStateFile
+	called := false
+	renameAppStateFile = func(oldPath, newPath string) error {
+		called = true
+		return originalRename(oldPath, newPath)
+	}
+	t.Cleanup(func() { renameAppStateFile = originalRename })
+	changed, err := ReconcileAppState(path, map[string]struct{}{"tflow-p-keep": {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed || called {
+		t.Fatalf("changed = %t, wrote = %t, want false", changed, called)
+	}
+}
+
 func TestLoadAppStateIgnoresUnknownFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "store.json")
 	data := `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter","unknown":true}]}],"unknown":true}`

@@ -23,6 +23,10 @@ func mutateAppStateLocked(path string, mutate func(appState) (appState, error)) 
 	return store.MutateAppStateLocked(path, mutate)
 }
 
+func reconcileAppState(path string, sessions map[string]struct{}) (bool, error) {
+	return store.ReconcileAppState(path, sessions)
+}
+
 func lockAppState(path string) (func() error, error) {
 	return store.AcquireAppStateLock(path)
 }
