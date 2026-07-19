@@ -17,7 +17,6 @@ type inputMode int
 
 const (
 	inputNone inputMode = iota
-	inputHelp
 	inputCreateSession
 	inputCreateProject
 	inputSwitchProject
@@ -116,6 +115,8 @@ type model struct {
 	height int
 
 	mode inputMode
+
+	showHelp bool
 
 	sessions        []session
 	projects        []string

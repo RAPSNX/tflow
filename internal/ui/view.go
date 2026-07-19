@@ -12,8 +12,6 @@ func (m model) View() string {
 	}
 
 	switch m.mode {
-	case inputHelp:
-		return appStyle.Width(m.width).Height(m.height).Render(m.renderHelp())
 	case inputSwitchProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderProjectSwitchOverlay())
 	case inputCreateSession:
@@ -37,7 +35,11 @@ func (m model) View() string {
 
 func (m model) renderMenu() string {
 	innerWidth := max(28, m.width-4)
-	body := lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(innerWidth), m.renderSessionPanel(innerWidth))
+	sections := []string{m.renderHeader(innerWidth), m.renderSessionPanel(innerWidth)}
+	if m.showHelp {
+		sections = append(sections, "", m.renderHelp())
+	}
+	body := lipgloss.JoinVertical(lipgloss.Left, sections...)
 	footer := m.renderFooter(innerWidth)
 	if footer == "" {
 		return body

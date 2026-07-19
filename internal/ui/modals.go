@@ -8,12 +8,6 @@ import (
 
 func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.mode {
-	case inputHelp:
-		if msg.Type == tea.KeyEsc {
-			m.mode = inputNone
-			m.status = ""
-		}
-		return m, nil
 	case inputCreateSession:
 		switch msg.Type {
 		case tea.KeyEsc:

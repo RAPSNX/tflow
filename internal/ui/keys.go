@@ -7,7 +7,19 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlC:
 		return m, m.closeMenuCmd()
 	case tea.KeyEsc:
+		if m.showHelp {
+			m.showHelp = false
+			return m, nil
+		}
 		return m, m.closeMenuCmd()
+	}
+
+	if msg.String() == "?" {
+		m.showHelp = !m.showHelp
+		return m, nil
+	}
+	if m.showHelp {
+		m.showHelp = false
 	}
 
 	switch msg.String() {
@@ -19,10 +31,6 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		return m.switchSelectedSession()
-	case "?":
-		m.mode = inputHelp
-		m.status = ""
-		return m, nil
 	case "n":
 		return m.startSessionCreate()
 	case "N":

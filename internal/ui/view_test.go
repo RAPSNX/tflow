@@ -138,13 +138,29 @@ func TestRenderHelpListsOneShortcutPerRow(t *testing.T) {
 	}
 }
 
-func TestRenderHelpDoesNotApplyOuterLayout(t *testing.T) {
+func TestRenderMenuShowsHelpInlineBelowSessions(t *testing.T) {
 	m := NewMenu().(model)
 	m.width = 48
 	m.height = 24
-	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHelp(), "")
-	if got, want := strings.Count(plain, "\n")+1, 17; got != want {
-		t.Fatalf("help row count = %d, want %d", got, want)
+	m.showHelp = true
+	m.sessions = []session{{Name: "dev"}}
+	m.currentSession = "dev"
+	m.selectedSession = "dev"
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.View(), "")
+	sessions := strings.Index(plain, "Sessions")
+	help := strings.Index(plain, "Shortcuts")
+	if sessions < 0 || help < 0 || help <= sessions {
+		t.Fatalf("help was not rendered below sessions: %q", plain)
+	}
+	lines := strings.Split(plain, "\n")
+	for index, line := range lines {
+		if strings.Contains(line, "Shortcuts") {
+			if index == 0 || strings.TrimSpace(lines[index-1]) != "" {
+				t.Fatalf("help is missing a gap below sessions: %q", plain)
+			}
+			break
+		}
 	}
 }
 
