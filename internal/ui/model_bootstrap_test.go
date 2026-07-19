@@ -65,8 +65,8 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareStartup returned error: %v", err)
 	}
-	if !runtmux.ContainsAnimalName(name) {
-		t.Fatalf("name = %q, want a plain animal name", name)
+	if label := volatileSessionLabel(name, "instance-1"); !runtmux.ContainsAnimalName(label) {
+		t.Fatalf("name = %q (label %q), want an animal label", name, label)
 	}
 
 	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{"create:" + name, "temporary:" + name + ":true:instance-1", "control:/tmp/tflow"}); got != want {

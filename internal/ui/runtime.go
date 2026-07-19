@@ -127,6 +127,18 @@ func nextTempSessionName(existing []session) string {
 	return runtmux.NextTempSessionName(existing)
 }
 
+func nextTempSessionNameForInstance(existing []session, instanceID string) string {
+	return runtmux.NextTempSessionNameForInstance(existing, instanceID)
+}
+
+func volatileSessionName(instanceID, label string) string {
+	return runtmux.VolatileSessionName(instanceID, label)
+}
+
+func volatileSessionLabel(name, instanceID string) string {
+	return runtmux.VolatileSessionLabel(name, instanceID)
+}
+
 func randomAnimalName() string {
 	return runtmux.RandomAnimalName()
 }

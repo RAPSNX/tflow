@@ -261,13 +261,19 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 		if selected, ok := m.findSession(target.session); !ok || !selected.Temporary {
 			project = normalizeProjectName(m.sessionProjects[target.session])
 		}
-		if m.hasSessionLabel(project, label, target.session) {
+		if project != "" && m.hasSessionLabel(project, label, target.session) {
 			m.status = "Session name already exists in this project."
+			return m, nil
+		}
+		if project == "" && m.hasVolatileSessionLabel(label, target.session) {
+			m.status = "Session name already exists."
 			return m, nil
 		}
 		name := label
 		if project != "" {
 			name = projectSessionName(project, label)
+		} else {
+			name = volatileSessionName(m.instanceID, label)
 		}
 		if existing, ok := m.findSession(name); ok && existing.Name != target.session {
 			m.status = "Session name already exists."
@@ -326,7 +332,8 @@ func (m model) createVolatileFallback() (tea.Model, tea.Cmd) {
 		m.status = m.err.Error()
 		return m, nil
 	}
-	name := nextTempSessionName(m.sessions)
+	label := nextTempSessionNameForInstance(m.sessions, m.instanceID)
+	name := volatileSessionName(m.instanceID, label)
 	return m, func() tea.Msg {
 		s, err := m.tmux.CreateSession(name, m.cwd, "")
 		if err != nil {
@@ -336,6 +343,6 @@ func (m model) createVolatileFallback() (tea.Model, tea.Cmd) {
 			_ = m.tmux.KillSession(s.Name)
 			return sessionCreatedMsg{err: fmt.Errorf("mark volatile fallback: %w", err)}
 		}
-		return sessionCreatedMsg{session: s, volatile: true, label: s.Name}
+		return sessionCreatedMsg{session: s, volatile: true, label: label}
 	}
 }

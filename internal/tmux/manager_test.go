@@ -142,6 +142,27 @@ func TestSetSessionTemporaryKeepsSessionAliveWhenUnattached(t *testing.T) {
 	}
 }
 
+func TestSetSessionTemporarySetsVolatileDisplayLabel(t *testing.T) {
+	var calls [][]string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
+			return "", nil
+		},
+	}
+	name := VolatileSessionName("instance-1", "otter")
+	if err := manager.SetSessionTemporary(name, true, "instance-1"); err != nil {
+		t.Fatalf("SetSessionTemporary returned error: %v", err)
+	}
+	want := []string{"set-option", "-t", name, sessionLabelMarker, "otter"}
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+			return
+		}
+	}
+	t.Fatalf("missing call %v in %#v", want, calls)
+}
+
 func TestSetSessionTemporaryClearsDeferredCleanupWhenMadePersistent(t *testing.T) {
 	var calls [][]string
 	manager := Manager{
@@ -265,6 +286,27 @@ func TestNextTempSessionName(t *testing.T) {
 	got := NextTempSessionName(existing)
 	if !ContainsAnimalName(got) || got == "otter" || got == "fox" {
 		t.Fatalf("NextTempSessionName = %q, want an unused single animal", got)
+	}
+}
+
+func TestNextTempSessionNameForInstanceIgnoresOtherInstances(t *testing.T) {
+	existing := make([]Session, 0, len(tempSessionAnimals))
+	for _, animal := range tempSessionAnimals {
+		existing = append(existing, Session{Name: VolatileSessionName("instance-1", animal), Temporary: true, Instance: "instance-1"})
+	}
+	if got := NextTempSessionNameForInstance(existing, "instance-2"); !ContainsAnimalName(got) {
+		t.Fatalf("NextTempSessionNameForInstance = %q, want an available single animal", got)
+	}
+}
+
+func TestVolatileSessionNameKeepsLabelSeparate(t *testing.T) {
+	first := VolatileSessionName("instance-1", "code")
+	second := VolatileSessionName("instance-2", "code")
+	if first == second {
+		t.Fatalf("volatile names collide: %q", first)
+	}
+	if got := VolatileSessionLabel(first, "instance-1"); got != "code" {
+		t.Fatalf("VolatileSessionLabel = %q, want code", got)
 	}
 }
 

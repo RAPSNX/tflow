@@ -7,6 +7,11 @@ import (
 )
 
 func (m model) sessionLabel(name string) string {
+	if s, ok := m.findSession(name); ok && s.Temporary {
+		if label := volatileSessionLabel(name, s.Instance); label != "" {
+			return label
+		}
+	}
 	if m.sessionLabels != nil {
 		if label := strings.TrimSpace(m.sessionLabels[name]); label != "" {
 			return label
@@ -45,6 +50,19 @@ func (m model) hasSessionLabel(project, label string, exceptName string) bool {
 			continue
 		}
 		if normalizeProjectName(m.sessionProjects[s.Name]) == project && m.sessionLabel(s.Name) == label {
+			return true
+		}
+	}
+	return false
+}
+
+func (m model) hasVolatileSessionLabel(label, exceptName string) bool {
+	label = sanitizeSessionName(label)
+	for _, s := range m.sessions {
+		if s.Name == exceptName || !m.isCurrentInstanceVolatile(s) {
+			continue
+		}
+		if m.sessionLabel(s.Name) == label {
 			return true
 		}
 	}

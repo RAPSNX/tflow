@@ -92,8 +92,16 @@ func (m Manager) SetSessionTemporary(name string, temporary bool, instanceID str
 	if _, err := m.runner()("set-option", "-t", name, tempMarker, marker); err != nil {
 		return err
 	}
-	_, err := m.runner()("set-option", "-t", name, instanceMarker, instanceID)
-	return err
+	if _, err := m.runner()("set-option", "-t", name, instanceMarker, instanceID); err != nil {
+		return err
+	}
+	if temporary {
+		if label := VolatileSessionLabel(name, instanceID); label != "" {
+			_, err := m.runner()("set-option", "-t", name, sessionLabelMarker, label)
+			return err
+		}
+	}
+	return nil
 }
 
 func (Manager) AttachCommand(name string) (*exec.Cmd, error) {

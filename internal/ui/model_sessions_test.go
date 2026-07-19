@@ -164,7 +164,8 @@ func TestCreateUnscopedSessionIsVolatileAndDoesNotPersistMetadata(t *testing.T) 
 	}, "scratch-temp").(model)
 	m.statePath = t.TempDir() + "/store.json"
 	m.instanceID = "instance-1"
-	m.sessions = []session{{Name: "scratch-temp", Temporary: true, Instance: "instance-1"}}
+	m.sessions = []session{{Name: volatileSessionName("instance-1", "scratch-temp"), Temporary: true, Instance: "instance-1"}}
+	m.currentSession = volatileSessionName("instance-1", "scratch-temp")
 	m.selectedProject = "old-project"
 	m.mode = inputCreateSession
 	m.input.SetValue("notes")
@@ -180,19 +181,19 @@ func TestCreateUnscopedSessionIsVolatileAndDoesNotPersistMetadata(t *testing.T) 
 	if !msg.volatile {
 		t.Fatal("created unscoped session is not volatile")
 	}
-	if got, want := fmt.Sprint(tagged), "[notes:true:instance-1]"; got != want {
+	if got, want := fmt.Sprint(tagged), fmt.Sprintf("[%s:true:instance-1]", volatileSessionName("instance-1", "notes")); got != want {
 		t.Fatalf("temporary tags = %s, want %s", got, want)
 	}
 	got := updated.(model)
 	updated, followUp := got.Update(msg)
 	got = updated.(model)
-	if got.selectedProject != "" || got.selectedSession != "notes" {
+	if got.selectedProject != "" || got.selectedSession != volatileSessionName("instance-1", "notes") {
 		t.Fatalf("selection = project %q session %q, want volatile notes", got.selectedProject, got.selectedSession)
 	}
 	if sessions := got.contextSessions(); len(sessions) != 2 {
 		t.Fatalf("volatile sessions = %#v, want startup and new session", sessions)
 	}
-	for _, name := range []string{"scratch-temp", "notes"} {
+	for _, name := range []string{volatileSessionName("instance-1", "scratch-temp"), volatileSessionName("instance-1", "notes")} {
 		session, found := got.findSession(name)
 		if !found || !session.Temporary || session.Instance != "instance-1" {
 			t.Fatalf("session %q = %#v, want instance-owned volatile session", name, session)
@@ -201,11 +202,53 @@ func TestCreateUnscopedSessionIsVolatileAndDoesNotPersistMetadata(t *testing.T) 
 	if followUp == nil {
 		t.Fatal("expected switch command")
 	}
-	if action := followUp().(menuActionMsg); action.switchSession != "notes" {
+	if action := followUp().(menuActionMsg); action.switchSession != volatileSessionName("instance-1", "notes") {
 		t.Fatalf("switch session = %q, want notes", action.switchSession)
 	}
-	if _, ok := got.sessionProjects["notes"]; ok {
+	if _, ok := got.sessionProjects[volatileSessionName("instance-1", "notes")]; ok {
 		t.Fatalf("volatile session metadata persisted: %#v", got.sessionProjects)
+	}
+}
+
+func TestVolatileSessionNamesAreScopedToEachInstance(t *testing.T) {
+	create := func(instanceID string) sessionCreatedMsg {
+		m := newModel(fakeTmuxController{
+			createSession: func(name, cwd, command string) (session, error) { return session{Name: name}, nil },
+			setSessionTemporary: func(name string, temporary bool, gotInstanceID string) error {
+				if !temporary || gotInstanceID != instanceID {
+					t.Fatalf("temporary session = %q, %t, %q", name, temporary, gotInstanceID)
+				}
+				return nil
+			},
+		}, "").(model)
+		m.instanceID = instanceID
+		m.mode = inputCreateSession
+		m.input.SetValue("code")
+
+		_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+		if cmd == nil {
+			t.Fatal("expected create command")
+		}
+		return cmd().(sessionCreatedMsg)
+	}
+
+	first := create("instance-1")
+	second := create("instance-2")
+	if first.err != nil || second.err != nil {
+		t.Fatalf("create errors = %v, %v", first.err, second.err)
+	}
+	if first.session.Name == second.session.Name {
+		t.Fatalf("volatile tmux names collide: %q", first.session.Name)
+	}
+	menu := newModel(fakeTmuxController{}, first.session.Name).(model)
+	menu.sessions = []session{{Name: first.session.Name, Temporary: true, Instance: "instance-1"}}
+	if got := menu.sessionLabel(first.session.Name); got != "code" {
+		t.Fatalf("sidebar label = %q, want code", got)
+	}
+	for _, created := range []sessionCreatedMsg{first, second} {
+		if created.label != "code" {
+			t.Fatalf("visible label = %q, want code", created.label)
+		}
 	}
 }
 
@@ -273,13 +316,14 @@ func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
 			renamed = []string{oldName, newName}
 			return nil
 		},
-	}, "notes").(model)
-	m.sessions = []session{{Name: "notes", Temporary: true, Instance: "instance-1"}}
-	m.currentSession = "notes"
-	m.selectedSession = "notes"
-	m.renameTarget = renameTarget{session: "notes"}
-	m.sessionProjects = map[string]string{"notes": "old-project", "dev": "other-project"}
-	m.sessionLabels = map[string]string{"notes": "old-notes", "dev": "old-dev"}
+	}, volatileSessionName("instance-1", "notes")).(model)
+	m.instanceID = "instance-1"
+	m.sessions = []session{{Name: volatileSessionName("instance-1", "notes"), Temporary: true, Instance: "instance-1"}}
+	m.currentSession = volatileSessionName("instance-1", "notes")
+	m.selectedSession = volatileSessionName("instance-1", "notes")
+	m.renameTarget = renameTarget{session: volatileSessionName("instance-1", "notes")}
+	m.sessionProjects = map[string]string{volatileSessionName("instance-1", "notes"): "old-project", volatileSessionName("instance-1", "dev"): "other-project"}
+	m.sessionLabels = map[string]string{volatileSessionName("instance-1", "notes"): "old-notes", volatileSessionName("instance-1", "dev"): "old-dev"}
 	m.statePath = t.TempDir() + "/store.json"
 	if err := m.saveState(); err != nil {
 		t.Fatal(err)
@@ -294,7 +338,7 @@ func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("rename returned error: %v", msg.err)
 	}
-	if got, want := fmt.Sprint(renamed), "[notes dev]"; got != want {
+	if got, want := fmt.Sprint(renamed), fmt.Sprintf("[%s %s]", volatileSessionName("instance-1", "notes"), volatileSessionName("instance-1", "dev")); got != want {
 		t.Fatalf("renameSession calls = %s, want %s", got, want)
 	}
 
@@ -304,7 +348,7 @@ func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
 		t.Fatal("expected reload command after rename")
 	}
 	got := updated.(model)
-	for _, name := range []string{"notes", "dev"} {
+	for _, name := range []string{volatileSessionName("instance-1", "notes"), volatileSessionName("instance-1", "dev")} {
 		if _, ok := got.sessionProjects[name]; ok {
 			t.Fatalf("stale project metadata remains for %s: %#v", name, got.sessionProjects)
 		}
