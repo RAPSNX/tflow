@@ -56,7 +56,7 @@ Use Go’s built-in `testing` package by default.
 - If `.codex/TASK.md` conflicts with `.codex/ARCHITECTURE.md`, stop and ask.
 - If `.codex/TASK.md` adds implementation detail without conflict, complete it.
 - Do not implement features not listed in `.codex/TASK.md` unless explicitly asked.
-- Do not introduce a user-edited config file; persistent data belongs in `$XDG_STATE_HOME/tflow/store.json`.
+- Do not introduce a user-edited config file; persistent data belongs in `~/.config/tflow/store.json`.
 - If implementation requires behavior not defined in `.codex/ARCHITECTURE.md`, stop and ask.
 - Keep changes focused and avoid unrelated rewrites.
 - Always create new branch for your work from main

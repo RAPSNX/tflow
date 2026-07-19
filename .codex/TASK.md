@@ -53,6 +53,38 @@ Every previously open task is grouped below for a dedicated implementation sessi
 - [x] Split UI message handling, key dispatch, modal updates, and lifecycle orchestration into focused files.
 - [x] Split oversized store, tmux, and UI tests by the behavior they cover.
 
+### Session 6: Installability and documentation accuracy
+
+- [ ] Change the module path to `github.com/rapsnx/tflow` so the documented `go install github.com/rapsnx/tflow@latest` command resolves.
+- [ ] Update the README Go badge and minimum-version wording to Go 1.25+.
+- [ ] Standardize persistent state on `~/.config/tflow/store.json`: update the architecture, repository guidance, Nix checks, and any other documentation or configuration references.
+- [ ] Correct the three identified typos in `AGENTS.md`.
+
+### Session 7: State location and persistence robustness
+
+- [ ] Make the state-path implementation always resolve to `~/.config/tflow/store.json` and remove the `XDG_STATE_HOME` and `~/.local/state` fallback behavior.
+- [ ] Add tests that assert `XDG_STATE_HOME` cannot change the store path and that no code path selects `~/.local/state/tflow/store.json`.
+- [ ] Preserve persisted project-session metadata when a session is temporarily absent from `ListSessions`; remove it only after a confirmed deletion or conversion to a volatile session.
+- [ ] Atomically persist `store.json` with a same-directory temporary file, file sync, rename, and directory sync while retaining `0600` permissions.
+- [ ] Serialize inter-process state updates for the complete read-modify-write operation and merge fresh persisted state so concurrent tflow instances do not overwrite unrelated changes.
+- [ ] Add a regression test using two concurrent instances that modify distinct state and verifies both updates persist.
+
+### Session 8: tmux compatibility
+
+- [ ] Replace tmux-3.7b-specific error-string checks in no-server, no-session, and `rename-window` fallback handling with version-resilient classification.
+- [ ] Add table-driven error-classification coverage for tmux 3.2 through current known stderr variants.
+
+### Session 9: Code quality cleanup
+
+- [ ] Remove the unused `command` parameter from session creation interfaces and implementations.
+- [ ] Replace custom UI `max` and `min` helpers with Go builtins.
+- [ ] Compute the selected session index once per session-panel render rather than once per rendered row.
+- [ ] Clear the per-client instance environment marker whenever popup opening fails, alongside the popup-visible marker.
+
+### Session 10: CI hygiene
+
+- [ ] Add a GitHub Actions workflow for pushes and pull requests that runs `gofmt -l`, `go vet ./...`, and `go test ./...`.
+
 ## Completed checklist
 
 ## Tmux runtime and lifecycle
@@ -114,7 +146,7 @@ Every previously open task is grouped below for a dedicated implementation sessi
 
 ## State
 
-- [x] Store persistent metadata at `$XDG_STATE_HOME/tflow/store.json` when set, otherwise at `~/.config/tflow/store.json`; never use `~/.local/share`.
+- [ ] Store persistent metadata only at `~/.config/tflow/store.json`, ignoring `XDG_STATE_HOME` and never using `~/.local/state` or `~/.local/share`.
 
 - [x] Create an empty state file when none exists.
 - [x] Fail startup with a path-qualified error when the state file contains invalid JSON.

@@ -130,10 +130,9 @@ Project settings contain only the project `workdir`.
 
 `tflow` does not use a user-edited `config.yaml` or per-project YAML files.
 
-All persistent metadata lives in one JSON file:
+All persistent metadata lives in `~/.config/tflow/store.json`.
 
-- `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set
-- `~/.config/tflow/store.json` when `XDG_STATE_HOME` is unset or empty
+`tflow` ignores `XDG_STATE_HOME` and never falls back to `~/.local/state`.
 
 `tflow` never stores state in `~/.local/share`.
 
