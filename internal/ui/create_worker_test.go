@@ -162,10 +162,15 @@ func TestRunCreateWorkerPromotesOnlyCurrentInstance(t *testing.T) {
 
 func TestPromoteVolatileSessionsKeepsMarkersWhenStateSaveFails(t *testing.T) {
 	var cleared []string
+	var killed []string
 	manager := fakeTmuxController{
 		renameSession: func(oldName, newName string) error { return nil },
 		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
 			cleared = append(cleared, name)
+			return nil
+		},
+		killSession: func(name string) error {
+			killed = append(killed, name)
 			return nil
 		},
 	}
@@ -182,6 +187,9 @@ func TestPromoteVolatileSessionsKeepsMarkersWhenStateSaveFails(t *testing.T) {
 	}
 	if len(cleared) != 0 {
 		t.Fatalf("cleared volatile markers before saving state: %q", cleared)
+	}
+	if len(killed) != 1 || !strings.HasPrefix(killed[0], "tflow-p-") {
+		t.Fatalf("cleaned up sessions = %q, want one renamed persistent session", killed)
 	}
 }
 

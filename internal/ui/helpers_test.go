@@ -131,3 +131,54 @@ func TestSaveStateRejectsConcurrentDuplicateProjectLabel(t *testing.T) {
 		t.Fatalf("project = %#v, want only the first session", project)
 	}
 }
+
+func TestSaveStateRejectsConcurrentProjectRenameCollision(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	base := appState{Projects: []storedProject{
+		{Name: "small", Workdir: "/small", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}}},
+		{Name: "garden", Workdir: "/garden", Sessions: []persistentSession{{ID: "tflow-p-two", Label: "two"}}},
+	}}
+	if err := saveAppState(path, base); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := buildModel(fakeTmuxController{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := buildModel(fakeTmuxController{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []*model{&first, &second} {
+		model.sessions = []session{{Name: "tflow-p-one"}, {Name: "tflow-p-two"}}
+	}
+	first.projects = []string{"workspace", "garden"}
+	delete(first.projectConfigs, "small")
+	first.projectConfigs["workspace"] = projectConfig{Name: "workspace", Workdir: "/small"}
+	first.sessionProjects["tflow-p-one"] = "workspace"
+	second.projects = []string{"small", "workspace"}
+	delete(second.projectConfigs, "garden")
+	second.projectConfigs["workspace"] = projectConfig{Name: "workspace", Workdir: "/garden"}
+	second.sessionProjects["tflow-p-two"] = "workspace"
+
+	if err := first.saveState(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.saveState(); err == nil || err.Error() != "project already exists" {
+		t.Fatalf("second save error = %v, want project already exists", err)
+	}
+	state, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, ok := storedProjectByName(state, "workspace")
+	if !ok || len(workspace.Sessions) != 1 || workspace.Sessions[0].ID != "tflow-p-one" {
+		t.Fatalf("workspace project = %#v, want only first rename", workspace)
+	}
+	garden, ok := storedProjectByName(state, "garden")
+	if !ok || len(garden.Sessions) != 1 || garden.Sessions[0].ID != "tflow-p-two" {
+		t.Fatalf("garden project = %#v, want preserved original project", garden)
+	}
+}

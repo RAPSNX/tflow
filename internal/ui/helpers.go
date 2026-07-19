@@ -26,6 +26,9 @@ func (m *model) saveState() error {
 	if m.stateBasePath != m.statePath {
 		base = appState{}
 	}
+	if err := validateStateProjectNames(latest, base, desired); err != nil {
+		return err
+	}
 	state := mergeAppStates(latest, base, desired)
 	if err := validateStateSessionLabels(state); err != nil {
 		return err
@@ -125,6 +128,20 @@ func validateStateSessionLabels(state appState) error {
 				return fmt.Errorf("session name already exists in this project")
 			}
 			labels[session.Label] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func validateStateProjectNames(latest, base, desired appState) error {
+	latestProjects := stateProjects(latest)
+	baseProjects := stateProjects(base)
+	for name := range stateProjects(desired) {
+		if _, existed := baseProjects[name]; existed {
+			continue
+		}
+		if _, exists := latestProjects[name]; exists {
+			return fmt.Errorf("project already exists")
 		}
 	}
 	return nil

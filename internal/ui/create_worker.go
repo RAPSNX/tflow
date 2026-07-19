@@ -169,6 +169,9 @@ func (m *model) promoteVolatileSessions(project, workdir, current string) error 
 		return fmt.Errorf("active volatile session is missing")
 	}
 	if err := m.saveState(); err != nil {
+		for _, name := range promoted {
+			_ = m.tmux.KillSession(name)
+		}
 		return err
 	}
 	for _, name := range promoted {
