@@ -140,7 +140,8 @@ func (m *model) promoteVolatileSessions(project, workdir, current string) error 
 	m.addProject(project)
 	m.setProjectConfig(projectConfig{Name: project, Workdir: workdir})
 	active := ""
-	promoted := make([]string, 0)
+	type promotion struct{ oldName, newName string }
+	promoted := make([]promotion, 0)
 	for index := range m.sessions {
 		s := m.sessions[index]
 		if !s.Temporary || s.Instance != m.instanceID {
@@ -160,7 +161,7 @@ func (m *model) promoteVolatileSessions(project, workdir, current string) error 
 		m.sessions[index].Name, m.sessions[index].Temporary, m.sessions[index].Instance = name, false, ""
 		m.assignSessionProject(name, project)
 		m.setSessionLabel(name, label)
-		promoted = append(promoted, name)
+		promoted = append(promoted, promotion{oldName: s.Name, newName: name})
 		if s.Name == current {
 			active = name
 		}
@@ -169,19 +170,19 @@ func (m *model) promoteVolatileSessions(project, workdir, current string) error 
 		return fmt.Errorf("active volatile session is missing")
 	}
 	if err := m.saveState(); err != nil {
-		for _, name := range promoted {
-			_ = m.tmux.KillSession(name)
+		for index := len(promoted) - 1; index >= 0; index-- {
+			_ = m.tmux.RenameSession(promoted[index].newName, promoted[index].oldName)
 		}
 		return err
 	}
-	for _, name := range promoted {
-		if err := m.tmux.SetSessionTemporary(name, false, ""); err != nil {
+	for _, session := range promoted {
+		if err := m.tmux.SetSessionTemporary(session.newName, false, ""); err != nil {
 			return err
 		}
-		if err := m.tmux.SetSessionProject(name, project); err != nil {
+		if err := m.tmux.SetSessionProject(session.newName, project); err != nil {
 			return err
 		}
-		if err := m.tmux.SetSessionLabel(name, m.sessionLabel(name)); err != nil {
+		if err := m.tmux.SetSessionLabel(session.newName, m.sessionLabel(session.newName)); err != nil {
 			return err
 		}
 	}

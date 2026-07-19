@@ -107,7 +107,7 @@ func mergeAppStates(latest, base, desired appState) appState {
 			if existed && baseSession == session {
 				continue
 			}
-			ensureStateProject(&latest, project)
+			ensureStateProjectExists(&latest, project)
 			removeStateSession(&latest, id)
 			for index := range latest.Projects {
 				if latest.Projects[index].Name == session.project {
@@ -169,6 +169,15 @@ func ensureStateProject(state *appState, project storedProject) {
 	for index := range state.Projects {
 		if state.Projects[index].Name == project.Name {
 			state.Projects[index].Workdir = project.Workdir
+			return
+		}
+	}
+	state.Projects = append(state.Projects, storedProject{Name: project.Name, Workdir: project.Workdir, Sessions: []persistentSession{}})
+}
+
+func ensureStateProjectExists(state *appState, project storedProject) {
+	for _, existing := range state.Projects {
+		if existing.Name == project.Name {
 			return
 		}
 	}

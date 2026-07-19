@@ -28,6 +28,24 @@ func TestMergeAppStatesPreservesConcurrentDisjointChanges(t *testing.T) {
 	}
 }
 
+func TestMergeAppStatesPreservesConcurrentProjectWorkdirDuringSessionChange(t *testing.T) {
+	base := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/old", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}},
+	}}}
+	latest := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/new", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}},
+	}}}
+	desired := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/old", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "renamed"}},
+	}}}
+
+	merged := mergeAppStates(latest, base, desired)
+	project, ok := storedProjectByName(merged, "small")
+	if !ok || project.Workdir != "/new" || len(project.Sessions) != 1 || project.Sessions[0].Label != "renamed" {
+		t.Fatalf("project = %#v, want the concurrent workdir and desired session rename", project)
+	}
+}
+
 func TestSaveStatePreservesConcurrentDisjointChanges(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	path := appStatePath()
