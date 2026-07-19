@@ -165,14 +165,26 @@ func buildModel(manager tmuxController, current string) (model, error) {
 		return model{}, fmt.Errorf("load state %q: %w", statePath, err)
 	}
 	state = normalizeAppState(state)
+	projects := make([]string, 0, len(state.Projects))
+	sessionProjects := map[string]string{}
+	sessionLabels := map[string]string{}
+	projectConfigs := map[string]projectConfig{}
+	for _, project := range state.Projects {
+		projects = append(projects, project.Name)
+		projectConfigs[project.Name] = projectConfig{Name: project.Name, Workdir: project.Workdir}
+		for _, session := range project.Sessions {
+			sessionProjects[session.ID] = project.Name
+			sessionLabels[session.ID] = session.Label
+		}
+	}
 	return model{
 		tmux:            manager,
 		instanceID:      os.Getenv(menuInstanceEnv),
 		mode:            inputNone,
-		projects:        state.Projects,
-		sessionProjects: state.SessionProjects,
-		sessionLabels:   state.SessionLabels,
-		projectConfigs:  state.ProjectConfigs,
+		projects:        projects,
+		sessionProjects: sessionProjects,
+		sessionLabels:   sessionLabels,
+		projectConfigs:  projectConfigs,
 		selectedProject: "",
 		currentSession:  current,
 		input:           input,

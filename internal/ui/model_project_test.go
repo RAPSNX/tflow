@@ -383,7 +383,11 @@ func TestEditProjectSavesOnlyWorkdirToStoreState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := state.ProjectConfigs["small"].Workdir; got != "/tmp/small" {
+	project, ok := storedProjectByName(state, "small")
+	if !ok {
+		t.Fatal("saved project small is missing")
+	}
+	if got := project.Workdir; got != "/tmp/small" {
 		t.Fatalf("saved workdir = %q", got)
 	}
 }

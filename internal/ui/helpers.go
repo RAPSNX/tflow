@@ -6,32 +6,18 @@ import (
 )
 
 func (m model) saveState() error {
-	state := appState{
-		Projects:        append([]string(nil), m.projects...),
-		SessionProjects: map[string]string{},
-		SessionLabels:   map[string]string{},
-		ProjectConfigs:  map[string]projectConfig{},
-	}
-	for name, project := range m.sessionProjects {
-		session, ok := m.findSession(name)
-		if !ok || session.Temporary {
+	state := appState{Projects: make([]storedProject, 0, len(m.projects))}
+	for _, name := range m.projects {
+		name = normalizeProjectName(name)
+		if name == "" {
 			continue
 		}
-		state.SessionProjects[name] = normalizeProjectName(project)
-	}
-	for name, label := range m.sessionLabels {
-		if _, persistent := state.SessionProjects[name]; persistent {
-			state.SessionLabels[name] = label
+		cfg := normalizeProjectConfig(m.projectConfig(name))
+		project := storedProject{Name: name, Workdir: cfg.Workdir, Sessions: []persistentSession{}}
+		for _, session := range m.projectSessions(name) {
+			project.Sessions = append(project.Sessions, persistentSession{ID: session.Name, Label: m.sessionLabel(session.Name)})
 		}
-	}
-	for project, cfg := range m.projectConfigs {
-		project = normalizeProjectName(project)
-		if project == "" {
-			continue
-		}
-		cfg = normalizeProjectConfig(cfg)
-		cfg.Name = project
-		state.ProjectConfigs[project] = cfg
+		state.Projects = append(state.Projects, project)
 	}
 	return saveAppState(m.statePath, normalizeAppState(state))
 }

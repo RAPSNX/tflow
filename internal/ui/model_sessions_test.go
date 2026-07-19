@@ -274,9 +274,12 @@ func TestCreateProjectSessionPersistsMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.SessionProjects["small--otter"] != "small" || state.SessionLabels["small--otter"] != "otter" {
-		t.Fatalf("saved metadata = %#v / %#v", state.SessionProjects, state.SessionLabels)
+	project, projectOK := storedProjectByName(state, "small")
+	session, sessionOK := storedSessionByID(state, "small--otter")
+	if !projectOK || !sessionOK || session.Label != "otter" {
+		t.Fatalf("saved state = %#v", state)
 	}
+	_ = project
 }
 
 func TestCreateVolatileSessionClearsStaleMetadata(t *testing.T) {
@@ -304,11 +307,8 @@ func TestCreateVolatileSessionClearsStaleMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := state.SessionProjects["notes"]; ok {
-		t.Fatalf("stale project state remains: %#v", state.SessionProjects)
-	}
-	if _, ok := state.SessionLabels["notes"]; ok {
-		t.Fatalf("stale label state remains: %#v", state.SessionLabels)
+	if _, ok := storedSessionByID(state, "notes"); ok {
+		t.Fatalf("stale session state remains: %#v", state)
 	}
 }
 
@@ -353,11 +353,8 @@ func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"notes", "dev"} {
-		if _, ok := state.SessionProjects[name]; ok {
-			t.Fatalf("stale project state remains for %s: %#v", name, state.SessionProjects)
-		}
-		if _, ok := state.SessionLabels[name]; ok {
-			t.Fatalf("stale label state remains for %s: %#v", name, state.SessionLabels)
+		if _, ok := storedSessionByID(state, name); ok {
+			t.Fatalf("stale session state remains for %s: %#v", name, state)
 		}
 	}
 }

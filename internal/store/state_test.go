@@ -12,22 +12,17 @@ func TestLoadAppStateDefaultsToEmptyStoreWhenFileMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Projects) != 0 || len(state.ProjectConfigs) != 0 || len(state.SessionProjects) != 0 || len(state.SessionLabels) != 0 {
+	if len(state.Projects) != 0 {
 		t.Fatalf("state = %#v, want empty", state)
 	}
 }
 
-func TestSaveAndLoadAppStateRoundTripsCanonicalSchema(t *testing.T) {
+func TestSaveAndLoadAppStateRoundTripsOrderedProjectRecords(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "store.json")
-	want := AppState{
-		Projects:        []string{"small", "garden"},
-		SessionProjects: map[string]string{"small--otter": "small"},
-		SessionLabels:   map[string]string{"small--otter": "otter"},
-		ProjectConfigs: map[string]ProjectConfig{
-			"small":  {Name: "small", Workdir: "/tmp/project-small"},
-			"garden": {Name: "garden", Workdir: "/tmp/project-garden"},
-		},
-	}
+	want := AppState{Projects: []Project{
+		{Name: "small", Workdir: "/tmp/project-small", Sessions: []PersistentSession{{ID: "tflow-p-1", Label: "otter"}, {ID: "tflow-p-2", Label: "fox"}}},
+		{Name: "garden", Workdir: "/tmp/project-garden", Sessions: []PersistentSession{}},
+	}}
 	if err := SaveAppState(path, want); err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +30,7 @@ func TestSaveAndLoadAppStateRoundTripsCanonicalSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Projects, ",") != "small,garden" || got.ProjectConfigs["small"].Workdir != "/tmp/project-small" || got.SessionLabels["small--otter"] != "otter" {
+	if len(got.Projects) != 2 || got.Projects[0].Name != "small" || got.Projects[0].Workdir != "/tmp/project-small" || got.Projects[0].Sessions[1].Label != "fox" {
 		t.Fatalf("round trip = %#v", got)
 	}
 	data, err := os.ReadFile(path)
@@ -43,14 +38,14 @@ func TestSaveAndLoadAppStateRoundTripsCanonicalSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain := string(data)
-	for _, want := range []string{"project_order", "projects", "session_projects", "session_labels"} {
-		if !strings.Contains(plain, want) {
-			t.Fatalf("missing canonical field %s in %s", want, plain)
+	for _, field := range []string{"projects", "name", "workdir", "sessions", "id", "label"} {
+		if !strings.Contains(plain, field) {
+			t.Fatalf("missing canonical field %s in %s", field, plain)
 		}
 	}
-	for _, removed := range []string{"session_types", "protect", "agent_binary", "cluster"} {
+	for _, removed := range []string{"project_order", "session_projects", "session_labels", "instance"} {
 		if strings.Contains(plain, removed) {
-			t.Fatalf("removed field %q in %s", removed, plain)
+			t.Fatalf("obsolete field %q in %s", removed, plain)
 		}
 	}
 	info, err := os.Stat(path)
@@ -62,29 +57,28 @@ func TestSaveAndLoadAppStateRoundTripsCanonicalSchema(t *testing.T) {
 	}
 }
 
-func TestLoadAppStateRejectsUnknownAndRemovedFields(t *testing.T) {
-	tests := []struct {
-		name  string
-		state string
-		field string
-	}{
-		{"unknown top-level", `{"project_order":[],"projects":{},"session_projects":{},"session_labels":{},"unexpected":true}`, "unexpected"},
-		{"session types", `{"project_order":[],"projects":{},"session_projects":{},"session_labels":{},"session_types":{}}`, "session_types"},
-		{"protect", `{"project_order":["small"],"projects":{"small":{"workdir":"/tmp","protect":true}},"session_projects":{},"session_labels":{}}`, "protect"},
-		{"agent binary", `{"project_order":["small"],"projects":{"small":{"workdir":"/tmp","agent_binary":"codex"}},"session_projects":{},"session_labels":{}}`, "agent_binary"},
-		{"cluster", `{"project_order":["small"],"projects":{"small":{"workdir":"/tmp","cluster":{}}},"session_projects":{},"session_labels":{}}`, "cluster"},
+func TestLoadAppStateIgnoresUnknownFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	data := `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter","unknown":true}]}],"unknown":true}`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "store.json")
-			if err := os.WriteFile(path, []byte(test.state), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			_, err := LoadAppState(path)
-			if err == nil || !strings.Contains(err.Error(), test.field) {
-				t.Fatalf("error = %v, want offending field %q", err, test.field)
-			}
-		})
+	state, err := LoadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Projects) != 1 || state.Projects[0].Sessions[0].ID != "tflow-p-1" {
+		t.Fatalf("state = %#v", state)
+	}
+}
+
+func TestLoadAppStateRejectsMalformedJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	if err := os.WriteFile(path, []byte(`{"projects":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadAppState(path); err == nil || !strings.Contains(err.Error(), "invalid state") {
+		t.Fatalf("error = %v, want malformed state error", err)
 	}
 }
 
@@ -97,7 +91,7 @@ func TestLoadAppStateDoesNotReadLegacyConfigState(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(legacyPath, []byte(`{"project_order":["legacy"],"projects":{"legacy":{"workdir":"/tmp"}},"session_projects":{},"session_labels":{}}`), 0o600); err != nil {
+	if err := os.WriteFile(legacyPath, []byte(`{"projects":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	state, err := LoadAppState(AppStatePath())

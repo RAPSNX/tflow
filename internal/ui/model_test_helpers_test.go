@@ -144,3 +144,23 @@ func TestMain(m *testing.M) {
 
 	os.Exit(m.Run())
 }
+
+func storedProjectByName(state appState, name string) (storedProject, bool) {
+	for _, project := range state.Projects {
+		if project.Name == name {
+			return project, true
+		}
+	}
+	return storedProject{}, false
+}
+
+func storedSessionByID(state appState, id string) (persistentSession, bool) {
+	for _, project := range state.Projects {
+		for _, session := range project.Sessions {
+			if session.ID == id {
+				return session, true
+			}
+		}
+	}
+	return persistentSession{}, false
+}
