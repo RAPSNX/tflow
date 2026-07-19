@@ -58,6 +58,62 @@ func TestRunCreateWorkerWaitsForStateLock(t *testing.T) {
 	}
 }
 
+func TestRunCreateWorkerRejectsDuplicateProject(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	created := 0
+	manager := fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			created++
+			return session{Name: name}, nil
+		},
+	}
+	request := createRequest{Kind: "project", Project: "small", Label: "code", Workdir: "/tmp"}
+	if err := runCreateWorker(manager, request); err != nil {
+		t.Fatal(err)
+	}
+	if err := runCreateWorker(manager, request); err == nil || !strings.Contains(err.Error(), "project already exists") {
+		t.Fatalf("duplicate project error = %v, want project already exists", err)
+	}
+	if created != 1 {
+		t.Fatalf("created sessions = %d, want 1", created)
+	}
+}
+
+func TestRunCreateWorkerRejectsDuplicateVolatileLabel(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var created session
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			if created.Name == "" {
+				return nil, nil
+			}
+			return []session{created}, nil
+		},
+		createSession: func(name, cwd, command string) (session, error) {
+			created = session{Name: name}
+			return created, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			created.Temporary, created.Instance = temporary, instanceID
+			return nil
+		},
+		setSessionLabel: func(name, label string) error {
+			created.Label = label
+			return nil
+		},
+	}
+	request := createRequest{Kind: "session", Label: "notes", Workdir: "/tmp", Instance: "one"}
+	if err := runCreateWorker(manager, request); err != nil {
+		t.Fatal(err)
+	}
+	if err := runCreateWorker(manager, request); err == nil || !strings.Contains(err.Error(), "session name already exists") {
+		t.Fatalf("duplicate volatile label error = %v, want session name already exists", err)
+	}
+	if created.Label != "notes" || !created.Temporary || created.Instance != "one" {
+		t.Fatalf("created volatile session = %#v", created)
+	}
+}
+
 func TestRunCreateWorkerPromotesOnlyCurrentInstance(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	var renamed [][2]string

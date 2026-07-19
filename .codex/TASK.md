@@ -115,7 +115,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Never promote volatile sessions owned by another tflow instance.
 * [x] On promotion failure, report the original error without claiming a successful switch or sidebar close.
 * [x] Keep session labels unique inside a project.
-* [ ] Keep volatile labels unique inside their owning instance.
+* [x] Keep volatile labels unique inside their owning instance.
 * [ ] Allow different projects to reuse the same session label.
 * [ ] Allow different tflow instances to reuse the same volatile label.
 * [ ] Move persistent sessions between projects without changing their tmux session IDs.

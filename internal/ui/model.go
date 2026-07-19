@@ -129,6 +129,7 @@ type model struct {
 	statePath     string
 	stateBase     appState
 	stateBasePath string
+	stateLockHeld bool
 
 	exitAction      menuExitAction
 	exitSessionName string

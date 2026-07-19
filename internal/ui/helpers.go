@@ -8,11 +8,15 @@ import (
 
 func (m *model) saveState() error {
 	desired := m.currentState()
-	unlock, err := lockAppState(m.statePath)
-	if err != nil {
-		return err
+	var unlock func() error
+	if !m.stateLockHeld {
+		var err error
+		unlock, err = lockAppState(m.statePath)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = unlock() }()
 	}
-	defer func() { _ = unlock() }()
 
 	latest, err := loadAppState(m.statePath)
 	if err != nil {
