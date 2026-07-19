@@ -41,6 +41,7 @@ type Controller interface {
 	SetSessionProject(name, project string) error
 	RunBackground(command string) error
 	DisplayMessage(message string) error
+	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
 	AttachCommand(name string) (*exec.Cmd, error)

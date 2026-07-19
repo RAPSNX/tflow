@@ -40,6 +40,12 @@ func RunCreateWorker(encoded string) error {
 }
 
 func runCreateWorker(manager tmuxController, request createRequest) error {
+	unlock, err := lockAppState(appStatePath())
+	if err != nil {
+		return fmt.Errorf("lock state %q: %w", appStatePath(), err)
+	}
+	defer func() { _ = unlock() }()
+
 	m, err := buildModel(manager, request.Current)
 	if err != nil {
 		return err

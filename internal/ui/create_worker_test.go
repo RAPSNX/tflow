@@ -1,8 +1,13 @@
 package ui
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestRunCreateWorkerCreatesAndSwitchesPersistentSession(t *testing.T) {
@@ -19,6 +24,37 @@ func TestRunCreateWorkerCreatesAndSwitchesPersistentSession(t *testing.T) {
 	}
 	if !strings.HasPrefix(switched, "tflow-p-") || project != "small" {
 		t.Fatalf("switch = %q, project = %q", switched, project)
+	}
+}
+
+func TestRunCreateWorkerWaitsForStateLock(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	unlock, err := lockAppState(appStatePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := make(chan error, 1)
+	go func() {
+		completed <- runCreateWorker(fakeTmuxController{
+			createSession: func(name, cwd, command string) (session, error) { return session{Name: name}, nil },
+		}, createRequest{Kind: "session", Project: "small", Label: "code", Workdir: "/tmp"})
+	}()
+
+	select {
+	case err := <-completed:
+		t.Fatalf("worker completed while state lock was held: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-completed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not resume after state lock was released")
 	}
 }
 
@@ -91,4 +127,48 @@ func TestPromoteVolatileSessionsKeepsMarkersWhenStateSaveFails(t *testing.T) {
 	if len(cleared) != 0 {
 		t.Fatalf("cleared volatile markers before saving state: %q", cleared)
 	}
+}
+
+func TestCreateVolatileSessionUsesActivePaneDirectory(t *testing.T) {
+	var command string
+	m := newModel(fakeTmuxController{
+		currentPaneDir: func() (string, error) { return "/active/pane", nil },
+		runBackground: func(value string) error {
+			command = value
+			return nil
+		},
+	}, "tflow-v-one-a").(model)
+	m.instanceID = "one"
+	m.mode = inputCreateSession
+	m.input.SetValue("notes")
+
+	updated, closeMenu := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	if closeMenu == nil {
+		t.Fatal("expected close-menu command")
+	}
+	if got := updated.(model); got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone", got.mode)
+	}
+	request := createRequestFromCommand(t, command)
+	if request.Project != "" || request.Workdir != "/active/pane" {
+		t.Fatalf("request = %#v, want an unscoped active-pane request", request)
+	}
+}
+
+func createRequestFromCommand(t *testing.T, command string) createRequest {
+	t.Helper()
+	index := strings.LastIndex(command, " create-worker ")
+	if index < 0 {
+		t.Fatalf("create worker command = %q", command)
+	}
+	encoded := strings.Trim(strings.TrimSpace(command[index+len(" create-worker "):]), "'")
+	payload, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request createRequest
+	if err := json.Unmarshal(payload, &request); err != nil {
+		t.Fatal(err)
+	}
+	return request
 }

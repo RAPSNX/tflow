@@ -22,6 +22,7 @@ type tmuxController interface {
 	SetSessionProject(name, project string) error
 	RunBackground(command string) error
 	DisplayMessage(message string) error
+	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
 	AttachCommand(name string) (*exec.Cmd, error)
@@ -70,6 +71,7 @@ func (m sessionManager) SetSessionProject(name, project string) error {
 }
 func (m sessionManager) RunBackground(command string) error  { return m.inner.RunBackground(command) }
 func (m sessionManager) DisplayMessage(message string) error { return m.inner.DisplayMessage(message) }
+func (m sessionManager) CurrentPaneDir() (string, error)     { return m.inner.CurrentPaneDir() }
 
 func (m sessionManager) SetSessionTemporary(name string, temporary bool, instanceID string) error {
 	return m.inner.SetSessionTemporary(name, temporary, instanceID)

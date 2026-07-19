@@ -15,6 +15,7 @@ type fakeTmuxController struct {
 	setSessionProject   func(name, project string) error
 	runBackground       func(command string) error
 	displayMessage      func(message string) error
+	currentPaneDir      func() (string, error)
 	setSessionTemporary func(name string, temporary bool, instanceID string) error
 	setSessionLabel     func(name, label string) error
 	attachCommand       func(name string) (*exec.Cmd, error)
@@ -65,6 +66,13 @@ func (f fakeTmuxController) DisplayMessage(message string) error {
 		return f.displayMessage(message)
 	}
 	return nil
+}
+
+func (f fakeTmuxController) CurrentPaneDir() (string, error) {
+	if f.currentPaneDir != nil {
+		return f.currentPaneDir()
+	}
+	return "", nil
 }
 
 func (f fakeTmuxController) SetSessionTemporary(name string, temporary bool, instanceID string) error {

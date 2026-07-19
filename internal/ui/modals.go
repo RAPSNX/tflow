@@ -29,7 +29,16 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = "Session name already exists."
 				return m, nil
 			}
-			if err := m.submitCreate(createRequest{Kind: "session", Project: project, Label: label, Workdir: m.createSessionDir(), Current: m.currentSession, Instance: m.instanceID}); err != nil {
+			workdir := m.createSessionDir()
+			if project == "" {
+				var err error
+				workdir, err = m.tmux.CurrentPaneDir()
+				if err != nil {
+					m.err, m.status = err, err.Error()
+					return m, nil
+				}
+			}
+			if err := m.submitCreate(createRequest{Kind: "session", Project: project, Label: label, Workdir: workdir, Current: m.currentSession, Instance: m.instanceID}); err != nil {
 				m.err, m.status = err, err.Error()
 				return m, nil
 			}

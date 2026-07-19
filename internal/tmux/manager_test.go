@@ -222,6 +222,27 @@ func TestDisplayMessageTargetsCurrentClient(t *testing.T) {
 	}
 }
 
+func TestCurrentPaneDirTargetsCurrentClient(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "/workspace/project\n", nil
+	}}
+
+	dir, err := manager.CurrentPaneDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir != "/workspace/project" {
+		t.Fatalf("directory = %q", dir)
+	}
+	want := []string{"display-message", "-p", "-c", "/dev/pts/4", "#{pane_current_path}"}
+	if len(calls) != 1 || strings.Join(calls[0], "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("calls = %#v, want %v", calls, want)
+	}
+}
+
 func TestCreateSessionReturnsDuplicateSessionError(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {

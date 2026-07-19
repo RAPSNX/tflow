@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadAppStateDefaultsToEmptyStoreWhenFileMissing(t *testing.T) {
@@ -14,6 +15,47 @@ func TestLoadAppStateDefaultsToEmptyStoreWhenFileMissing(t *testing.T) {
 	}
 	if len(state.Projects) != 0 {
 		t.Fatalf("state = %#v, want empty", state)
+	}
+}
+
+func TestAcquireAppStateLockSerializesCallers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	unlockFirst, err := AcquireAppStateLock(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	acquired := make(chan func() error, 1)
+	errs := make(chan error, 1)
+	go func() {
+		unlock, err := AcquireAppStateLock(path)
+		if err != nil {
+			errs <- err
+			return
+		}
+		acquired <- unlock
+	}()
+
+	select {
+	case <-acquired:
+		t.Fatal("second caller acquired the state lock before the first released it")
+	case err := <-errs:
+		t.Fatal(err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := unlockFirst(); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case unlockSecond := <-acquired:
+		if err := unlockSecond(); err != nil {
+			t.Fatal(err)
+		}
+	case err := <-errs:
+		t.Fatal(err)
+	case <-time.After(time.Second):
+		t.Fatal("second caller did not acquire the released state lock")
 	}
 }
 

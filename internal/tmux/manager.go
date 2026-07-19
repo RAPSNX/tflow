@@ -209,3 +209,19 @@ func (m Manager) DisplayMessage(message string) error {
 	_, err := m.runner()(args...)
 	return err
 }
+
+func (m Manager) CurrentPaneDir() (string, error) {
+	args := []string{"display-message", "-p"}
+	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
+		args = append(args, "-c", clientID)
+	}
+	args = append(args, "#{pane_current_path}")
+	out, err := m.runner()(args...)
+	if err != nil {
+		return "", err
+	}
+	if dir := strings.TrimSpace(out); dir != "" {
+		return dir, nil
+	}
+	return "", fmt.Errorf("active pane directory is empty")
+}
