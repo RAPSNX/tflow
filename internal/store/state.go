@@ -40,6 +40,11 @@ func SaveAppState(path string, state AppState) error {
 
 func EnsureStartupState() error {
 	path := AppStatePath()
+	unlock, err := AcquireAppStateLock(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unlock() }()
 	state, err := LoadAppState(path)
 	if err != nil {
 		return err

@@ -125,8 +125,10 @@ type model struct {
 	projectSwitchIndex  int
 	projectEditConfig   projectConfig
 
-	cwd       string
-	statePath string
+	cwd           string
+	statePath     string
+	stateBase     appState
+	stateBasePath string
 
 	exitAction      menuExitAction
 	exitSessionName string
@@ -194,6 +196,8 @@ func buildModel(manager tmuxController, current string) (model, error) {
 		input:                  input,
 		cwd:                    cwd,
 		statePath:              statePath,
+		stateBase:              state,
+		stateBasePath:          statePath,
 		status:                 "",
 		err:                    nil,
 	}, nil

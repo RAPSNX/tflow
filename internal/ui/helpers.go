@@ -6,6 +6,37 @@ import (
 )
 
 func (m *model) saveState() error {
+	desired := m.currentState()
+	unlock, err := lockAppState(m.statePath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unlock() }()
+
+	latest, err := loadAppState(m.statePath)
+	if err != nil {
+		return err
+	}
+	base := m.stateBase
+	if m.stateBasePath != m.statePath {
+		base = appState{}
+	}
+	state := mergeAppStates(latest, base, desired)
+	if err := saveAppState(m.statePath, state); err != nil {
+		return err
+	}
+	m.stateBase = desired
+	m.stateBasePath = m.statePath
+	m.persistentSessionOrder = make(map[string][]string, len(state.Projects))
+	for _, project := range state.Projects {
+		for _, session := range project.Sessions {
+			m.persistentSessionOrder[project.Name] = append(m.persistentSessionOrder[project.Name], session.ID)
+		}
+	}
+	return nil
+}
+
+func (m *model) currentState() appState {
 	state := appState{Projects: make([]storedProject, 0, len(m.projects))}
 	for _, name := range m.projects {
 		name = normalizeProjectName(name)
@@ -19,17 +50,113 @@ func (m *model) saveState() error {
 		}
 		state.Projects = append(state.Projects, project)
 	}
-	state = normalizeAppState(state)
-	if err := saveAppState(m.statePath, state); err != nil {
-		return err
-	}
-	m.persistentSessionOrder = make(map[string][]string, len(state.Projects))
-	for _, project := range state.Projects {
-		for _, session := range project.Sessions {
-			m.persistentSessionOrder[project.Name] = append(m.persistentSessionOrder[project.Name], session.ID)
+	return normalizeAppState(state)
+}
+
+type stateSession struct {
+	project string
+	label   string
+}
+
+func mergeAppStates(latest, base, desired appState) appState {
+	latest = normalizeAppState(latest)
+	base = normalizeAppState(base)
+	desired = normalizeAppState(desired)
+	baseProjects := stateProjects(base)
+	desiredProjects := stateProjects(desired)
+
+	for name := range baseProjects {
+		if _, exists := desiredProjects[name]; !exists {
+			latest.Projects = removeStateProject(latest.Projects, name)
 		}
 	}
-	return nil
+	for name, project := range desiredProjects {
+		baseProject, existed := baseProjects[name]
+		if !existed {
+			ensureStateProject(&latest, project)
+			continue
+		}
+		if project.Workdir != baseProject.Workdir {
+			ensureStateProject(&latest, project)
+		}
+	}
+
+	baseSessions := stateSessions(base)
+	desiredSessions := stateSessions(desired)
+	for id := range baseSessions {
+		if _, exists := desiredSessions[id]; !exists {
+			removeStateSession(&latest, id)
+		}
+	}
+	for id, session := range desiredSessions {
+		baseSession, existed := baseSessions[id]
+		if existed && baseSession == session {
+			continue
+		}
+		project, exists := desiredProjects[session.project]
+		if !exists {
+			continue
+		}
+		ensureStateProject(&latest, project)
+		removeStateSession(&latest, id)
+		for index := range latest.Projects {
+			if latest.Projects[index].Name == session.project {
+				latest.Projects[index].Sessions = append(latest.Projects[index].Sessions, persistentSession{ID: id, Label: session.label})
+				break
+			}
+		}
+	}
+	return normalizeAppState(latest)
+}
+
+func stateProjects(state appState) map[string]storedProject {
+	projects := make(map[string]storedProject, len(state.Projects))
+	for _, project := range state.Projects {
+		projects[project.Name] = project
+	}
+	return projects
+}
+
+func stateSessions(state appState) map[string]stateSession {
+	sessions := map[string]stateSession{}
+	for _, project := range state.Projects {
+		for _, session := range project.Sessions {
+			sessions[session.ID] = stateSession{project: project.Name, label: session.Label}
+		}
+	}
+	return sessions
+}
+
+func ensureStateProject(state *appState, project storedProject) {
+	for index := range state.Projects {
+		if state.Projects[index].Name == project.Name {
+			state.Projects[index].Workdir = project.Workdir
+			return
+		}
+	}
+	state.Projects = append(state.Projects, storedProject{Name: project.Name, Workdir: project.Workdir, Sessions: []persistentSession{}})
+}
+
+func removeStateProject(projects []storedProject, name string) []storedProject {
+	result := projects[:0]
+	for _, project := range projects {
+		if project.Name != name {
+			result = append(result, project)
+		}
+	}
+	return result
+}
+
+func removeStateSession(state *appState, id string) {
+	for projectIndex := range state.Projects {
+		sessions := state.Projects[projectIndex].Sessions[:0]
+		for _, session := range state.Projects[projectIndex].Sessions {
+			if session.ID != id {
+				sessions = append(sessions, session)
+			}
+		}
+		state.Projects[projectIndex].Sessions = sessions
+	}
 }
 
 func sanitizeProjectName(name string) string {

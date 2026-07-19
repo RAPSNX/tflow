@@ -193,6 +193,33 @@ func TestSetSessionTemporaryClearsDeferredCleanupWhenMadePersistent(t *testing.T
 	}
 }
 
+func TestSetSessionTemporaryClearsMarkersBeforeLaterFailure(t *testing.T) {
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) == 5 && args[0] == "set-option" && args[3] == "destroy-unattached" {
+			return "", fmt.Errorf("cannot update destroy-unattached")
+		}
+		return "", nil
+	}}
+
+	if err := manager.SetSessionTemporary("tflow-p-otter", false, ""); err == nil {
+		t.Fatal("SetSessionTemporary returned nil error")
+	}
+	want := [][]string{
+		{"set-option", "-t", "tflow-p-otter", tempMarker, "0"},
+		{"set-option", "-t", "tflow-p-otter", instanceMarker, ""},
+	}
+	if len(calls) < len(want) {
+		t.Fatalf("calls = %#v", calls)
+	}
+	for index, call := range want {
+		if strings.Join(calls[index], "\x00") != strings.Join(call, "\x00") {
+			t.Fatalf("call %d = %#v, want %#v", index, calls[index], call)
+		}
+	}
+}
+
 func TestSetSessionTemporaryRequiresInstanceIDWhenVolatile(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
@@ -272,6 +299,7 @@ func TestCleanupVolatileSessionsKillsOnlyMatchingInstance(t *testing.T) {
 					"otter-temp\t1\t0\t1\tinstance-1",
 					"fox-temp\t1\t0\t1\tinstance-2",
 					"small\t1\t0\t0\tinstance-1",
+					"tflow-p-otter\t1\t0\t1\tinstance-1",
 				}, "\n"), nil
 			case "kill-session":
 				killed = append(killed, args[2])
