@@ -125,38 +125,6 @@ func (m model) isCurrentInstanceVolatile(s session) bool {
 	return s.Name == m.currentSession
 }
 
-func (m *model) ensureSessionProjects() bool {
-	changed := false
-	if m.sessionProjects == nil {
-		m.sessionProjects = map[string]string{}
-		changed = true
-	}
-	if m.sessionLabels == nil {
-		m.sessionLabels = map[string]string{}
-		changed = true
-	}
-	for _, s := range m.sessions {
-		if s.Temporary {
-			continue
-		}
-		project := normalizeProjectName(m.sessionProjects[s.Name])
-		if m.sessionProjects[s.Name] != project {
-			m.sessionProjects[s.Name] = project
-			changed = true
-		}
-		if project != "" && !containsString(m.projects, project) {
-			m.projects = append(m.projects, project)
-			changed = true
-		}
-		if _, ok := m.sessionLabels[s.Name]; !ok {
-			m.sessionLabels[s.Name] = sanitizeSessionName(s.Name)
-			changed = true
-		}
-	}
-	m.projects = normalizeProjectList(m.projects)
-	return changed
-}
-
 func (m *model) assignSessionProject(name, project string) {
 	project = normalizeProjectName(project)
 	if m.sessionProjects == nil {
@@ -245,9 +213,12 @@ func (m model) contextSessions() []session {
 }
 
 func (m model) selectedSessionIndex() int {
-	sessions := m.contextSessions()
+	return sessionIndex(m.contextSessions(), m.selectedSession)
+}
+
+func sessionIndex(sessions []session, selected string) int {
 	for index, s := range sessions {
-		if s.Name == m.selectedSession {
+		if s.Name == selected {
 			return index
 		}
 	}

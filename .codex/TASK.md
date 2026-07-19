@@ -91,14 +91,14 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P1: Sidebar performance
 
-* [ ] Open and refresh the sidebar with one global tmux session-list query.
-* [ ] Filter sessions locally by current project or volatile instance.
-* [ ] Show only the owning instance's volatile sessions when the active session is volatile.
-* [ ] Compute the selected session index once per render.
-* [ ] Remove unconditional session marker synchronization.
-* [ ] Ensure an unchanged refresh performs no per-session tmux writes.
-* [ ] Keep normal refreshes read-only toward persistent state.
-* [ ] Add command-count tests for one list query and zero marker writes.
+* [x] Open and refresh the sidebar with one global tmux session-list query.
+* [x] Filter sessions locally by current project or volatile instance.
+* [x] Show only the owning instance's volatile sessions when the active session is volatile.
+* [x] Compute the selected session index once per render.
+* [x] Remove unconditional session marker synchronization.
+* [x] Ensure an unchanged refresh performs no per-session tmux writes.
+* [x] Keep normal refreshes read-only toward persistent state.
+* [x] Add command-count tests for one list query and zero marker writes.
 
 ### P1: Project and session behavior
 

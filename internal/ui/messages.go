@@ -21,18 +21,7 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.instanceID = current.Instance
 			}
 		}
-		changed := m.ensureSessionProjects()
 		m.syncSelection()
-		if changed {
-			if err := m.saveState(); err != nil {
-				m.err = err
-				m.status = err.Error()
-			}
-		}
-		if err := m.syncTmuxSessionProjects(); err != nil {
-			m.err = err
-			m.status = err.Error()
-		}
 		return m, nil
 	case sessionCreatedMsg:
 		if msg.err != nil {

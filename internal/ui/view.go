@@ -55,20 +55,21 @@ func (m model) renderHeader(width int) string {
 func (m model) renderSessionPanel(width int) string {
 	lines := []string{sectionTitleStyle.Render("Sessions"), ""}
 	sessions := m.contextSessions()
+	selectedIndex := sessionIndex(sessions, m.selectedSession)
 	if len(sessions) == 0 {
 		lines = append(lines, mutedStyle.Render("No sessions in this context"))
 	} else {
 		for index, session := range sessions {
-			lines = append(lines, m.renderSessionRow(index, session))
+			lines = append(lines, m.renderSessionRow(index, selectedIndex, session))
 		}
 	}
 	return panelStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 
-func (m model) renderSessionRow(index int, s session) string {
+func (m model) renderSessionRow(index, selectedIndex int, s session) string {
 	label := m.sessionLabel(s.Name)
 	project := normalizeProjectName(m.sessionProjects[s.Name])
-	selected := index == m.selectedSessionIndex()
+	selected := index == selectedIndex
 	style := m.rowStyle(selected, project)
 	content := label
 	if s.Name == m.currentSession {

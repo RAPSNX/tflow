@@ -30,7 +30,7 @@ func TestRenderSessionRowUsesDisplayLabel(t *testing.T) {
 	m.sessionProjects = map[string]string{"small--code": "small"}
 	m.sessionLabels = map[string]string{"small--code": "code"}
 
-	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderSessionRow(0, m.sessions[0]), "")
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderSessionRow(0, 0, m.sessions[0]), "")
 	if !strings.Contains(plain, "code") || strings.Contains(plain, "small--code") {
 		t.Fatalf("session row = %q", plain)
 	}
@@ -269,7 +269,7 @@ func TestRenderBadgesUseFilledContrastingStyles(t *testing.T) {
 		t.Fatalf("active row = %q", plain)
 	}
 	selectedLabel := selectedSessionStyle.Copy().Padding(0).Render(" dev")
-	if row := m.renderSessionRow(0, m.sessions[0]); !strings.Contains(row, selectedLabel) {
+	if row := m.renderSessionRow(0, 0, m.sessions[0]); !strings.Contains(row, selectedLabel) {
 		t.Fatalf("active selected row does not restore its highlight after the live badge: %q", row)
 	}
 }
