@@ -104,6 +104,12 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 * [ ] Create new project sessions in the project's configured workdir.
 * [ ] Create volatile sessions in the active pane's working directory.
+* [ ] When creating a project from a volatile session, promote every volatile session owned by the current tflow instance into the new project.
+* [ ] Give each promoted session a generated persistent `tflow-p-<id>` identity while preserving its display label and visible order.
+* [ ] Do not create an additional initial session when a project is created through volatile-session promotion.
+* [ ] Switch directly to the promoted successor of the active volatile session, close the sidebar, and refresh the tmux project and session status indicators.
+* [ ] Never promote volatile sessions owned by another tflow instance.
+* [ ] On promotion failure, report the original error without claiming a successful switch or sidebar close.
 * [ ] Keep session labels unique inside a project.
 * [ ] Keep volatile labels unique inside their owning instance.
 * [ ] Allow different projects to reuse the same session label.
@@ -116,6 +122,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Switch from an active deleted project to the first session of the next project.
 * [ ] Create a volatile fallback when no project session remains.
 * [x] Keep project and session order stable.
+* [ ] Test volatile-session project promotion, foreign-instance preservation, persistent ID replacement, active-session switching, sidebar closure, status refresh, and failure handling.
 * [ ] Test creation, rename, moves, deletion, switching, active-project deletion, and fallback behavior.
 
 ### P1: Generated labels

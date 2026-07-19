@@ -69,6 +69,10 @@ A persistent session contains:
 
 New project sessions start in the project's working directory. New volatile sessions start in the active pane's working directory.
 
+Creating a project while the active session is volatile promotes every volatile session owned by the current tflow instance into the new project instead of creating an additional initial session. Each promoted session receives a generated persistent `tflow-p-<id>` identifier while retaining its display label and visible order. Volatile sessions owned by other tflow instances remain untouched.
+
+After a successful promotion, tflow switches the client directly to the promoted successor of the previously active volatile session. The sidebar closes and the normal tmux project and session status indicators immediately show the new project and active session. If promotion fails, tflow reports the original error and does not claim a successful switch or sidebar close.
+
 Session labels must be unique inside their project. Volatile labels must be unique inside their owning instance.
 
 Moving a persistent session to another project preserves its tmux session. A move fails when the target project already has the session label. Moving the final session out of a project deletes that project.
