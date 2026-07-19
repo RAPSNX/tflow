@@ -20,6 +20,8 @@ Persistent sessions belong to projects. Volatile sessions belong to the current 
 
 Cleanup must only affect volatile sessions owned by the relevant instance. Persistent sessions and sessions owned by other instances remain untouched.
 
+An instance ID is scoped to its attached tmux client and passed explicitly to that client's popup processes. tflow must not set, inherit, or consult an instance ID through tmux's global server environment.
+
 Managed panes use tmux `remain-on-exit`. tflow does not automatically respawn exited shells or switch the client to another session.
 
 ## Session identity
@@ -40,7 +42,7 @@ tflow-v-<instance-id>-8f42ac91
 
 Project names and session labels are stored as metadata. Renaming a project or session therefore does not require renaming tmux sessions.
 
-Generated display labels should be readable and unique within their visible scope.
+Generated display labels should be readable and unique within their visible scope. User-entered session labels preserve their casing and must be unique by their exact displayed value within their project or owning volatile instance.
 
 ## Terminal UI
 
@@ -67,17 +69,17 @@ A persistent session contains:
 * an internal tmux session ID
 * a user-facing label
 
-New project sessions start in the project's working directory. New volatile sessions start in the active pane's working directory.
+New project sessions start in the project's working directory. Every volatile session, including a fallback created after project deletion, starts in the active pane's working directory.
 
 Creating a project while the active session is volatile promotes every volatile session owned by the current tflow instance into the new project instead of creating an additional initial session. Each promoted session receives a generated persistent `tflow-p-<id>` identifier while retaining its display label and visible order, and clears its volatile ownership markers. Volatile sessions owned by other tflow instances remain untouched.
 
-After a successful promotion, tflow switches the client directly to the promoted successor of the previously active volatile session. The sidebar closes and the normal tmux project and session status indicators immediately show the new project and active session. If promotion fails, tflow reports the original error and does not claim a successful switch or sidebar close.
+After a successful promotion, tflow switches the client directly to the promoted successor of the previously active volatile session. The sidebar closes and the normal tmux project and session status indicators immediately show the new project and active session. If promotion fails before the project state is persisted, tflow restores any already-renamed sessions to their original volatile identities and ownership markers; if restoration fails, it performs direct best-effort cleanup of the affected session. It reports the original error and does not claim a successful switch or sidebar close.
 
 Session labels must be unique inside their project. Volatile labels must be unique inside their owning instance.
 
 Moving a persistent session to another project preserves its tmux session. A move fails when the target project already has the session label. Moving the final session out of a project deletes that project.
 
-Deleting the final session of a project also deletes the project. Deleting a project removes its persistent sessions and metadata. When the active session belongs to a deleted project, tflow switches to the first session in the next project before deleting it. If no project session remains available, tflow creates a volatile fallback session.
+Deleting the final session of a project also deletes the project. Deleting a project removes its persistent sessions and metadata. When the active session belongs to a deleted project, tflow switches to the first session in the next project before deleting it. If no project session remains available, tflow creates a volatile fallback session. Deleting a non-active session or project leaves the attached client on its current session.
 
 ## Persistent state
 
@@ -149,6 +151,8 @@ Simple local cleanup is allowed:
 * ignore cleanup requests for resources that are already gone
 * correct other inconsistencies during the next startup reconciliation
 
+Best-effort cleanup failures emit a diagnostic without replacing the original operation error.
+
 The application does not attempt to guarantee consistency after process crashes, machine crashes, or power loss.
 
 ## Performance rules
@@ -158,6 +162,8 @@ Opening or refreshing the sidebar performs one tmux session-list query.
 Unchanged refreshes must not perform per-session tmux writes.
 
 Project and session metadata are changed only by explicit user operations or startup reconciliation.
+
+An explicit operation updates tmux markers only for sessions it directly creates, promotes, renames, moves, or deletes; it does not rewrite markers for unrelated sessions.
 
 Performance optimizations should be based on tmux command count or measurements rather than speculative abstractions.
 
