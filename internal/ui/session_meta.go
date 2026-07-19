@@ -8,7 +8,7 @@ import (
 
 func (m model) sessionLabel(name string) string {
 	if s, ok := m.findSession(name); ok && s.Temporary {
-		if label := volatileSessionLabel(name, s.Instance); label != "" {
+		if label := strings.TrimSpace(s.Label); label != "" {
 			return label
 		}
 	}

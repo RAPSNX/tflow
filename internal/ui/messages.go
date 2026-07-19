@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,15 +23,6 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		changed := m.ensureSessionProjects()
 		m.syncSelection()
-		renames, err := m.scopedSessionRenames()
-		if err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
-		}
-		if len(renames) > 0 {
-			return m, m.renameSessionsCmd(renames)
-		}
 		if changed {
 			if err := m.saveState(); err != nil {
 				m.err = err
@@ -41,28 +33,6 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = err
 			m.status = err.Error()
 		}
-		return m, nil
-	case sessionNamesMigratedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.status = msg.err.Error()
-			return m, nil
-		}
-		for _, rename := range msg.renames {
-			m.applySessionRename(rename)
-		}
-		if err := m.saveState(); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
-		}
-		if err := m.syncTmuxSessionProjects(); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
-		}
-		m.err = nil
-		m.status = ""
 		return m, nil
 	case sessionCreatedMsg:
 		if msg.err != nil {
@@ -202,64 +172,35 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
-		oldSession, wasVolatile := m.findSession(msg.oldName)
-		if wasVolatile && oldSession.Temporary {
-			if m.clearSessionMetadata(msg.oldName, msg.newName) {
+		session, found := m.findSession(msg.name)
+		if !found {
+			m.err = fmt.Errorf("renamed session %q is missing", msg.name)
+			m.status = m.err.Error()
+			return m, nil
+		}
+		if msg.volatile || session.Temporary {
+			for index := range m.sessions {
+				if m.sessions[index].Name == msg.name {
+					m.sessions[index].Label = msg.label
+				}
+			}
+			if m.clearSessionMetadata(msg.name) {
 				if err := m.saveState(); err != nil {
 					m.err = err
 					m.status = err.Error()
 					return m, nil
 				}
 			}
-			for index := range m.sessions {
-				if m.sessions[index].Name == msg.oldName {
-					m.sessions[index].Name = msg.newName
-				}
-			}
-			if m.selectedSession == msg.oldName {
-				m.selectedSession = msg.newName
-			}
-			if m.currentSession == msg.oldName {
-				m.currentSession = msg.newName
-			}
-			m.mode = inputNone
-			m.renameTarget = renameTarget{}
-			if err := m.syncTmuxSessionProjects(); err != nil {
+		} else {
+			m.setSessionLabel(msg.name, msg.label)
+			if err := m.saveState(); err != nil {
 				m.err = err
 				m.status = err.Error()
 				return m, nil
 			}
-			m.err = nil
-			m.status = ""
-			return m, m.closeMenuCmd()
-		}
-		project := normalizeProjectName(m.sessionProjects[msg.oldName])
-		delete(m.sessionProjects, msg.oldName)
-		m.sessionProjects[msg.newName] = project
-		label := msg.label
-		if label == "" {
-			label = m.sessionLabel(msg.oldName)
-		}
-		delete(m.sessionLabels, msg.oldName)
-		m.setSessionLabel(msg.newName, label)
-		if m.selectedSession == msg.oldName {
-			m.selectedSession = msg.newName
-		}
-		if m.currentSession == msg.oldName {
-			m.currentSession = msg.newName
-		}
-		for index := range m.sessions {
-			if m.sessions[index].Name == msg.oldName {
-				m.sessions[index].Name = msg.newName
-			}
 		}
 		m.mode = inputNone
 		m.renameTarget = renameTarget{}
-		if err := m.saveState(); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
-		}
 		if err := m.syncTmuxSessionProjects(); err != nil {
 			m.err = err
 			m.status = err.Error()
@@ -273,9 +214,6 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 			m.status = msg.err.Error()
 			return m, nil
-		}
-		for _, rename := range msg.sessionRenames {
-			m.applySessionRename(rename)
 		}
 		for name, project := range m.sessionProjects {
 			if normalizeProjectName(project) == msg.oldName {
@@ -335,24 +273,4 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
-}
-
-func (m *model) applySessionRename(rename sessionRename) {
-	project := normalizeProjectName(m.sessionProjects[rename.oldName])
-	delete(m.sessionProjects, rename.oldName)
-	m.sessionProjects[rename.newName] = project
-	label := m.sessionLabel(rename.oldName)
-	delete(m.sessionLabels, rename.oldName)
-	m.setSessionLabel(rename.newName, label)
-	for index := range m.sessions {
-		if m.sessions[index].Name == rename.oldName {
-			m.sessions[index].Name = rename.newName
-		}
-	}
-	if m.selectedSession == rename.oldName {
-		m.selectedSession = rename.newName
-	}
-	if m.currentSession == rename.oldName {
-		m.currentSession = rename.newName
-	}
 }

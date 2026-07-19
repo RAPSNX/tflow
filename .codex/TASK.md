@@ -6,14 +6,14 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P0: Session identity
 
-* [ ] Use generated internal tmux session IDs instead of project and display names.
-* [ ] Use `tflow-p-<id>` for persistent sessions.
-* [ ] Use `tflow-v-<instance-id>-<id>` for volatile sessions.
-* [ ] Store project names and session labels only as metadata.
-* [ ] Stop renaming tmux sessions when a project or display label is renamed.
-* [ ] Ensure persistent IDs are globally unique.
-* [ ] Ensure volatile IDs are unique across independently started tflow instances.
-* [ ] Test project and session renames without tmux session renames.
+* [x] Use generated internal tmux session IDs instead of project and display names.
+* [x] Use `tflow-p-<id>` for persistent sessions.
+* [x] Use `tflow-v-<instance-id>-<id>` for volatile sessions.
+* [x] Store project names and session labels only as metadata.
+* [x] Stop renaming tmux sessions when a project or display label is renamed.
+* [x] Ensure persistent IDs are globally unique.
+* [x] Ensure volatile IDs are unique across independently started tflow instances.
+* [x] Test project and session renames without tmux session renames.
 
 ### P0: Persistent state model
 
@@ -140,9 +140,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ## Remove obsolete implementation
 
-* [ ] Remove project names encoded into tmux session names.
-* [ ] Remove session labels encoded into tmux session names.
-* [ ] Remove project-wide tmux rename migration code.
+* [x] Remove project names encoded into tmux session names.
+* [x] Remove session labels encoded into tmux session names.
+* [x] Remove project-wide tmux rename migration code.
 * [ ] Remove parallel `SessionProjects` and `SessionLabels` state maps.
 * [ ] Remove strict unknown-field rejection.
 * [ ] Remove sidebar-triggered reconciliation writes.

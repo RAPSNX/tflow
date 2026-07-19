@@ -27,6 +27,7 @@ const (
 
 type Session struct {
 	Name      string
+	Label     string
 	Windows   int
 	Attached  bool
 	Temporary bool
@@ -37,9 +38,9 @@ type Controller interface {
 	ListSessions() ([]Session, error)
 	CreateSession(name, cwd, command string) (Session, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
+	SetSessionLabel(name, label string) error
 	AttachCommand(name string) (*exec.Cmd, error)
 	KillSession(name string) error
-	RenameSession(oldName, newName string) error
 	SwitchClient(name string) error
 	EnsureControlMode(binaryPath string, palette Palette) error
 	SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error

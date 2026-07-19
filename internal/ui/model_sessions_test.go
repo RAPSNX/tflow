@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -181,19 +183,19 @@ func TestCreateUnscopedSessionIsVolatileAndDoesNotPersistMetadata(t *testing.T) 
 	if !msg.volatile {
 		t.Fatal("created unscoped session is not volatile")
 	}
-	if got, want := fmt.Sprint(tagged), fmt.Sprintf("[%s:true:instance-1]", volatileSessionName("instance-1", "notes")); got != want {
-		t.Fatalf("temporary tags = %s, want %s", got, want)
+	if len(tagged) != 1 || !strings.HasPrefix(tagged[0], "tflow-v-instance-1-") || !strings.HasSuffix(tagged[0], ":true:instance-1") {
+		t.Fatalf("temporary tags = %#v, want opaque ID tagged to the instance", tagged)
 	}
 	got := updated.(model)
 	updated, followUp := got.Update(msg)
 	got = updated.(model)
-	if got.selectedProject != "" || got.selectedSession != volatileSessionName("instance-1", "notes") {
+	if got.selectedProject != "" || got.selectedSession != msg.session.Name {
 		t.Fatalf("selection = project %q session %q, want volatile notes", got.selectedProject, got.selectedSession)
 	}
 	if sessions := got.contextSessions(); len(sessions) != 2 {
 		t.Fatalf("volatile sessions = %#v, want startup and new session", sessions)
 	}
-	for _, name := range []string{volatileSessionName("instance-1", "scratch-temp"), volatileSessionName("instance-1", "notes")} {
+	for _, name := range []string{volatileSessionName("instance-1", "scratch-temp"), msg.session.Name} {
 		session, found := got.findSession(name)
 		if !found || !session.Temporary || session.Instance != "instance-1" {
 			t.Fatalf("session %q = %#v, want instance-owned volatile session", name, session)
@@ -202,10 +204,10 @@ func TestCreateUnscopedSessionIsVolatileAndDoesNotPersistMetadata(t *testing.T) 
 	if followUp == nil {
 		t.Fatal("expected switch command")
 	}
-	if action := followUp().(menuActionMsg); action.switchSession != volatileSessionName("instance-1", "notes") {
+	if action := followUp().(menuActionMsg); action.switchSession != msg.session.Name {
 		t.Fatalf("switch session = %q, want notes", action.switchSession)
 	}
-	if _, ok := got.sessionProjects[volatileSessionName("instance-1", "notes")]; ok {
+	if _, ok := got.sessionProjects[msg.session.Name]; ok {
 		t.Fatalf("volatile session metadata persisted: %#v", got.sessionProjects)
 	}
 }
@@ -241,7 +243,7 @@ func TestVolatileSessionNamesAreScopedToEachInstance(t *testing.T) {
 		t.Fatalf("volatile tmux names collide: %q", first.session.Name)
 	}
 	menu := newModel(fakeTmuxController{}, first.session.Name).(model)
-	menu.sessions = []session{{Name: first.session.Name, Temporary: true, Instance: "instance-1"}}
+	menu.sessions = []session{{Name: first.session.Name, Label: first.label, Temporary: true, Instance: "instance-1"}}
 	if got := menu.sessionLabel(first.session.Name); got != "code" {
 		t.Fatalf("sidebar label = %q, want code", got)
 	}
@@ -310,15 +312,9 @@ func TestCreateVolatileSessionClearsStaleMetadata(t *testing.T) {
 }
 
 func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
-	var renamed []string
-	m := newModel(fakeTmuxController{
-		renameSession: func(oldName, newName string) error {
-			renamed = []string{oldName, newName}
-			return nil
-		},
-	}, volatileSessionName("instance-1", "notes")).(model)
+	m := newModel(fakeTmuxController{}, volatileSessionName("instance-1", "notes")).(model)
 	m.instanceID = "instance-1"
-	m.sessions = []session{{Name: volatileSessionName("instance-1", "notes"), Temporary: true, Instance: "instance-1"}}
+	m.sessions = []session{{Name: volatileSessionName("instance-1", "notes"), Label: "notes", Temporary: true, Instance: "instance-1"}}
 	m.currentSession = volatileSessionName("instance-1", "notes")
 	m.selectedSession = volatileSessionName("instance-1", "notes")
 	m.renameTarget = renameTarget{session: volatileSessionName("instance-1", "notes")}
@@ -338,9 +334,6 @@ func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("rename returned error: %v", msg.err)
 	}
-	if got, want := fmt.Sprint(renamed), fmt.Sprintf("[%s %s]", volatileSessionName("instance-1", "notes"), volatileSessionName("instance-1", "dev")); got != want {
-		t.Fatalf("renameSession calls = %s, want %s", got, want)
-	}
 
 	pending := *(updated.(*model))
 	updated, followUp := pending.Update(msg)
@@ -348,13 +341,11 @@ func TestRenameVolatileSessionClearsStaleMetadata(t *testing.T) {
 		t.Fatal("expected reload command after rename")
 	}
 	got := updated.(model)
-	for _, name := range []string{volatileSessionName("instance-1", "notes"), volatileSessionName("instance-1", "dev")} {
-		if _, ok := got.sessionProjects[name]; ok {
-			t.Fatalf("stale project metadata remains for %s: %#v", name, got.sessionProjects)
-		}
-		if _, ok := got.sessionLabels[name]; ok {
-			t.Fatalf("stale label metadata remains for %s: %#v", name, got.sessionLabels)
-		}
+	if _, ok := got.sessionProjects[volatileSessionName("instance-1", "notes")]; ok {
+		t.Fatalf("stale target metadata remains: %#v", got.sessionProjects)
+	}
+	if got.sessionLabel(volatileSessionName("instance-1", "notes")) != "dev" {
+		t.Fatalf("volatile label = %q, want dev", got.sessionLabel(volatileSessionName("instance-1", "notes")))
 	}
 	state, err := loadAppState(m.statePath)
 	if err != nil {
@@ -392,5 +383,27 @@ func TestVolatileContextShowsOnlyCurrentInstanceSessions(t *testing.T) {
 	}
 	if got, want := fmt.Sprint(names), "[scratch-temp notes]"; got != want {
 		t.Fatalf("visible sessions = %s, want %s", got, want)
+	}
+}
+
+func TestNewSessionIDUsesCryptographicEntropy(t *testing.T) {
+	id, err := newSessionIDWithEntropy(bytes.NewReader(make([]byte, 16)))
+	if err != nil || id != "00000000000000000000000000000000" {
+		t.Fatalf("newSessionIDWithEntropy = %q, %v", id, err)
+	}
+}
+
+func TestPersistentSessionCreationRetriesIDCollisions(t *testing.T) {
+	var names []string
+	m := newModel(fakeTmuxController{createSession: func(name, cwd, command string) (session, error) {
+		names = append(names, name)
+		if len(names) == 1 {
+			return session{}, fmt.Errorf("duplicate session")
+		}
+		return session{Name: name}, nil
+	}}, "").(model)
+	created, err := m.createPersistentSession("/tmp", "")
+	if err != nil || len(names) != 2 || names[0] == names[1] || created.Name != names[1] || !strings.HasPrefix(created.Name, "tflow-p-") {
+		t.Fatalf("creation = %#v, names = %#v, err = %v", created, names, err)
 	}
 }

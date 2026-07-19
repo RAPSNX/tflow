@@ -10,7 +10,7 @@ import (
 )
 
 func (m Manager) ListSessions() ([]Session, error) {
-	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}")
+	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}")
 	if err != nil {
 		if IsNoServer(err) {
 			return nil, nil
@@ -41,6 +41,9 @@ func (m Manager) ListSessions() ([]Session, error) {
 		}
 		if len(parts) > 4 {
 			session.Instance = strings.TrimSpace(parts[4])
+		}
+		if len(parts) > 5 {
+			session.Label = strings.TrimSpace(parts[5])
 		}
 		sessions = append(sessions, session)
 	}
@@ -95,13 +98,17 @@ func (m Manager) SetSessionTemporary(name string, temporary bool, instanceID str
 	if _, err := m.runner()("set-option", "-t", name, instanceMarker, instanceID); err != nil {
 		return err
 	}
-	if temporary {
-		if label := VolatileSessionLabel(name, instanceID); label != "" {
-			_, err := m.runner()("set-option", "-t", name, sessionLabelMarker, label)
-			return err
-		}
-	}
 	return nil
+}
+
+func (m Manager) SetSessionLabel(name, label string) error {
+	name = strings.TrimSpace(name)
+	label = SanitizeSessionName(label)
+	if name == "" || label == "" {
+		return fmt.Errorf("session label is empty")
+	}
+	_, err := m.runner()("set-option", "-t", name, sessionLabelMarker, label)
+	return err
 }
 
 func (Manager) AttachCommand(name string) (*exec.Cmd, error) {
@@ -117,29 +124,6 @@ func (m Manager) KillSession(name string) error {
 		return nil
 	}
 	return err
-}
-
-func (m Manager) RenameSession(oldName, newName string) error {
-	oldName = strings.TrimSpace(oldName)
-	newName = SanitizeSessionName(newName)
-	if oldName == "" || newName == "" {
-		return fmt.Errorf("session name is empty")
-	}
-	if oldName == newName {
-		return nil
-	}
-	if _, err := m.runner()("rename-session", "-t", oldName, newName); err != nil {
-		return err
-	}
-	if label := volatileSessionLabel(newName); label != "" {
-		if _, err := m.runner()("set-option", "-t", newName, sessionLabelMarker, label); err != nil {
-			if _, rollbackErr := m.runner()("rename-session", "-t", newName, oldName); rollbackErr != nil {
-				return fmt.Errorf("update volatile session label: %w; rollback rename: %v", err, rollbackErr)
-			}
-			return fmt.Errorf("update volatile session label: %w", err)
-		}
-	}
-	return nil
 }
 
 func (m Manager) SwitchClient(name string) error {
