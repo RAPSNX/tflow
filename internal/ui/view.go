@@ -16,6 +16,8 @@ func (m model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderProjectSwitchOverlay())
 	case inputCreateSession:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Session"))
+	case inputCreatingSession:
+		return appStyle.Width(m.width).Height(m.height).Render(m.renderSessionCreatePendingOverlay())
 	case inputCreateProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Project"))
 	case inputEditProject:
@@ -55,20 +57,21 @@ func (m model) renderHeader(width int) string {
 func (m model) renderSessionPanel(width int) string {
 	lines := []string{sectionTitleStyle.Render("Sessions"), ""}
 	sessions := m.contextSessions()
+	selectedIndex := sessionIndex(sessions, m.selectedSession)
 	if len(sessions) == 0 {
 		lines = append(lines, mutedStyle.Render("No sessions in this context"))
 	} else {
 		for index, session := range sessions {
-			lines = append(lines, m.renderSessionRow(index, session))
+			lines = append(lines, m.renderSessionRow(index, selectedIndex, session))
 		}
 	}
 	return panelStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 
-func (m model) renderSessionRow(index int, s session) string {
+func (m model) renderSessionRow(index, selectedIndex int, s session) string {
 	label := m.sessionLabel(s.Name)
 	project := normalizeProjectName(m.sessionProjects[s.Name])
-	selected := index == m.selectedSessionIndex()
+	selected := index == selectedIndex
 	style := m.rowStyle(selected, project)
 	content := label
 	if s.Name == m.currentSession {
@@ -197,6 +200,15 @@ func (m model) renderInputOverlay(title string) string {
 		badge, title = "settings", "Project"
 	}
 	return m.renderDialogCard(badge, title, "", m.renderInputField(), false)
+}
+
+func (m model) renderSessionCreatePendingOverlay() string {
+	width := m.dialogCardWidth()
+	contentWidth := m.dialogContentWidth()
+	header := lipgloss.JoinHorizontal(lipgloss.Left, dialogHeaderBadgeStyle.Render("CREATE"), " ", titleStyle.Render("Session"))
+	divider := dialogDividerStyle.Render(strings.Repeat("─", contentWidth))
+	box := overlayStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, header, divider, mutedStyle.Render("Creating session…")))
+	return m.renderDialog(box)
 }
 
 func (m model) renderDeleteOverlay() string {

@@ -30,7 +30,7 @@ func TestRenderSessionRowUsesDisplayLabel(t *testing.T) {
 	m.sessionProjects = map[string]string{"small--code": "small"}
 	m.sessionLabels = map[string]string{"small--code": "code"}
 
-	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderSessionRow(0, m.sessions[0]), "")
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderSessionRow(0, 0, m.sessions[0]), "")
 	if !strings.Contains(plain, "code") || strings.Contains(plain, "small--code") {
 		t.Fatalf("session row = %q", plain)
 	}
@@ -269,7 +269,7 @@ func TestRenderBadgesUseFilledContrastingStyles(t *testing.T) {
 		t.Fatalf("active row = %q", plain)
 	}
 	selectedLabel := selectedSessionStyle.Copy().Padding(0).Render(" dev")
-	if row := m.renderSessionRow(0, m.sessions[0]); !strings.Contains(row, selectedLabel) {
+	if row := m.renderSessionRow(0, 0, m.sessions[0]); !strings.Contains(row, selectedLabel) {
 		t.Fatalf("active selected row does not restore its highlight after the live badge: %q", row)
 	}
 }
@@ -370,5 +370,25 @@ func TestDialogKeepsStatusVisibleInFooter(t *testing.T) {
 	}
 	if strings.LastIndex(plain, "Saved project settings.") < strings.LastIndex(plain, "Esc") {
 		t.Fatalf("status was not rendered below the dialog: %q", plain)
+	}
+}
+
+func TestCreatingSessionOverlayHidesSidebarUntilCreationCompletes(t *testing.T) {
+	m := NewMenu().(model)
+	m.width = 48
+	m.height = 16
+	m.mode = inputCreatingSession
+	m.sessions = []session{{Name: "dev"}}
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.View(), "")
+	for _, want := range []string{"CREATE", "Session", "Creating session…"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("pending overlay missing %q in %q", want, plain)
+		}
+	}
+	for _, unwanted := range []string{"Sessions", "dev", "Enter", "Esc"} {
+		if strings.Contains(plain, unwanted) {
+			t.Fatalf("pending overlay unexpectedly contained %q in %q", unwanted, plain)
+		}
 	}
 }

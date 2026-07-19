@@ -307,3 +307,49 @@ func TestDeletingFinalProjectSessionRemovesProjectMetadata(t *testing.T) {
 		t.Fatal("final session left project metadata")
 	}
 }
+
+func TestSidebarRefreshUsesOneListQueryAndNoWrites(t *testing.T) {
+	const sessionID = "tflow-p-8f42ac91"
+	listCalls := 0
+	markerWrites := 0
+	m := newModel(fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			listCalls++
+			return []session{{Name: sessionID, Label: "code"}}, nil
+		},
+		syncSessionProjects: func(map[string]string) error {
+			markerWrites++
+			return nil
+		},
+	}, sessionID).(model)
+	m.statePath = filepath.Join(t.TempDir(), "store.json")
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: sessionID, Label: "code"}}
+	m.sessionProjects = map[string]string{sessionID: "small"}
+	m.sessionLabels = map[string]string{sessionID: "code"}
+	if err := m.saveState(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(m.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	updated, followUp := m.Update(m.Init()())
+	if followUp != nil {
+		t.Fatalf("refresh follow-up = %v, want nil", followUp)
+	}
+	after, err := os.ReadFile(m.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listCalls != 1 || markerWrites != 0 {
+		t.Fatalf("list calls = %d, marker writes = %d", listCalls, markerWrites)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("sidebar refresh changed persistent state\nbefore: %s\nafter:  %s", before, after)
+	}
+	if got := updated.(model).selectedSession; got != sessionID {
+		t.Fatalf("selected session = %q, want %q", got, sessionID)
+	}
+}

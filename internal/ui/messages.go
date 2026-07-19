@@ -7,6 +7,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+func (m model) finishSessionCreationFollowUpError(err error) (tea.Model, tea.Cmd) {
+	m.mode = inputNone
+	m.err = err
+	m.status = err.Error()
+	return m, nil
+}
+
 func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case sessionsLoadedMsg:
@@ -21,21 +28,14 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.instanceID = current.Instance
 			}
 		}
-		changed := m.ensureSessionProjects()
 		m.syncSelection()
-		if changed {
-			if err := m.saveState(); err != nil {
-				m.err = err
-				m.status = err.Error()
-			}
-		}
-		if err := m.syncTmuxSessionProjects(); err != nil {
-			m.err = err
-			m.status = err.Error()
-		}
 		return m, nil
 	case sessionCreatedMsg:
 		if msg.err != nil {
+			if m.mode == inputCreatingSession {
+				m.mode = inputCreateSession
+				m.input.Focus()
+			}
 			m.err = msg.err
 			m.status = msg.err.Error()
 			return m, nil
@@ -52,7 +52,7 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if err := m.saveState(); err != nil {
 					m.err = err
 					m.status = err.Error()
-					return m, nil
+					return m.finishSessionCreationFollowUpError(err)
 				}
 			}
 			m.selectedProject = ""
@@ -63,16 +63,13 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selectedProject = msg.project
 			m.selectedSession = msg.session.Name
 			if err := m.saveState(); err != nil {
-				m.err = err
-				m.status = err.Error()
-				return m, nil
+				return m.finishSessionCreationFollowUpError(err)
 			}
 		}
-		m.mode = inputNone
 		if err := m.syncTmuxSessionProjects(); err != nil {
 			m.err = err
 			m.status = err.Error()
-			return m, nil
+			return m.finishSessionCreationFollowUpError(err)
 		}
 		m.err = nil
 		m.status = ""
@@ -188,7 +185,7 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if err := m.saveState(); err != nil {
 					m.err = err
 					m.status = err.Error()
-					return m, nil
+					return m.finishSessionCreationFollowUpError(err)
 				}
 			}
 		} else {
