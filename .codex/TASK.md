@@ -104,6 +104,11 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 * [x] Close the sidebar immediately after tmux accepts valid session or project creation work, while the short-lived worker completes creation and switching.
 * [ ] Update tmux markers only for sessions directly affected by a mutation; do not rewrite unrelated sessions.
+* [ ] Before a sidebar-initiated switch, detect whether every pane in the outgoing session has exited.
+* [ ] After a successful sidebar switch, remove only an outgoing session whose every pane had exited; preserve sessions with at least one live pane.
+* [ ] Apply dead-session cleanup to direct session selection and project selection, after switching the client to the user-selected target.
+* [ ] Remove persistent metadata and an empty project when dead-session cleanup removes a persistent session; do not persist volatile-session cleanup.
+* [ ] Keep the selected target active and report a diagnostic when post-switch cleanup or its persistent-state update fails.
 * [x] Report background creation failures through the tmux status message.
 * [x] Create new project sessions in the project's configured workdir.
 * [x] Create volatile sessions in the active pane's working directory.
@@ -127,7 +132,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Create a volatile fallback in the active pane's working directory when no project session remains.
 * [x] Keep project and session order stable.
 * [x] Test volatile-session project promotion, foreign-instance preservation, persistent ID replacement, volatile-marker clearing, active-session switching, sidebar closure, status refresh, and failure handling.
-* [ ] Test creation, rename, moves, deletion, switching, active-project deletion, and fallback behavior.
+* [ ] Test creation, rename, moves, deletion, switching, active-project deletion, fallback behavior, and dead-session cleanup after direct-session and project switches.
+* [ ] Test dead-session cleanup for all-dead, live, and mixed-pane outgoing sessions; persistent and volatile sources; failed target switches; failed tmux cleanup; and failed metadata persistence.
 
 ### P1: Generated labels
 
