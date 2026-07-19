@@ -75,16 +75,19 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 	if err != nil {
 		return "", err
 	}
+	label := nextTempSessionNameForInstance(existing, instanceID)
 	var name string
 	created := false
 	for attempts := 0; attempts < startupSessionRetryLimit; attempts++ {
-		label := nextTempSessionNameForInstance(existing, instanceID)
-		name = volatileSessionName(instanceID, label)
+		id, err := newSessionID()
+		if err != nil {
+			return "", fmt.Errorf("generate startup session id: %w", err)
+		}
+		name = volatileSessionName(instanceID, id)
 		if _, err := manager.CreateSession(name, cwd, ""); err != nil {
 			if !isSessionExists(err) {
 				return "", err
 			}
-			existing = append(existing, session{Name: name, Temporary: true, Instance: instanceID})
 			continue
 		}
 		created = true
@@ -95,6 +98,9 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 	}
 	if err := manager.SetSessionTemporary(name, true, instanceID); err != nil {
 		return "", rollbackStartupSession(manager, name, fmt.Errorf("tag startup session: %w", err))
+	}
+	if err := manager.SetSessionLabel(name, label); err != nil {
+		return "", rollbackStartupSession(manager, name, fmt.Errorf("set startup session label: %w", err))
 	}
 	if err := manager.EnsureControlMode(binaryPath); err != nil {
 		return "", rollbackStartupSession(manager, name, fmt.Errorf("prepare tmux control mode: %w", err))

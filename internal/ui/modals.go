@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"fmt"
-
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -31,31 +29,21 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = "Session name already exists."
 				return m, nil
 			}
-			name := label
-			if project != "" {
-				name = projectSessionName(project, label)
-			} else {
-				name = volatileSessionName(m.instanceID, label)
-			}
-			if _, ok := m.findSession(name); ok {
-				m.status = "Session name already exists."
-				return m, nil
-			}
 			m.mode = inputNone
 			m.input.Blur()
 			m.input.Prompt = ""
 			dir := m.createSessionDir()
 			return m, func() tea.Msg {
-				s, err := m.tmux.CreateSession(name, dir, "")
-				if err != nil {
-					return sessionCreatedMsg{err: err}
-				}
 				if project == "" {
-					if err := m.tmux.SetSessionTemporary(s.Name, true, m.instanceID); err != nil {
-						_ = m.tmux.KillSession(s.Name)
-						return sessionCreatedMsg{err: fmt.Errorf("mark volatile session: %w", err)}
+					s, err := m.createVolatileSession(dir, "", label)
+					if err != nil {
+						return sessionCreatedMsg{err: err}
 					}
 					return sessionCreatedMsg{session: s, volatile: true, label: label}
+				}
+				s, err := m.createPersistentSession(dir, "")
+				if err != nil {
+					return sessionCreatedMsg{err: err}
 				}
 				return sessionCreatedMsg{session: s, project: project, label: label}
 			}

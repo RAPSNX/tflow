@@ -67,9 +67,8 @@ func (m *model) commitProjectCreate() (tea.Model, tea.Cmd) {
 	cfg := projectConfig{Name: name, Workdir: m.cwd}
 	cwd := cfg.Workdir
 	label := randomAnimalName()
-	tmuxName := projectSessionName(name, label)
 	return m, func() tea.Msg {
-		s, err := m.tmux.CreateSession(tmuxName, cwd, "")
+		s, err := m.createPersistentSession(cwd, "")
 		if err != nil {
 			return projectCreatedMsg{
 				config: cfg,
@@ -221,27 +220,12 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 			m.status = "Project already exists."
 			return m, nil
 		}
-		renames, err := m.projectSessionRenames(target.project, name)
-		if err != nil {
-			m.status = err.Error()
-			return m, nil
-		}
 		m.mode = inputNone
 		m.renameTarget = renameTarget{}
 		m.input.Blur()
 		m.input.Prompt = ""
 		return m, func() tea.Msg {
-			applied := make([]sessionRename, 0, len(renames))
-			for _, rename := range renames {
-				if err := m.tmux.RenameSession(rename.oldName, rename.newName); err != nil {
-					for i := len(applied) - 1; i >= 0; i-- {
-						_ = m.tmux.RenameSession(applied[i].newName, applied[i].oldName)
-					}
-					return projectRenamedMsg{oldName: target.project, newName: name, err: fmt.Errorf("rename project session: %w", err)}
-				}
-				applied = append(applied, rename)
-			}
-			return projectRenamedMsg{oldName: target.project, newName: name, sessionRenames: renames}
+			return projectRenamedMsg{oldName: target.project, newName: name}
 		}
 	case target.session != "":
 		label := sanitizeSessionName(m.input.Value())
@@ -257,8 +241,13 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 			m.status = ""
 			return m, nil
 		}
+		selected, found := m.findSession(target.session)
+		if !found {
+			m.status = "Session no longer exists."
+			return m, nil
+		}
 		project := ""
-		if selected, ok := m.findSession(target.session); !ok || !selected.Temporary {
+		if !selected.Temporary {
 			project = normalizeProjectName(m.sessionProjects[target.session])
 		}
 		if project != "" && m.hasSessionLabel(project, label, target.session) {
@@ -269,22 +258,12 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 			m.status = "Session name already exists."
 			return m, nil
 		}
-		name := label
-		if project != "" {
-			name = projectSessionName(project, label)
-		} else {
-			name = volatileSessionName(m.instanceID, label)
-		}
-		if existing, ok := m.findSession(name); ok && existing.Name != target.session {
-			m.status = "Session name already exists."
-			return m, nil
-		}
 		m.mode = inputNone
 		m.renameTarget = renameTarget{}
 		m.input.Blur()
 		m.input.Prompt = ""
 		return m, func() tea.Msg {
-			return sessionRenamedMsg{oldName: target.session, newName: name, label: label, err: m.tmux.RenameSession(target.session, name)}
+			return sessionRenamedMsg{name: target.session, label: label, volatile: selected.Temporary, err: m.tmux.SetSessionLabel(target.session, label)}
 		}
 	default:
 		m.status = "Select a session or project to rename."
@@ -333,15 +312,10 @@ func (m model) createVolatileFallback() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	label := nextTempSessionNameForInstance(m.sessions, m.instanceID)
-	name := volatileSessionName(m.instanceID, label)
 	return m, func() tea.Msg {
-		s, err := m.tmux.CreateSession(name, m.cwd, "")
+		s, err := m.createVolatileSession(m.cwd, "", label)
 		if err != nil {
-			return sessionCreatedMsg{err: err}
-		}
-		if err := m.tmux.SetSessionTemporary(s.Name, true, m.instanceID); err != nil {
-			_ = m.tmux.KillSession(s.Name)
-			return sessionCreatedMsg{err: fmt.Errorf("mark volatile fallback: %w", err)}
+			return sessionCreatedMsg{err: fmt.Errorf("create volatile fallback: %w", err)}
 		}
 		return sessionCreatedMsg{session: s, volatile: true, label: label}
 	}

@@ -19,9 +19,9 @@ type tmuxController interface {
 	ListSessions() ([]session, error)
 	CreateSession(name, cwd, command string) (session, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
+	SetSessionLabel(name, label string) error
 	AttachCommand(name string) (*exec.Cmd, error)
 	KillSession(name string) error
-	RenameSession(oldName, newName string) error
 	SwitchClient(name string) error
 	EnsureControlMode(binaryPath string) error
 	SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error
@@ -63,16 +63,16 @@ func (m sessionManager) SetSessionTemporary(name string, temporary bool, instanc
 	return m.inner.SetSessionTemporary(name, temporary, instanceID)
 }
 
+func (m sessionManager) SetSessionLabel(name, label string) error {
+	return m.inner.SetSessionLabel(name, label)
+}
+
 func (m sessionManager) AttachCommand(name string) (*exec.Cmd, error) {
 	return m.inner.AttachCommand(name)
 }
 
 func (m sessionManager) KillSession(name string) error {
 	return m.inner.KillSession(name)
-}
-
-func (m sessionManager) RenameSession(oldName, newName string) error {
-	return m.inner.RenameSession(oldName, newName)
 }
 
 func (m sessionManager) SwitchClient(name string) error {
@@ -115,10 +115,6 @@ func sanitizeSessionName(name string) string {
 	return runtmux.SanitizeSessionName(name)
 }
 
-func projectSessionName(project, label string) string {
-	return runtmux.ProjectSessionName(project, label)
-}
-
 func shellQuote(value string) string {
 	return runtmux.ShellQuote(value)
 }
@@ -131,12 +127,12 @@ func nextTempSessionNameForInstance(existing []session, instanceID string) strin
 	return runtmux.NextTempSessionNameForInstance(existing, instanceID)
 }
 
-func volatileSessionName(instanceID, label string) string {
-	return runtmux.VolatileSessionName(instanceID, label)
+func volatileSessionName(instanceID, id string) string {
+	return runtmux.VolatileSessionName(instanceID, id)
 }
 
-func volatileSessionLabel(name, instanceID string) string {
-	return runtmux.VolatileSessionLabel(name, instanceID)
+func persistentSessionName(id string) string {
+	return runtmux.PersistentSessionName(id)
 }
 
 func randomAnimalName() string {

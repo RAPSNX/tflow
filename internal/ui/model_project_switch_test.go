@@ -228,7 +228,7 @@ func TestCreateProjectCreatesAnimalNamedSession(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("create project: %v", msg.err)
 	}
-	if !runtmux.ContainsAnimalName(msg.label) || createdName != "small--"+msg.label || createdDir != "/tmp/workspace" {
+	if !runtmux.ContainsAnimalName(msg.label) || !strings.HasPrefix(createdName, "tflow-p-") || createdDir != "/tmp/workspace" {
 		t.Fatalf("created = %q in %q with label %q", createdName, createdDir, msg.label)
 	}
 	pending := *(updated.(*model))
@@ -255,7 +255,7 @@ func TestCreateProjectsUseAnimalNamedSessions(t *testing.T) {
 		updated, _ = pending.Update(msg)
 		m = updated.(model)
 	}
-	if len(created) != 2 || !strings.HasPrefix(created[0], "small--") || !strings.HasPrefix(created[1], "garden--") {
+	if len(created) != 2 || !strings.HasPrefix(created[0], "tflow-p-") || !strings.HasPrefix(created[1], "tflow-p-") || created[0] == created[1] {
 		t.Fatalf("created sessions = %#v", created)
 	}
 }

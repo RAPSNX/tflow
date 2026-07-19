@@ -82,7 +82,7 @@ func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			return "otter-temp\t1\t1\t1\tinstance-1\nsmall\t2\t0\t0\t\n", nil
+			return "otter-temp\t1\t1\t1\tinstance-1\totter\nsmall\t2\t0\t0\t\tdev\n", nil
 		},
 	}
 
@@ -98,6 +98,9 @@ func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	}
 	if sessions[0].Instance != "instance-1" {
 		t.Fatalf("first session instance = %q", sessions[0].Instance)
+	}
+	if sessions[0].Label != "otter" || sessions[1].Label != "dev" {
+		t.Fatalf("labels = %#v", sessions)
 	}
 	if sessions[1].Temporary {
 		t.Fatal("expected second session to be persistent")
@@ -142,25 +145,19 @@ func TestSetSessionTemporaryKeepsSessionAliveWhenUnattached(t *testing.T) {
 	}
 }
 
-func TestSetSessionTemporarySetsVolatileDisplayLabel(t *testing.T) {
+func TestSetSessionLabelUsesMetadata(t *testing.T) {
 	var calls [][]string
-	manager := Manager{
-		Run: func(args ...string) (string, error) {
-			calls = append(calls, append([]string(nil), args...))
-			return "", nil
-		},
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "", nil
+	}}
+	if err := manager.SetSessionLabel("tflow-v-instance-1-abc", "otter"); err != nil {
+		t.Fatalf("SetSessionLabel returned error: %v", err)
 	}
-	name := VolatileSessionName("instance-1", "otter")
-	if err := manager.SetSessionTemporary(name, true, "instance-1"); err != nil {
-		t.Fatalf("SetSessionTemporary returned error: %v", err)
+	want := []string{"set-option", "-t", "tflow-v-instance-1-abc", sessionLabelMarker, "otter"}
+	if len(calls) != 1 || strings.Join(calls[0], "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("calls = %#v, want %v", calls, want)
 	}
-	want := []string{"set-option", "-t", name, sessionLabelMarker, "otter"}
-	for _, call := range calls {
-		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-			return
-		}
-	}
-	t.Fatalf("missing call %v in %#v", want, calls)
 }
 
 func TestSetSessionTemporaryClearsDeferredCleanupWhenMadePersistent(t *testing.T) {
@@ -255,32 +252,6 @@ func TestCleanupVolatileSessionsKillsOnlyMatchingInstance(t *testing.T) {
 	}
 }
 
-func TestRenameSessionUsesTmuxRenameSession(t *testing.T) {
-	var calls [][]string
-	manager := Manager{
-		Run: func(args ...string) (string, error) {
-			calls = append(calls, append([]string(nil), args...))
-			return "", nil
-		},
-	}
-
-	if err := manager.RenameSession("legacy_code", "lala"); err != nil {
-		t.Fatalf("RenameSession returned error: %v", err)
-	}
-
-	want := []string{"rename-session", "-t", "legacy_code", "lala"}
-	found := false
-	for _, call := range calls {
-		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("missing call %v in %#v", want, calls)
-	}
-}
-
 func TestNextTempSessionName(t *testing.T) {
 	existing := []Session{{Name: "otter"}, {Name: "fox"}}
 	got := NextTempSessionName(existing)
@@ -299,14 +270,11 @@ func TestNextTempSessionNameForInstanceIgnoresOtherInstances(t *testing.T) {
 	}
 }
 
-func TestVolatileSessionNameKeepsLabelSeparate(t *testing.T) {
-	first := VolatileSessionName("instance-1", "code")
-	second := VolatileSessionName("instance-2", "code")
-	if first == second {
-		t.Fatalf("volatile names collide: %q", first)
-	}
-	if got := VolatileSessionLabel(first, "instance-1"); got != "code" {
-		t.Fatalf("VolatileSessionLabel = %q, want code", got)
+func TestVolatileSessionNameUsesOpaqueID(t *testing.T) {
+	first := VolatileSessionName("instance-1", "abc123")
+	second := VolatileSessionName("instance-2", "abc123")
+	if first == second || first != "tflow-v-instance-1-abc123" {
+		t.Fatalf("volatile names = %q, %q", first, second)
 	}
 }
 
@@ -412,49 +380,4 @@ func TestCleanupDetachedClientRemovesOwnedSessionsAndMarker(t *testing.T) {
 	if kills != 1 {
 		t.Fatalf("kill count = %d, want 1", kills)
 	}
-}
-
-func TestRenameSessionUpdatesVolatileDisplayLabel(t *testing.T) {
-	oldName := VolatileSessionName("instance-1", "otter")
-	newName := VolatileSessionName("instance-1", "fox")
-	var calls [][]string
-	manager := Manager{Run: func(args ...string) (string, error) {
-		calls = append(calls, append([]string(nil), args...))
-		return "", nil
-	}}
-
-	if err := manager.RenameSession(oldName, newName); err != nil {
-		t.Fatalf("RenameSession returned error: %v", err)
-	}
-	want := []string{"set-option", "-t", newName, sessionLabelMarker, "fox"}
-	for _, call := range calls {
-		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-			return
-		}
-	}
-	t.Fatalf("calls = %#v, want %v", calls, want)
-}
-
-func TestRenameSessionRollsBackWhenVolatileDisplayLabelUpdateFails(t *testing.T) {
-	oldName := VolatileSessionName("instance-1", "otter")
-	newName := VolatileSessionName("instance-1", "fox")
-	var calls [][]string
-	manager := Manager{Run: func(args ...string) (string, error) {
-		calls = append(calls, append([]string(nil), args...))
-		if args[0] == "set-option" {
-			return "", fmt.Errorf("set label failed")
-		}
-		return "", nil
-	}}
-
-	if err := manager.RenameSession(oldName, newName); err == nil {
-		t.Fatal("RenameSession returned nil error")
-	}
-	want := []string{"rename-session", "-t", newName, oldName}
-	for _, call := range calls {
-		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-			return
-		}
-	}
-	t.Fatalf("calls = %#v, want rollback %v", calls, want)
 }

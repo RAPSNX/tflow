@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,6 +56,13 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 			calls = append(calls, fmt.Sprintf("temporary:%s:%t:%s", name, temporary, instanceID))
 			return nil
 		},
+		setSessionLabel: func(name, label string) error {
+			calls = append(calls, "label:"+name+":"+label)
+			if !runtmux.ContainsAnimalName(label) {
+				t.Fatalf("label = %q, want animal label", label)
+			}
+			return nil
+		},
 		ensureControlMode: func(binaryPath string) error {
 			calls = append(calls, "control:"+binaryPath)
 			return nil
@@ -65,11 +73,11 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareStartup returned error: %v", err)
 	}
-	if label := volatileSessionLabel(name, "instance-1"); !runtmux.ContainsAnimalName(label) {
-		t.Fatalf("name = %q (label %q), want an animal label", name, label)
+	if !strings.HasPrefix(name, "tflow-v-instance-1-") {
+		t.Fatalf("name = %q, want opaque volatile id", name)
 	}
 
-	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{"create:" + name, "temporary:" + name + ":true:instance-1", "control:/tmp/tflow"}); got != want {
+	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{"create:" + name, "temporary:" + name + ":true:instance-1", "label:" + name + ":" + strings.TrimPrefix(calls[2], "label:"+name+":"), "control:/tmp/tflow"}); got != want {
 		t.Fatalf("calls = %s, want %s", got, want)
 	}
 }

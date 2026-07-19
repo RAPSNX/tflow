@@ -20,7 +20,10 @@ var tempSessionAnimals = []string{
 	"kestrel", "lemur", "manatee", "narwhal", "penguin",
 }
 
-const volatileSessionPrefix = "volatile-"
+const (
+	persistentSessionPrefix = "tflow-p-"
+	volatileSessionPrefix   = "tflow-v-"
+)
 
 func ContainsAnimalName(name string) bool {
 	for _, animal := range tempSessionAnimals {
@@ -40,58 +43,26 @@ func NormalizeCWD(cwd string) string {
 }
 
 func SanitizeSessionName(name string) string {
-	parts := strings.Split(name, "--")
-	if len(parts) == 2 {
-		project := store.NormalizeProjectName(parts[0])
-		label := store.NormalizeProjectName(parts[1])
-		if project != "" && label != "" {
-			return project + "--" + label
-		}
-	}
 	return store.NormalizeProjectName(name)
 }
 
-func ProjectSessionName(project, label string) string {
-	project = store.NormalizeProjectName(project)
-	label = store.NormalizeProjectName(label)
-	if project == "" || label == "" {
+func PersistentSessionName(id string) string {
+	id = SanitizeSessionName(id)
+	if id == "" {
 		return ""
 	}
-	return project + "--" + label
+	return persistentSessionPrefix + id
 }
 
-// VolatileSessionName returns a tmux-safe, instance-qualified name for a
-// volatile session. The label is intentionally kept separate for display.
-func VolatileSessionName(instanceID, label string) string {
+// VolatileSessionName returns a tmux-safe, instance-qualified internal name.
+// The display label is stored in tmux metadata, never encoded in this name.
+func VolatileSessionName(instanceID, id string) string {
 	instanceID = store.NormalizeProjectName(instanceID)
-	label = store.NormalizeProjectName(label)
-	if instanceID == "" || label == "" {
+	id = SanitizeSessionName(id)
+	if instanceID == "" || id == "" {
 		return ""
 	}
-	return volatileSessionPrefix + instanceID + "--" + label
-}
-
-// VolatileSessionLabel returns the display label encoded in a volatile session
-// name for the supplied instance. It returns an empty string for other names.
-func VolatileSessionLabel(name, instanceID string) string {
-	instanceID = store.NormalizeProjectName(instanceID)
-	if instanceID == "" {
-		return ""
-	}
-	prefix := volatileSessionPrefix + instanceID + "--"
-	if !strings.HasPrefix(name, prefix) {
-		return ""
-	}
-	return strings.TrimPrefix(name, prefix)
-}
-
-func volatileSessionLabel(name string) string {
-	name = strings.TrimPrefix(strings.TrimSpace(name), volatileSessionPrefix)
-	parts := strings.SplitN(name, "--", 2)
-	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
-		return ""
-	}
-	return strings.TrimSpace(parts[1])
+	return volatileSessionPrefix + instanceID + "-" + id
 }
 
 func NextTempSessionName(existing []Session) string {
@@ -144,9 +115,9 @@ func NextTempSessionNameForInstance(existing []Session, instanceID string) strin
 		if !session.Temporary || session.Instance != instanceID {
 			continue
 		}
-		label := VolatileSessionLabel(session.Name, instanceID)
+		label := strings.TrimSpace(session.Label)
 		if label == "" {
-			label = session.Name // Legacy volatile sessions used their label as the tmux name.
+			label = session.Name
 		}
 		labels = append(labels, Session{Name: label})
 	}

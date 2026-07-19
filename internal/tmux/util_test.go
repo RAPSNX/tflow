@@ -16,11 +16,11 @@ func TestNormalizeCWDExpandsHome(t *testing.T) {
 	}
 }
 
-func TestProjectSessionNamePreservesScopeDelimiter(t *testing.T) {
-	if got, want := ProjectSessionName("Small", "Code"), "small--code"; got != want {
-		t.Fatalf("ProjectSessionName = %q, want %q", got, want)
+func TestSessionNamesUseOpaquePrefixes(t *testing.T) {
+	if got, want := PersistentSessionName("8f42ac91"), "tflow-p-8f42ac91"; got != want {
+		t.Fatalf("PersistentSessionName = %q, want %q", got, want)
 	}
-	if got, want := SanitizeSessionName("small--code"), "small--code"; got != want {
-		t.Fatalf("SanitizeSessionName = %q, want %q", got, want)
+	if got, want := VolatileSessionName("instance-1", "8f42ac91"), "tflow-v-instance-1-8f42ac91"; got != want {
+		t.Fatalf("VolatileSessionName = %q, want %q", got, want)
 	}
 }

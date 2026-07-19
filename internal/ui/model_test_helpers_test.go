@@ -12,9 +12,9 @@ type fakeTmuxController struct {
 	listSessions        func() ([]session, error)
 	createSession       func(name, cwd, command string) (session, error)
 	setSessionTemporary func(name string, temporary bool, instanceID string) error
+	setSessionLabel     func(name, label string) error
 	attachCommand       func(name string) (*exec.Cmd, error)
 	killSession         func(name string) error
-	renameSession       func(oldName, newName string) error
 	switchClient        func(name string) error
 	ensureControlMode   func(binaryPath string) error
 	toggleMenu          func(binaryPath string) error
@@ -45,6 +45,13 @@ func (f fakeTmuxController) SetSessionTemporary(name string, temporary bool, ins
 	return nil
 }
 
+func (f fakeTmuxController) SetSessionLabel(name, label string) error {
+	if f.setSessionLabel != nil {
+		return f.setSessionLabel(name, label)
+	}
+	return nil
+}
+
 func (f fakeTmuxController) AttachCommand(name string) (*exec.Cmd, error) {
 	if f.attachCommand != nil {
 		return f.attachCommand(name)
@@ -55,13 +62,6 @@ func (f fakeTmuxController) AttachCommand(name string) (*exec.Cmd, error) {
 func (f fakeTmuxController) KillSession(name string) error {
 	if f.killSession != nil {
 		return f.killSession(name)
-	}
-	return nil
-}
-
-func (f fakeTmuxController) RenameSession(oldName, newName string) error {
-	if f.renameSession != nil {
-		return f.renameSession(oldName, newName)
 	}
 	return nil
 }

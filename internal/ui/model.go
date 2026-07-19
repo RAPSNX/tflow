@@ -54,27 +54,16 @@ type projectCreatedMsg struct {
 }
 
 type sessionRenamedMsg struct {
-	oldName string
-	newName string
-	label   string
-	err     error
-}
-
-type sessionNamesMigratedMsg struct {
-	renames []sessionRename
-	err     error
+	name     string
+	label    string
+	volatile bool
+	err      error
 }
 
 type projectRenamedMsg struct {
-	oldName        string
-	newName        string
-	sessionRenames []sessionRename
-	err            error
-}
-
-type sessionRename struct {
 	oldName string
 	newName string
+	err     error
 }
 
 type projectDeletedMsg struct {
@@ -143,7 +132,10 @@ type model struct {
 	err             error
 }
 
-const startupSessionRetryLimit = 128
+const (
+	startupSessionRetryLimit = 128
+	sessionIDRetryLimit      = 128
+)
 
 func NewMenu() tea.Model {
 	return newModel(newSessionManager(), os.Getenv(menuCurrentEnv))
@@ -212,4 +204,64 @@ func randomInstanceToken(entropy io.Reader, size int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf), nil
+}
+
+func newSessionID() (string, error) {
+	return newSessionIDWithEntropy(cryptorand.Reader)
+}
+
+func newSessionIDWithEntropy(entropy io.Reader) (string, error) {
+	return randomInstanceToken(entropy, 16)
+}
+
+func (m model) createPersistentSession(cwd, command string) (session, error) {
+	return m.createGeneratedSession(cwd, command, persistentSessionName)
+}
+
+func (m model) createVolatileSession(cwd, command, label string) (session, error) {
+	created, err := m.createGeneratedSession(cwd, command, func(id string) string {
+		return volatileSessionName(m.instanceID, id)
+	})
+	if err != nil {
+		return session{}, err
+	}
+	if err := m.tmux.SetSessionTemporary(created.Name, true, m.instanceID); err != nil {
+		_ = m.tmux.KillSession(created.Name)
+		return session{}, fmt.Errorf("mark volatile session: %w", err)
+	}
+	if err := m.tmux.SetSessionLabel(created.Name, label); err != nil {
+		_ = m.tmux.KillSession(created.Name)
+		return session{}, fmt.Errorf("set volatile session label: %w", err)
+	}
+	created.Temporary = true
+	created.Instance = m.instanceID
+	created.Label = label
+	return created, nil
+}
+
+func (m model) createGeneratedSession(cwd, command string, nameForID func(string) string) (session, error) {
+	for attempt := 0; attempt < sessionIDRetryLimit; attempt++ {
+		id, err := newSessionID()
+		if err != nil {
+			return session{}, fmt.Errorf("generate session id: %w", err)
+		}
+		name := nameForID(id)
+		if name == "" {
+			return session{}, fmt.Errorf("generate session name")
+		}
+		if _, exists := m.findSession(name); exists {
+			continue
+		}
+		if _, exists := m.sessionProjects[name]; exists {
+			continue
+		}
+		created, err := m.tmux.CreateSession(name, cwd, command)
+		if err == nil {
+			return created, nil
+		}
+		if !isSessionExists(err) {
+			return session{}, err
+		}
+	}
+	return session{}, fmt.Errorf("allocate generated session after %d retries", sessionIDRetryLimit)
 }

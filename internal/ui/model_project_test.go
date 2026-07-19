@@ -11,10 +11,10 @@ func TestRStartsProjectRenameModeWithSelectedSession(t *testing.T) {
 	m := NewMenu().(model)
 	m.projects = []string{defaultProjectName, "small"}
 	m.selectedProject = "small"
-	m.sessions = []session{{Name: "small--code"}}
-	m.selectedSession = "small--code"
-	m.sessionProjects = map[string]string{"small--code": "small"}
-	m.sessionLabels = map[string]string{"small--code": "code"}
+	m.sessions = []session{{Name: "tflow-p-8f42ac91"}}
+	m.selectedSession = "tflow-p-8f42ac91"
+	m.sessionProjects = map[string]string{"tflow-p-8f42ac91": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-8f42ac91": "code"}
 
 	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
 	got := *(updated.(*model))
@@ -43,18 +43,14 @@ func TestRenameProjectUpdatesAssignments(t *testing.T) {
 	}, "").(model)
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{defaultProjectName, "small"}
-	m.sessions = []session{{Name: "small--dev"}}
-	m.sessionProjects = map[string]string{"small--dev": "small"}
-	m.sessionLabels = map[string]string{"small--dev": "dev"}
+	m.sessions = []session{{Name: "tflow-p-8f42ac91"}}
+	m.sessionProjects = map[string]string{"tflow-p-8f42ac91": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-8f42ac91": "dev"}
 	m.selectedProject = "small"
 
 	updated, cmd := m.Update(projectRenamedMsg{
 		oldName: "small",
 		newName: "garden",
-		sessionRenames: []sessionRename{{
-			oldName: "small--dev",
-			newName: "garden--dev",
-		}},
 	})
 	got := updated.(model)
 	if cmd == nil {
@@ -66,33 +62,27 @@ func TestRenameProjectUpdatesAssignments(t *testing.T) {
 	if !containsString(got.projects, "garden") {
 		t.Fatalf("projects missing new name: %#v", got.projects)
 	}
-	if got.sessionProjects["garden--dev"] != "garden" {
-		t.Fatalf("sessionProjects[garden--dev] = %q, want garden", got.sessionProjects["garden--dev"])
+	if got.sessionProjects["tflow-p-8f42ac91"] != "garden" {
+		t.Fatalf("sessionProjects[tflow-p-8f42ac91] = %q, want garden", got.sessionProjects["tflow-p-8f42ac91"])
 	}
 	if got.selectedProject != "garden" {
 		t.Fatalf("selectedProject = %q, want garden", got.selectedProject)
 	}
-	if synced["garden--dev"] != "garden" {
-		t.Fatalf("synced project = %#v, want garden--dev->garden", synced)
+	if synced["tflow-p-8f42ac91"] != "garden" {
+		t.Fatalf("synced project = %#v, want small--dev->garden", synced)
 	}
 }
 
-func TestRRenamesProjectWithSelectedSession(t *testing.T) {
+func TestProjectRenamePreservesSessionID(t *testing.T) {
 	tmp := t.TempDir()
-	var renamed []string
-	m := newModel(fakeTmuxController{
-		renameSession: func(oldName, newName string) error {
-			renamed = append(renamed, oldName, newName)
-			return nil
-		},
-	}, "").(model)
+	m := newModel(fakeTmuxController{}, "").(model)
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{"small"}
-	m.sessions = []session{{Name: "small--code"}}
-	m.sessionProjects = map[string]string{"small--code": "small"}
-	m.sessionLabels = map[string]string{"small--code": "code"}
+	m.sessions = []session{{Name: "tflow-p-8f42ac91"}}
+	m.sessionProjects = map[string]string{"tflow-p-8f42ac91": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-8f42ac91": "code"}
 	m.selectedProject = "small"
-	m.selectedSession = "small--code"
+	m.selectedSession = "tflow-p-8f42ac91"
 
 	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
 	pending := *(updated.(*model))
@@ -108,17 +98,14 @@ func TestRRenamesProjectWithSelectedSession(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("project rename returned error: %v", msg.err)
 	}
-	if fmt.Sprint(renamed) != fmt.Sprint([]string{"small--code", "garden--code"}) {
-		t.Fatalf("tmux renames = %#v", renamed)
-	}
 	pending, ok := unwrapMenuModel(updated)
 	if !ok {
 		t.Fatal("expected menu model after project rename command")
 	}
 	updated, _ = pending.Update(msg)
 	got := updated.(model)
-	if got.selectedSession != "garden--code" || got.sessionLabel("garden--code") != "code" {
-		t.Fatalf("renamed selection = %q, label = %q", got.selectedSession, got.sessionLabel("garden--code"))
+	if got.selectedSession != "tflow-p-8f42ac91" || got.sessionLabel("tflow-p-8f42ac91") != "code" {
+		t.Fatalf("renamed selection = %q, label = %q", got.selectedSession, got.sessionLabel("tflow-p-8f42ac91"))
 	}
 }
 
@@ -133,11 +120,11 @@ func TestDDeletesProjectWithSelectedSession(t *testing.T) {
 	}, "").(model)
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{"small"}
-	m.sessions = []session{{Name: "small--code"}}
-	m.sessionProjects = map[string]string{"small--code": "small"}
-	m.sessionLabels = map[string]string{"small--code": "code"}
+	m.sessions = []session{{Name: "tflow-p-8f42ac91"}}
+	m.sessionProjects = map[string]string{"tflow-p-8f42ac91": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-8f42ac91": "code"}
 	m.selectedProject = "small"
-	m.selectedSession = "small--code"
+	m.selectedSession = "tflow-p-8f42ac91"
 
 	updated, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	pending := *(updated.(*model))
@@ -164,61 +151,34 @@ func TestDDeletesProjectWithSelectedSession(t *testing.T) {
 	}
 }
 
-func TestSessionLoadMigratesProjectSessionsToScopedNames(t *testing.T) {
-	tmp := t.TempDir()
-	var renamed []string
-	m := newModel(fakeTmuxController{
-		renameSession: func(oldName, newName string) error {
-			renamed = append(renamed, oldName, newName)
-			return nil
-		},
-	}, "code").(model)
-	m.statePath = tmp + "/state.json"
+func TestSessionLoadDoesNotMigrateLegacyNames(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "code").(model)
 	m.projects = []string{"small"}
 	m.sessionProjects = map[string]string{"code": "small"}
-
 	updated, cmd := m.Update(sessionsLoadedMsg{sessions: []session{{Name: "code"}}})
-	pending := updated.(model)
-	if cmd == nil {
-		t.Fatal("expected scoped-name migration command")
-	}
-	msg := cmd().(sessionNamesMigratedMsg)
-	if msg.err != nil {
-		t.Fatalf("migration returned error: %v", msg.err)
-	}
-	if got, want := fmt.Sprint(renamed), fmt.Sprint([]string{"code", "small--code"}); got != want {
-		t.Fatalf("renames = %s, want %s", got, want)
-	}
-	updated, _ = pending.Update(msg)
-	got := updated.(model)
-	if got.currentSession != "small--code" || got.sessionLabel("small--code") != "code" {
-		t.Fatalf("migrated current = %q, labels = %#v", got.currentSession, got.sessionLabels)
+	if cmd != nil || updated.(model).currentSession != "code" {
+		t.Fatalf("legacy session was migrated: %#v", updated)
 	}
 }
 
-func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
+func TestRenameSessionUpdatesMetadataWithoutTmuxRename(t *testing.T) {
 	tmp := t.TempDir()
-	var renamed []string
 	var syncedProjects map[string]string
 	m := newModel(fakeTmuxController{
 		syncSessionProjects: func(projects map[string]string) error {
 			syncedProjects = cloneStringMap(projects)
 			return nil
 		},
-		renameSession: func(oldName, newName string) error {
-			renamed = []string{oldName, newName}
-			return nil
-		},
-	}, "default--dev").(model)
+	}, "tflow-p-8f42ac92").(model)
 	m.statePath = tmp + "/state.json"
-	m.sessions = []session{{Name: "default--dev"}}
+	m.sessions = []session{{Name: "tflow-p-8f42ac92"}}
 	m.projects = []string{defaultProjectName}
-	m.sessionProjects = map[string]string{"default--dev": defaultProjectName}
-	m.sessionLabels = map[string]string{"default--dev": "dev"}
+	m.sessionProjects = map[string]string{"tflow-p-8f42ac92": defaultProjectName}
+	m.sessionLabels = map[string]string{"tflow-p-8f42ac92": "dev"}
 	m.selectedProject = defaultProjectName
-	m.selectedSession = "default--dev"
+	m.selectedSession = "tflow-p-8f42ac92"
 	m.mode = inputRename
-	m.renameTarget = renameTarget{session: "default--dev"}
+	m.renameTarget = renameTarget{session: "tflow-p-8f42ac92"}
 	m.input.SetValue("lala")
 
 	updated, cmd := m.commitRename()
@@ -230,44 +190,34 @@ func TestRenameSessionCallsTmuxAndUpdatesSelection(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("rename returned error: %v", msg.err)
 	}
-	if got.selectedSession != "default--dev" {
-		t.Fatalf("selectedSession before ack = %q, want default--dev", got.selectedSession)
+	if got.selectedSession != "tflow-p-8f42ac92" {
+		t.Fatalf("selectedSession before ack = %q, want tflow-p-8f42ac92", got.selectedSession)
 	}
 	updated, followUp := got.Update(msg)
 	final := updated.(model)
 	if followUp == nil {
 		t.Fatal("expected reload command after rename")
 	}
-	if final.selectedSession != "default--lala" {
-		t.Fatalf("selectedSession = %q, want default--lala", final.selectedSession)
+	if final.selectedSession != "tflow-p-8f42ac92" {
+		t.Fatalf("selectedSession = %q, want tflow-p-8f42ac92", final.selectedSession)
 	}
-	if final.currentSession != "default--lala" {
-		t.Fatalf("currentSession = %q, want default--lala", final.currentSession)
+	if final.currentSession != "tflow-p-8f42ac92" {
+		t.Fatalf("currentSession = %q, want tflow-p-8f42ac92", final.currentSession)
 	}
-	if final.sessionProjects["default--lala"] != defaultProjectName {
-		t.Fatalf("sessionProjects[default--lala] = %q, want %q", final.sessionProjects["default--lala"], defaultProjectName)
+	if final.sessionProjects["tflow-p-8f42ac92"] != defaultProjectName {
+		t.Fatalf("sessionProjects[tflow-p-8f42ac92] = %q, want %q", final.sessionProjects["tflow-p-8f42ac92"], defaultProjectName)
 	}
-	if final.sessionLabel("default--lala") != "lala" {
-		t.Fatalf("session label = %q, want lala", final.sessionLabel("default--lala"))
+	if final.sessionLabel("tflow-p-8f42ac92") != "lala" {
+		t.Fatalf("session label = %q, want lala", final.sessionLabel("tflow-p-8f42ac92"))
 	}
-	if _, found := final.findSession("default--lala"); !found {
+	if _, found := final.findSession("tflow-p-8f42ac92"); !found {
 		t.Fatalf("renamed session missing from sessions: %#v", final.sessions)
 	}
-	if _, found := final.findSession("default--dev"); found {
-		t.Fatalf("old session remains in sessions: %#v", final.sessions)
-	}
-	if got := syncedProjects["default--lala"]; got != defaultProjectName {
+
+	if got := syncedProjects["tflow-p-8f42ac92"]; got != defaultProjectName {
 		t.Fatalf("synced project = %q, want %q", got, defaultProjectName)
 	}
-	if _, found := syncedProjects["default--dev"]; found {
-		t.Fatalf("old session was synced: %#v", syncedProjects)
-	}
-	if _, ok := final.sessionProjects["default--dev"]; ok {
-		t.Fatalf("old session project still present: %#v", final.sessionProjects)
-	}
-	if fmt.Sprint(renamed) != fmt.Sprint([]string{"default--dev", "default--lala"}) {
-		t.Fatalf("renameSession calls = %#v", renamed)
-	}
+
 }
 
 func TestProjectSwitchReturnsFocusToFirstProjectSession(t *testing.T) {
