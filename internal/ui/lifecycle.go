@@ -30,6 +30,7 @@ func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string
 
 	cmd, err := manager.AttachCommand(sessionName)
 	if err != nil {
+		// Preserve the attach error; volatile cleanup is deliberately best effort.
 		_ = manager.CleanupVolatileSessions(instanceID)
 		return err
 	}
@@ -39,6 +40,7 @@ func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string
 	runErr := cmd.Run()
 	cleanupErr := manager.CleanupVolatileSessions(instanceID)
 	if runErr != nil {
+		// Preserve the client error; volatile cleanup is deliberately best effort.
 		return runErr
 	}
 	return cleanupErr
@@ -99,14 +101,17 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 		return "", fmt.Errorf("allocate startup session after %d retries", startupSessionRetryLimit)
 	}
 	if err := manager.SetSessionTemporary(name, true, instanceID); err != nil {
+		// Preserve the setup error; deleting the newly created session is best effort.
 		_ = manager.KillSession(name)
 		return "", fmt.Errorf("tag startup session: %w", err)
 	}
 	if err := manager.SetSessionLabel(name, label); err != nil {
+		// Preserve the setup error; deleting the newly created session is best effort.
 		_ = manager.KillSession(name)
 		return "", fmt.Errorf("set startup session label: %w", err)
 	}
 	if err := manager.EnsureControlMode(binaryPath); err != nil {
+		// Preserve the setup error; deleting the newly created session is best effort.
 		_ = manager.KillSession(name)
 		return "", fmt.Errorf("prepare tmux control mode: %w", err)
 	}

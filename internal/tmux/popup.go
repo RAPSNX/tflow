@@ -118,6 +118,7 @@ func (m Manager) closeMenuPopup(clientID string) error {
 		if isBenignPopupCloseError(closeErr) {
 			return unmarkErr
 		}
+		// Preserve the close error; popup-marker cleanup is deliberately best effort.
 		return closeErr
 	}
 	return unmarkErr

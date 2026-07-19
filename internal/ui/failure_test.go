@@ -22,6 +22,7 @@ func TestCreateProjectRequestKillsNewSessionWhenStateSaveFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A directory cannot be atomically replaced by the temporary state file.
 	m.statePath = t.TempDir()
 	if err := m.createProjectRequest(createRequest{Project: "small", Label: "code", Workdir: "/small"}); err == nil {
 		t.Fatal("createProjectRequest returned nil error")
