@@ -83,6 +83,12 @@ func (m Manager) SetSessionTemporary(name string, temporary bool, instanceID str
 	} else {
 		instanceID = ""
 	}
+	if _, err := m.runner()("set-option", "-t", name, tempMarker, marker); err != nil {
+		return err
+	}
+	if _, err := m.runner()("set-option", "-t", name, instanceMarker, instanceID); err != nil {
+		return err
+	}
 	if _, err := m.runner()("set-option", "-t", name, "destroy-unattached", "off"); err != nil {
 		return err
 	}
@@ -90,12 +96,6 @@ func (m Manager) SetSessionTemporary(name string, temporary bool, instanceID str
 	// Keep them alive while a client switches to another session, and clear the
 	// legacy hook that previously re-enabled destroy-unattached after attach.
 	if _, err := m.runner()("set-hook", "-u", "-t", name, "client-attached"); err != nil {
-		return err
-	}
-	if _, err := m.runner()("set-option", "-t", name, tempMarker, marker); err != nil {
-		return err
-	}
-	if _, err := m.runner()("set-option", "-t", name, instanceMarker, instanceID); err != nil {
 		return err
 	}
 	return nil
@@ -178,7 +178,7 @@ func (m Manager) cleanupVolatileSessions(instanceID, skipSession string) error {
 		return err
 	}
 	for _, session := range sessions {
-		if !session.Temporary || session.Instance != instanceID || session.Name == skipSession {
+		if !session.Temporary || session.Instance != instanceID || session.Name == skipSession || strings.HasPrefix(session.Name, persistentSessionPrefix) {
 			continue
 		}
 		if err := m.KillSession(session.Name); err != nil {
@@ -186,4 +186,42 @@ func (m Manager) cleanupVolatileSessions(instanceID, skipSession string) error {
 		}
 	}
 	return nil
+}
+
+func (m Manager) RenameSession(oldName, newName string) error {
+	_, err := m.runner()("rename-session", "-t", oldName, newName)
+	return err
+}
+func (m Manager) SetSessionProject(name, project string) error {
+	_, err := m.runner()("set-option", "-t", name, projectMarker, store.NormalizeProjectName(project))
+	return err
+}
+func (m Manager) RunBackground(command string) error {
+	_, err := m.runner()("run-shell", "-b", command)
+	return err
+}
+func (m Manager) DisplayMessage(message string) error {
+	args := []string{"display-message"}
+	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
+		args = append(args, "-c", clientID)
+	}
+	args = append(args, message)
+	_, err := m.runner()(args...)
+	return err
+}
+
+func (m Manager) CurrentPaneDir() (string, error) {
+	args := []string{"display-message", "-p"}
+	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
+		args = append(args, "-c", clientID)
+	}
+	args = append(args, "#{pane_current_path}")
+	out, err := m.runner()(args...)
+	if err != nil {
+		return "", err
+	}
+	if dir := strings.TrimSpace(out); dir != "" {
+		return dir, nil
+	}
+	return "", fmt.Errorf("active pane directory is empty")
 }

@@ -11,6 +11,11 @@ const defaultProjectName = "default"
 type fakeTmuxController struct {
 	listSessions        func() ([]session, error)
 	createSession       func(name, cwd, command string) (session, error)
+	renameSession       func(oldName, newName string) error
+	setSessionProject   func(name, project string) error
+	runBackground       func(command string) error
+	displayMessage      func(message string) error
+	currentPaneDir      func() (string, error)
 	setSessionTemporary func(name string, temporary bool, instanceID string) error
 	setSessionLabel     func(name, label string) error
 	attachCommand       func(name string) (*exec.Cmd, error)
@@ -36,6 +41,38 @@ func (f fakeTmuxController) CreateSession(name, cwd, command string) (session, e
 		return f.createSession(name, cwd, command)
 	}
 	return session{Name: name, Windows: 1}, nil
+}
+
+func (f fakeTmuxController) RenameSession(oldName, newName string) error {
+	if f.renameSession != nil {
+		return f.renameSession(oldName, newName)
+	}
+	return nil
+}
+func (f fakeTmuxController) SetSessionProject(name, project string) error {
+	if f.setSessionProject != nil {
+		return f.setSessionProject(name, project)
+	}
+	return nil
+}
+func (f fakeTmuxController) RunBackground(command string) error {
+	if f.runBackground != nil {
+		return f.runBackground(command)
+	}
+	return nil
+}
+func (f fakeTmuxController) DisplayMessage(message string) error {
+	if f.displayMessage != nil {
+		return f.displayMessage(message)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) CurrentPaneDir() (string, error) {
+	if f.currentPaneDir != nil {
+		return f.currentPaneDir()
+	}
+	return "", nil
 }
 
 func (f fakeTmuxController) SetSessionTemporary(name string, temporary bool, instanceID string) error {

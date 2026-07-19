@@ -15,6 +15,10 @@ func saveAppState(path string, state appState) error {
 	return store.SaveAppState(path, state)
 }
 
+func lockAppState(path string) (func() error, error) {
+	return store.AcquireAppStateLock(path)
+}
+
 func normalizeAppState(state appState) appState {
 	return store.NormalizeAppState(state)
 }

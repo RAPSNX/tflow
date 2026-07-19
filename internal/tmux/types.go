@@ -37,6 +37,11 @@ type Session struct {
 type Controller interface {
 	ListSessions() ([]Session, error)
 	CreateSession(name, cwd, command string) (Session, error)
+	RenameSession(oldName, newName string) error
+	SetSessionProject(name, project string) error
+	RunBackground(command string) error
+	DisplayMessage(message string) error
+	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
 	AttachCommand(name string) (*exec.Cmd, error)

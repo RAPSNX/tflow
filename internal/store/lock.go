@@ -1,0 +1,36 @@
+package store
+
+import (
+	"os"
+	"path/filepath"
+	"syscall"
+)
+
+// AcquireAppStateLock acquires the advisory lock shared by state mutations.
+// The caller must invoke the returned function to release it.
+func AcquireAppStateLock(statePath string) (func() error, error) {
+	lockPath := statePath + ".lock"
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o700); err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return func() error {
+		unlockErr := syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		closeErr := file.Close()
+		if unlockErr != nil {
+			return unlockErr
+		}
+		return closeErr
+	}, nil
+}

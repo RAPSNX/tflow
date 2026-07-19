@@ -18,6 +18,11 @@ type session = runtmux.Session
 type tmuxController interface {
 	ListSessions() ([]session, error)
 	CreateSession(name, cwd, command string) (session, error)
+	RenameSession(oldName, newName string) error
+	SetSessionProject(name, project string) error
+	RunBackground(command string) error
+	DisplayMessage(message string) error
+	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
 	AttachCommand(name string) (*exec.Cmd, error)
@@ -58,6 +63,15 @@ func (m sessionManager) ListSessions() ([]session, error) {
 func (m sessionManager) CreateSession(name, cwd, command string) (session, error) {
 	return m.inner.CreateSession(name, cwd, command)
 }
+func (m sessionManager) RenameSession(oldName, newName string) error {
+	return m.inner.RenameSession(oldName, newName)
+}
+func (m sessionManager) SetSessionProject(name, project string) error {
+	return m.inner.SetSessionProject(name, project)
+}
+func (m sessionManager) RunBackground(command string) error  { return m.inner.RunBackground(command) }
+func (m sessionManager) DisplayMessage(message string) error { return m.inner.DisplayMessage(message) }
+func (m sessionManager) CurrentPaneDir() (string, error)     { return m.inner.CurrentPaneDir() }
 
 func (m sessionManager) SetSessionTemporary(name string, temporary bool, instanceID string) error {
 	return m.inner.SetSessionTemporary(name, temporary, instanceID)
