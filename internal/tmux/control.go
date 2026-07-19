@@ -31,6 +31,7 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		{"set-option", "-g", "window-status-format", ""},
 		{"set-option", "-g", "window-status-current-format", ""},
 		{"set-option", "-g", "detach-on-destroy", "off"},
+		{"set-window-option", "-g", "remain-on-exit", "on"},
 		{"set-option", "-g", "default-shell", userShell()},
 		{"set-option", "-g", "default-command", loginShellCommand()},
 		{"bind-key", "-n", menuToggleKey, "run-shell", toggleShell},

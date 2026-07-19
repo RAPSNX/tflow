@@ -23,6 +23,8 @@ Volatile sessions belong only to the current `tflow` instance. They are used for
 
 Sessions created outside a project are volatile, belong to the current `tflow` instance, and follow the same cleanup rules.
 
+Managed panes use tmux’s `remain-on-exit` behavior. When a shell exits, its pane stays visible as exited rather than causing tmux to move the client to another session. `Ctrl+Q` remains the deliberate way to leave a tflow instance.
+
 `tflow` contains a reviewed, compiled list of exactly 25 animal names. The list is fetched once from a public animal API during development and is never requested at runtime.
 
 The startup volatile session and the initial session of every newly created project receive a randomly selected animal name from that list. A single-animal session name is exactly the selected animal name.
