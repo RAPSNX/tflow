@@ -2,7 +2,7 @@
 
 ## Project Structure
 
-This is a small Go module with the main entry point in `cmd/main.go`.
+This is a small Go module with its current entry point in `cmd/main.go`.
 
 - Put reusable application code under `internal/`.
 - Avoid `pkg/` unless the project intentionally exposes public reusable APIs.
@@ -19,46 +19,36 @@ This is a small Go module with the main entry point in `cmd/main.go`.
 
 - Use standard Go formatting and idioms.
 - Use short, lowercase package names.
-- Use `PascalCase` for exported identifiers.
-- Use `camelCase` for unexported identifiers.
-- Keep packages small and focused.
-- Split behavior into meaningful packages when it improves clarity or testability.
+- Use `PascalCase` for exported identifiers and `camelCase` for unexported identifiers.
+- Keep packages and files small and focused.
+- Split code by responsibility when it improves clarity or testability.
+- Do not hide unrelated behavior in one package file.
 
 ## Testing
 
-Use Go’s built-in `testing` package by default.
+Use Go's built-in `testing` package by default.
 
-- Name tests clearly, e.g. `TestParserHandlesEmptyInput`.
+- Name tests clearly, for example `TestParserHandlesEmptyInput`.
 - Prefer table-driven tests for input/output behavior.
 - Add tests for new logic and bug fixes.
 - Run `go test ./...` before finishing work.
 
-- all changes should always end in in meaningfull commits
-- if the actual branch has changes stop your work imediatley
-- alwyas work in a git worktree
-- commit everything into a branch
-
-## File Size and Refactoring
-
-- Keep Go files small and focused.
-- Avoid large multi-purpose files.
-- Prefer files with lower line count.
-- Split by responsibility, not randomly.
-- Do not hide unrelated behavior in one package file.
-
-## Agent Instructions
+## Architecture and Tasks
 
 - Read `AGENTS.md` before editing.
 - Read `.codex/ARCHITECTURE.md` before changing behavior.
-- Use `.codex/TASK.md` as the current implementation checklist.
-- `.codex/ARCHITECTURE.md` describes the target state and is the source of truth for intended behavior.
-- `.codex/TASK.md` must be derived from `.codex/ARCHITECTURE.md`.
-- If `.codex/TASK.md` conflicts with `.codex/ARCHITECTURE.md`, stop and ask.
-- If `.codex/TASK.md` adds implementation detail without conflict, complete it.
-- Do not implement features not listed in `.codex/TASK.md` unless explicitly asked.
-- Do not introduce a user-edited config file; persistent data belongs in `$XDG_STATE_HOME/tflow/store.json`.
-- If implementation requires behavior not defined in `.codex/ARCHITECTURE.md`, stop and ask.
+- Treat `.codex/ARCHITECTURE.md` as the source of truth for intended behavior, including the persistent state path.
+- Use `.codex/TASK.md`, which must be derived from the architecture, as the implementation checklist.
+- If the task list conflicts with the architecture, stop and ask.
+- Implementation detail in the task list is allowed when it does not conflict with the architecture.
+- Do not implement features outside the task list unless the user explicitly asks.
+- If a requested implementation needs behavior not defined by the architecture, stop and ask.
+- Do not introduce a user-edited configuration file.
+
+## Git Workflow
+
+- If the current worktree has pre-existing changes, stop immediately.
+- Work in a dedicated git worktree on a task branch created from `main`; when updating an existing PR, continue on that PR's branch.
 - Keep changes focused and avoid unrelated rewrites.
-- Always create new branch for your work from main
-- Never work on main, always commit your work !!
-- Always !! Commit the refactor, push the branch, and open a published PR. !!!
+- End every change in a meaningful commit.
+- Push the branch and open or update a published pull request.
