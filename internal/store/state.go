@@ -6,6 +6,13 @@ import (
 	"strings"
 )
 
+var (
+	writeAppStateTemporary = func(file *os.File, data []byte) (int, error) {
+		return file.Write(data)
+	}
+	renameAppStateFile = os.Rename
+)
+
 func AppStatePath() string {
 	return filepath.Join(stateHomeDir(), "tflow", "store.json")
 }
@@ -32,24 +39,44 @@ func SaveAppState(path string, state AppState) error {
 	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".store.json-")
+	if err != nil {
 		return err
 	}
-	return os.Chmod(path, 0o600)
+	temporaryPath := temporary.Name()
+	closed := false
+	written := false
+	defer func() {
+		if !closed {
+			_ = temporary.Close()
+		}
+		if !written {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+	if err := temporary.Chmod(0o600); err != nil {
+		return err
+	}
+	if _, err := writeAppStateTemporary(temporary, data); err != nil {
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	closed = true
+	if err := renameAppStateFile(temporaryPath, path); err != nil {
+		return err
+	}
+	written = true
+	return nil
 }
 
 func EnsureStartupState() error {
 	path := AppStatePath()
-	unlock, err := AcquireAppStateLock(path)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = unlock() }()
-	state, err := LoadAppState(path)
-	if err != nil {
-		return err
-	}
-	return SaveAppState(path, state)
+	_, err := MutateAppState(path, func(state AppState) (AppState, error) {
+		return state, nil
+	})
+	return err
 }
 
 func stateHomeDir() string {

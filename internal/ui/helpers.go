@@ -8,32 +8,30 @@ import (
 
 func (m *model) saveState() error {
 	desired := m.currentState()
-	var unlock func() error
-	if !m.stateLockHeld {
-		var err error
-		unlock, err = lockAppState(m.statePath)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = unlock() }()
-	}
-
-	latest, err := loadAppState(m.statePath)
-	if err != nil {
-		return err
-	}
 	base := m.stateBase
 	if m.stateBasePath != m.statePath {
 		base = appState{}
 	}
-	if err := validateStateProjectNames(latest, base, desired); err != nil {
-		return err
+	mutate := func(latest appState) (appState, error) {
+		if err := validateStateProjectNames(latest, base, desired); err != nil {
+			return appState{}, err
+		}
+		state := mergeAppStates(latest, base, desired)
+		if err := validateStateSessionLabels(state); err != nil {
+			return appState{}, err
+		}
+		return state, nil
 	}
-	state := mergeAppStates(latest, base, desired)
-	if err := validateStateSessionLabels(state); err != nil {
-		return err
+	var (
+		state appState
+		err   error
+	)
+	if m.stateLockHeld {
+		state, err = mutateAppStateLocked(m.statePath, mutate)
+	} else {
+		state, err = mutateAppState(m.statePath, mutate)
 	}
-	if err := saveAppState(m.statePath, state); err != nil {
+	if err != nil {
 		return err
 	}
 	m.stateBase = desired

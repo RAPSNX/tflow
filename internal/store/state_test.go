@@ -1,9 +1,11 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -96,6 +98,114 @@ func TestSaveAndLoadAppStateRoundTripsOrderedProjectRecords(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestSaveAppStateLeavesPreviousFileUnchangedWhenRenameFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	initial := AppState{Projects: []Project{{Name: "small", Workdir: "/small"}}}
+	if err := SaveAppState(path, initial); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalRename := renameAppStateFile
+	renameAppStateFile = func(string, string) error { return errors.New("rename failed") }
+	t.Cleanup(func() { renameAppStateFile = originalRename })
+
+	err = SaveAppState(path, AppState{Projects: []Project{{Name: "garden", Workdir: "/garden"}}})
+	if err == nil || !strings.Contains(err.Error(), "rename failed") {
+		t.Fatalf("SaveAppState error = %v, want rename failure", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("store changed after failed save:\nwant %s\n got %s", before, after)
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".store.json-") {
+			t.Fatalf("temporary state file was not removed: %s", entry.Name())
+		}
+	}
+}
+
+func TestSaveAppStateLeavesPreviousFileUnchangedWhenWriteFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	initial := AppState{Projects: []Project{{Name: "small", Workdir: "/small"}}}
+	if err := SaveAppState(path, initial); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalWrite := writeAppStateTemporary
+	writeAppStateTemporary = func(*os.File, []byte) (int, error) { return 0, errors.New("write failed") }
+	t.Cleanup(func() { writeAppStateTemporary = originalWrite })
+
+	err = SaveAppState(path, AppState{Projects: []Project{{Name: "garden", Workdir: "/garden"}}})
+	if err == nil || !strings.Contains(err.Error(), "write failed") {
+		t.Fatalf("SaveAppState error = %v, want write failure", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("store changed after failed save:\nwant %s\n got %s", before, after)
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".store.json-") {
+			t.Fatalf("temporary state file was not removed: %s", entry.Name())
+		}
+	}
+}
+
+func TestMutateAppStatePreservesConcurrentDisjointMutations(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	projects := []Project{{Name: "small", Workdir: "/small"}, {Name: "garden", Workdir: "/garden"}}
+	start := make(chan struct{})
+	errs := make(chan error, len(projects))
+	var group sync.WaitGroup
+	for _, project := range projects {
+		project := project
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			_, err := MutateAppState(path, func(state AppState) (AppState, error) {
+				state.Projects = append(state.Projects, project)
+				return state, nil
+			})
+			errs <- err
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	state, err := LoadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Projects) != len(projects) {
+		t.Fatalf("projects = %#v, want both mutations", state.Projects)
 	}
 }
 

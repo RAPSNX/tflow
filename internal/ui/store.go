@@ -15,6 +15,14 @@ func saveAppState(path string, state appState) error {
 	return store.SaveAppState(path, state)
 }
 
+func mutateAppState(path string, mutate func(appState) (appState, error)) (appState, error) {
+	return store.MutateAppState(path, mutate)
+}
+
+func mutateAppStateLocked(path string, mutate func(appState) (appState, error)) (appState, error) {
+	return store.MutateAppStateLocked(path, mutate)
+}
+
 func lockAppState(path string) (func() error, error) {
 	return store.AcquireAppStateLock(path)
 }

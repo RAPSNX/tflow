@@ -35,16 +35,16 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P0: Simple atomic state updates
 
-* [ ] Serialize mutations with one advisory store lock.
-* [ ] Reload the latest state while holding the lock.
-* [ ] Apply the requested mutation to the reloaded state.
-* [ ] Write the complete JSON document to a same-directory temporary file.
-* [ ] Close the temporary file before renaming it over `store.json`.
-* [ ] Do not use file `fsync`.
-* [ ] Do not use directory `fsync`.
-* [ ] Remove the temporary file when writing or renaming fails.
-* [ ] Test that failed writes leave the previous JSON file unchanged.
-* [ ] Test that concurrent disjoint mutations do not overwrite each other.
+* [x] Serialize mutations with one advisory store lock.
+* [x] Reload the latest state while holding the lock.
+* [x] Apply the requested mutation to the reloaded state.
+* [x] Write the complete JSON document to a same-directory temporary file.
+* [x] Close the temporary file before renaming it over `store.json`.
+* [x] Do not use file `fsync`.
+* [x] Do not use directory `fsync`.
+* [x] Remove the temporary file when writing or renaming fails.
+* [x] Test that failed writes leave the previous JSON file unchanged.
+* [x] Test that concurrent disjoint mutations do not overwrite each other.
 
 ### P0: Startup reconciliation
 
