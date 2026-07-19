@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"hash/fnv"
 	"strings"
 )
@@ -22,6 +23,9 @@ func (m *model) saveState() error {
 		base = appState{}
 	}
 	state := mergeAppStates(latest, base, desired)
+	if err := validateStateSessionLabels(state); err != nil {
+		return err
+	}
 	if err := saveAppState(m.statePath, state); err != nil {
 		return err
 	}
@@ -70,8 +74,8 @@ func mergeAppStates(latest, base, desired appState) appState {
 			latest.Projects = removeStateProject(latest.Projects, name)
 		}
 	}
-	for name, project := range desiredProjects {
-		baseProject, existed := baseProjects[name]
+	for _, project := range desired.Projects {
+		baseProject, existed := baseProjects[project.Name]
 		if !existed {
 			ensureStateProject(&latest, project)
 			continue
@@ -88,25 +92,38 @@ func mergeAppStates(latest, base, desired appState) appState {
 			removeStateSession(&latest, id)
 		}
 	}
-	for id, session := range desiredSessions {
-		baseSession, existed := baseSessions[id]
-		if existed && baseSession == session {
-			continue
-		}
-		project, exists := desiredProjects[session.project]
-		if !exists {
-			continue
-		}
-		ensureStateProject(&latest, project)
-		removeStateSession(&latest, id)
-		for index := range latest.Projects {
-			if latest.Projects[index].Name == session.project {
-				latest.Projects[index].Sessions = append(latest.Projects[index].Sessions, persistentSession{ID: id, Label: session.label})
-				break
+	for _, project := range desired.Projects {
+		for _, desiredSession := range project.Sessions {
+			id := desiredSession.ID
+			session := stateSession{project: project.Name, label: desiredSession.Label}
+			baseSession, existed := baseSessions[id]
+			if existed && baseSession == session {
+				continue
+			}
+			ensureStateProject(&latest, project)
+			removeStateSession(&latest, id)
+			for index := range latest.Projects {
+				if latest.Projects[index].Name == session.project {
+					latest.Projects[index].Sessions = append(latest.Projects[index].Sessions, persistentSession{ID: id, Label: session.label})
+					break
+				}
 			}
 		}
 	}
 	return normalizeAppState(latest)
+}
+
+func validateStateSessionLabels(state appState) error {
+	for _, project := range state.Projects {
+		labels := map[string]struct{}{}
+		for _, session := range project.Sessions {
+			if _, exists := labels[session.Label]; exists {
+				return fmt.Errorf("session name already exists in this project")
+			}
+			labels[session.Label] = struct{}{}
+		}
+	}
+	return nil
 }
 
 func stateProjects(state appState) map[string]storedProject {

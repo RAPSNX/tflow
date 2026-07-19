@@ -114,7 +114,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Switch directly to the promoted successor of the active volatile session, close the sidebar, and refresh the tmux project and session status indicators.
 * [x] Never promote volatile sessions owned by another tflow instance.
 * [x] On promotion failure, report the original error without claiming a successful switch or sidebar close.
-* [ ] Keep session labels unique inside a project.
+* [x] Keep session labels unique inside a project.
 * [ ] Keep volatile labels unique inside their owning instance.
 * [ ] Allow different projects to reuse the same session label.
 * [ ] Allow different tflow instances to reuse the same volatile label.
