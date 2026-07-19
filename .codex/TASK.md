@@ -28,7 +28,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Keep volatile sessions and instance ownership out of the store.
 * [ ] Ignore unknown JSON fields.
 * [ ] Reject malformed JSON with a clear path-qualified error.
-* [ ] Keep the state path at `$XDG_STATE_HOME/tflow/store.json`, falling back to `~/.local/state/tflow/store.json`.
+* [ ] Keep the state path at `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set and non-empty, falling back to `~/.local/state/tflow/store.json`.
 * [ ] Set the state directory mode to `0700`.
 * [ ] Set the state file mode to `0600`.
 * [ ] Update state codec and normalization tests for the new schema.
@@ -123,7 +123,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 ### P1: Installation and verification
 
 * [ ] Use module path `github.com/rapsnx/tflow`.
-* [ ] Keep the executable entry point at `cmd/tflow`.
+* [ ] Move the executable entry point from `cmd/main.go` to `cmd/tflow/main.go`.
 * [ ] Verify `go install github.com/rapsnx/tflow/cmd/tflow@latest`.
 * [ ] Verify `nix build --no-link .#tflow`.
 * [ ] Ensure the Nix package installs `bin/tflow`.
@@ -150,4 +150,3 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Add benchmarks only when command-count tests or measurements reveal a problem.
 * [ ] Add crash-recovery features only when real usage demonstrates a need.
 * [ ] Add new session types only after the core terminal-session model is stable.
-
