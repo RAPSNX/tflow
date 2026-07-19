@@ -178,6 +178,9 @@ func userShell() string {
 	return shell
 }
 
-func loginShellCommand() string {
+// LoginShellCommand starts the user's shell as an interactive login shell.
+// It is used explicitly for the initial session because tmux's global
+// default-command is configured only after that session creates the server.
+func LoginShellCommand() string {
 	return "exec " + ShellQuote(userShell()) + " -l"
 }

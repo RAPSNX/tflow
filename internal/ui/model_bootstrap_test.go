@@ -39,6 +39,7 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 	})
 	_ = os.Setenv("XDG_STATE_HOME", stateHome)
 	_ = os.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv("SHELL", "/bin/zsh")
 
 	var calls []string
 	manager := fakeTmuxController{
@@ -47,8 +48,8 @@ func TestPrepareStartupCreatesSessionBeforeControlMode(t *testing.T) {
 		},
 		createSession: func(name, cwd, command string) (session, error) {
 			calls = append(calls, "create:"+name)
-			if command != "" {
-				t.Fatalf("command = %q, want empty", command)
+			if command != "exec '/bin/zsh' -l" {
+				t.Fatalf("command = %q, want login shell", command)
 			}
 			return session{Name: name}, nil
 		},

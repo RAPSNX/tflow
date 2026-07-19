@@ -92,7 +92,11 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 			return "", fmt.Errorf("generate startup session id: %w", err)
 		}
 		name = volatileSessionName(instanceID, id)
-		if _, err := manager.CreateSession(name, cwd, ""); err != nil {
+		// The first session creates the dedicated tmux server, so it starts
+		// before EnsureControlMode can set tmux's global default-command.
+		// Supply the login-shell command explicitly to avoid inheriting an
+		// unrelated command from a pre-existing tmux configuration.
+		if _, err := manager.CreateSession(name, cwd, runtmux.LoginShellCommand()); err != nil {
 			if !isSessionExists(err) {
 				return "", err
 			}
