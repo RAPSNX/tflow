@@ -107,6 +107,22 @@ func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	}
 }
 
+func TestListSessionsTreatsAbsentDedicatedServerAsEmpty(t *testing.T) {
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			return "", fmt.Errorf("no server running on /tmp/tmux-1000/tflow")
+		},
+	}
+
+	sessions, err := manager.ListSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("sessions = %#v, want empty", sessions)
+	}
+}
+
 func TestSetSessionTemporaryKeepsSessionAliveWhenUnattached(t *testing.T) {
 	var calls [][]string
 	manager := Manager{
