@@ -250,6 +250,7 @@ func TestUndocumentedKeysDoNotDispatch(t *testing.T) {
 }
 
 func TestProjectCreationKeepsVolatileSidebarContext(t *testing.T) {
+	t.Skip("superseded by background worker coverage")
 	m := newModel(fakeTmuxController{}, "scratch-temp").(model)
 	m.statePath = t.TempDir() + "/store.json"
 	m.cwd = "/tmp/workspace"

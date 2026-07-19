@@ -25,6 +25,11 @@ func run() error {
 			return ui.OpenQuit()
 		case "toggle-menu":
 			return ui.ToggleMenu()
+		case "create-worker":
+			if len(args) != 2 {
+				return fmt.Errorf("create-worker requires one payload")
+			}
+			return ui.RunCreateWorker(args[1])
 		case "remember-client":
 			return runtmux.RememberCurrentClient()
 		case "cleanup-client":

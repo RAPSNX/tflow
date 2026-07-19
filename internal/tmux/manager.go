@@ -187,3 +187,20 @@ func (m Manager) cleanupVolatileSessions(instanceID, skipSession string) error {
 	}
 	return nil
 }
+
+func (m Manager) RenameSession(oldName, newName string) error {
+	_, err := m.runner()("rename-session", "-t", oldName, newName)
+	return err
+}
+func (m Manager) SetSessionProject(name, project string) error {
+	_, err := m.runner()("set-option", "-t", name, projectMarker, store.NormalizeProjectName(project))
+	return err
+}
+func (m Manager) RunBackground(command string) error {
+	_, err := m.runner()("run-shell", "-b", command)
+	return err
+}
+func (m Manager) DisplayMessage(message string) error {
+	_, err := m.runner()("display-message", message)
+	return err
+}

@@ -29,24 +29,15 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = "Session name already exists."
 				return m, nil
 			}
-			m.mode = inputCreatingSession
+			if err := m.submitCreate(createRequest{Kind: "session", Project: project, Label: label, Workdir: m.createSessionDir(), Current: m.currentSession, Instance: m.instanceID}); err != nil {
+				m.err, m.status = err, err.Error()
+				return m, nil
+			}
+			m.mode = inputNone
 			m.input.Blur()
 			m.input.Prompt = ""
-			dir := m.createSessionDir()
-			return m, func() tea.Msg {
-				if project == "" {
-					s, err := m.createVolatileSession(dir, "", label)
-					if err != nil {
-						return sessionCreatedMsg{err: err}
-					}
-					return sessionCreatedMsg{session: s, volatile: true, label: label}
-				}
-				s, err := m.createPersistentSession(dir, "")
-				if err != nil {
-					return sessionCreatedMsg{err: err}
-				}
-				return sessionCreatedMsg{session: s, project: project, label: label}
-			}
+			m.input.SetValue("")
+			return m, m.closeMenuCmd()
 		}
 		next, cmd := m.input.Update(msg)
 		m.input = next

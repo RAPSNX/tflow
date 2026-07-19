@@ -50,7 +50,7 @@ The user works directly inside the active tmux session.
 
 `Ctrl+Q` opens confirmation for quitting the current tflow instance and removing its volatile sessions.
 
-Tmux owns popup process lifetime. tflow does not track popup PIDs or implement a separate process supervisor.
+Tmux owns popup process lifetime. tflow does not track popup PIDs or implement a separate process supervisor. Valid session and project creation submissions close the popup after tmux accepts a short-lived background worker; the current terminal remains usable until that worker switches to the completed target.
 
 The sidebar displays persistent sessions belonging to the current project. When the active session is volatile, it displays only volatile sessions owned by the current tflow instance.
 

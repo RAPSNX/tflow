@@ -60,23 +60,15 @@ func (m *model) commitProjectCreate() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if err := m.submitCreate(createRequest{Kind: "project", Project: name, Label: randomAnimalName(), Workdir: m.cwd, Current: m.currentSession, Instance: m.instanceID}); err != nil {
+		m.err, m.status = err, err.Error()
+		return m, nil
+	}
 	m.mode = inputNone
 	m.input.Blur()
 	m.input.Prompt = ""
 	m.input.SetValue("")
-	cfg := projectConfig{Name: name, Workdir: m.cwd}
-	cwd := cfg.Workdir
-	label := randomAnimalName()
-	return m, func() tea.Msg {
-		s, err := m.createPersistentSession(cwd, "")
-		if err != nil {
-			return projectCreatedMsg{
-				config: cfg,
-				err:    fmt.Errorf("create initial project session %q: %w", label, err),
-			}
-		}
-		return projectCreatedMsg{config: cfg, session: s, label: label}
-	}
+	return m, m.closeMenuCmd()
 }
 
 func (m *model) commitProjectSwitch() (tea.Model, tea.Cmd) {
