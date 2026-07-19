@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	runtmux "tflow/internal/tmux"
 	"tflow/internal/ui"
 )
 
@@ -24,6 +25,10 @@ func run() error {
 			return ui.OpenQuit()
 		case "toggle-menu":
 			return ui.ToggleMenu()
+		case "remember-client":
+			return runtmux.RememberCurrentClient()
+		case "cleanup-client":
+			return runtmux.CleanupDetachedClient()
 		default:
 			return fmt.Errorf("unknown command %q", args[0])
 		}

@@ -85,6 +85,15 @@ func VolatileSessionLabel(name, instanceID string) string {
 	return strings.TrimPrefix(name, prefix)
 }
 
+func volatileSessionLabel(name string) string {
+	name = strings.TrimPrefix(strings.TrimSpace(name), volatileSessionPrefix)
+	parts := strings.SplitN(name, "--", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+		return ""
+	}
+	return strings.TrimSpace(parts[1])
+}
+
 func NextTempSessionName(existing []Session) string {
 	used := map[string]struct{}{}
 	for _, session := range existing {

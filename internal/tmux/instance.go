@@ -98,3 +98,60 @@ func (m Manager) rememberClientInstance(clientID, instanceID string) error {
 	_, err := m.runner()("set-environment", "-gh", instanceEnvKey(clientID), instanceID)
 	return err
 }
+
+func (m Manager) forgetClientInstance(clientID string) error {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return nil
+	}
+	_, err := m.runner()("set-environment", "-gu", instanceEnvKey(clientID))
+	if isBenignPopupCleanupError(err) {
+		return nil
+	}
+	return err
+}
+
+func (m Manager) RememberCurrentClient() error {
+	currentSession, err := m.contextValue(CurrentSessionEnv, "#{session_name}")
+	if err != nil {
+		return err
+	}
+	clientID, err := m.contextValue(CurrentClientEnv, "#{client_name}")
+	if err != nil {
+		return err
+	}
+	instanceID, err := m.sessionInstanceID(currentSession)
+	if err != nil {
+		return err
+	}
+	if instanceID == "" {
+		return m.forgetClientInstance(clientID)
+	}
+	return m.rememberClientInstance(clientID, instanceID)
+}
+
+func (m Manager) CleanupDetachedClient() error {
+	clientID, err := m.contextValue(CurrentClientEnv, "#{client_name}")
+	if err != nil {
+		return err
+	}
+	instanceID, err := m.clientInstanceID(clientID)
+	if err != nil {
+		return err
+	}
+	if instanceID == "" {
+		return nil
+	}
+	if err := m.CleanupVolatileSessions(instanceID); err != nil {
+		return err
+	}
+	return m.forgetClientInstance(clientID)
+}
+
+func RememberCurrentClient() error {
+	return New().RememberCurrentClient()
+}
+
+func CleanupDetachedClient() error {
+	return New().CleanupDetachedClient()
+}

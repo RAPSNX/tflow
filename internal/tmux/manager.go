@@ -128,8 +128,18 @@ func (m Manager) RenameSession(oldName, newName string) error {
 	if oldName == newName {
 		return nil
 	}
-	_, err := m.runner()("rename-session", "-t", oldName, newName)
-	return err
+	if _, err := m.runner()("rename-session", "-t", oldName, newName); err != nil {
+		return err
+	}
+	if label := volatileSessionLabel(newName); label != "" {
+		if _, err := m.runner()("set-option", "-t", newName, sessionLabelMarker, label); err != nil {
+			if _, rollbackErr := m.runner()("rename-session", "-t", newName, oldName); rollbackErr != nil {
+				return fmt.Errorf("update volatile session label: %w; rollback rename: %v", err, rollbackErr)
+			}
+			return fmt.Errorf("update volatile session label: %w", err)
+		}
+	}
+	return nil
 }
 
 func (m Manager) SwitchClient(name string) error {

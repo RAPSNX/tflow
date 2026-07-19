@@ -6,12 +6,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Open work is ordered by
 
 ### P0: Runtime ownership and cleanup
 
-- [ ] Keep the tflow instance marker on its tmux client after attach and across tmux-native switches between volatile and persistent sessions.
-- [ ] Add a client-detach hook that resolves the detached client's instance and removes only that instance's volatile sessions.
-- [ ] Make confirmed quit, normal attach-process return, and client-detach cleanup idempotent.
 - [ ] Store one client-scoped popup wrapper PID and ensure close, toggle, quit, detach, signals, and startup failure terminate and reap the menu child before clearing it.
 - [ ] Remove popup records whose client or process is confirmed missing without disturbing another client's live popup.
-- [ ] Test multiple volatile instances alongside persistent sessions, repeated cleanup, attach-marker preservation, popup termination, and stale-record recovery.
+- [ ] Test multiple volatile instances alongside persistent sessions, popup termination, and stale-record recovery.
 
 ### P0: State safety and reconciliation
 
@@ -25,7 +22,6 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Open work is ordered by
 
 ### P1: Sidebar correctness and performance
 
-- [ ] Explicitly update the volatile session-label marker after rename so the top status and sidebar agree.
 - [ ] Open and refresh the sidebar with one global session-list query and local context filtering.
 - [ ] Remove unconditional marker synchronization and every per-session tmux write from an unchanged refresh.
 - [ ] Compute the selected session index once per render instead of once per row.
@@ -63,6 +59,10 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Open work is ordered by
 - [x] Enable `remain-on-exit` for managed panes.
 - [x] Open the sidebar and quit confirmation as tmux popups without resizing the active terminal.
 - [x] Validate state before startup session creation and roll back startup on later setup failure.
+- [x] Preserve the instance marker on a newly attached client so it survives tmux-native session switches.
+- [x] Clean up only the detached client's volatile sessions through an idempotent client-detach hook.
+- [x] Refresh a volatile session's tmux display-label marker on rename and roll back if the marker update fails.
+- [x] Cover attach-marker preservation, repeated detach cleanup, and volatile rename rollback with regression tests.
 
 ### State and project model
 

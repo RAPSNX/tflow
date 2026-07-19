@@ -80,3 +80,33 @@ func TestEnsureControlModeDoesNotBakeProcessInstanceEnvIntoToggleKey(t *testing.
 		t.Fatalf("bind args = %#v, should not bake process instance env into the shared key binding", got)
 	}
 }
+
+func TestEnsureControlModeInstallsClientLifecycleHooks(t *testing.T) {
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "", nil
+	}}
+
+	if err := manager.EnsureControlMode("/tmp/tflow", Palette{}); err != nil {
+		t.Fatalf("EnsureControlMode returned error: %v", err)
+	}
+	for hook, command := range map[string]string{
+		"client-attached": "remember-client",
+		"client-detached": "cleanup-client",
+	} {
+		found := false
+		for _, call := range calls {
+			if len(call) != 4 || call[0] != "set-hook" || call[1] != "-g" || call[2] != hook {
+				continue
+			}
+			if strings.Contains(call[3], "run-shell") && strings.Contains(call[3], CurrentSessionEnv) && strings.Contains(call[3], CurrentClientEnv) && strings.Contains(call[3], command) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing %s hook for %s in %#v", hook, command, calls)
+		}
+	}
+}
