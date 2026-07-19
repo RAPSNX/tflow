@@ -78,6 +78,9 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 func (m Manager) CloseMenu() error {
 	clientID, err := m.contextValue(CurrentClientEnv, "#{client_name}")
 	if err != nil {
+		if isBenignPopupCloseError(err) {
+			return nil
+		}
 		return err
 	}
 	if strings.TrimSpace(clientID) == "" {
@@ -114,9 +117,6 @@ func (m Manager) closeMenuPopup(clientID string) error {
 	if closeErr != nil {
 		if isBenignPopupCloseError(closeErr) {
 			return unmarkErr
-		}
-		if unmarkErr != nil {
-			return fmt.Errorf("close popup: %w; cleanup popup marker: %v", closeErr, unmarkErr)
 		}
 		return closeErr
 	}

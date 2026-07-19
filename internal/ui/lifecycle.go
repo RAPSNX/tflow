@@ -30,10 +30,7 @@ func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string
 
 	cmd, err := manager.AttachCommand(sessionName)
 	if err != nil {
-		cleanupErr := manager.CleanupVolatileSessions(instanceID)
-		if cleanupErr != nil {
-			return fmt.Errorf("attach command: %w; cleanup volatile sessions: %v", err, cleanupErr)
-		}
+		_ = manager.CleanupVolatileSessions(instanceID)
 		return err
 	}
 	cmd.Stdin = os.Stdin
@@ -42,9 +39,6 @@ func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string
 	runErr := cmd.Run()
 	cleanupErr := manager.CleanupVolatileSessions(instanceID)
 	if runErr != nil {
-		if cleanupErr != nil {
-			return fmt.Errorf("attach session: %w; cleanup volatile sessions: %v", runErr, cleanupErr)
-		}
 		return runErr
 	}
 	return cleanupErr
@@ -105,22 +99,18 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 		return "", fmt.Errorf("allocate startup session after %d retries", startupSessionRetryLimit)
 	}
 	if err := manager.SetSessionTemporary(name, true, instanceID); err != nil {
-		return "", rollbackStartupSession(manager, name, fmt.Errorf("tag startup session: %w", err))
+		_ = manager.KillSession(name)
+		return "", fmt.Errorf("tag startup session: %w", err)
 	}
 	if err := manager.SetSessionLabel(name, label); err != nil {
-		return "", rollbackStartupSession(manager, name, fmt.Errorf("set startup session label: %w", err))
+		_ = manager.KillSession(name)
+		return "", fmt.Errorf("set startup session label: %w", err)
 	}
 	if err := manager.EnsureControlMode(binaryPath); err != nil {
-		return "", rollbackStartupSession(manager, name, fmt.Errorf("prepare tmux control mode: %w", err))
+		_ = manager.KillSession(name)
+		return "", fmt.Errorf("prepare tmux control mode: %w", err)
 	}
 	return name, nil
-}
-
-func rollbackStartupSession(manager tmuxController, name string, startupErr error) error {
-	if err := manager.KillSession(name); err != nil {
-		return fmt.Errorf("%w; rollback startup session %q: %v", startupErr, name, err)
-	}
-	return startupErr
 }
 
 func defaultSessionDir() string {
