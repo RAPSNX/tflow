@@ -72,15 +72,19 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 		return "", fmt.Errorf("load state %q: %w", path, err)
 	}
 
-	existing, err := manager.ListSessions()
-	if err != nil {
-		return "", err
-	}
-	existingNames := make(map[string]struct{}, len(existing))
-	for _, session := range existing {
-		existingNames[session.Name] = struct{}{}
-	}
-	if _, err := reconcileAppState(path, existingNames); err != nil {
+	var existing []session
+	if _, err := reconcileAppState(path, func() (map[string]struct{}, error) {
+		var err error
+		existing, err = manager.ListSessions()
+		if err != nil {
+			return nil, err
+		}
+		existingNames := make(map[string]struct{}, len(existing))
+		for _, session := range existing {
+			existingNames[session.Name] = struct{}{}
+		}
+		return existingNames, nil
+	}); err != nil {
 		return "", fmt.Errorf("reconcile state %q: %w", path, err)
 	}
 	label := nextTempSessionNameForInstance(existing, instanceID)

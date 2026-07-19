@@ -5,7 +5,11 @@ import "reflect"
 // ReconcileAppState removes persistent-session metadata that no longer has a
 // matching tmux session and drops projects left without sessions. It writes
 // state only when reconciliation changes it.
-func ReconcileAppState(path string, sessions map[string]struct{}) (bool, error) {
+//
+// The session snapshot is taken while the state lock is held. This prevents a
+// concurrent mutation from adding metadata after the snapshot but before the
+// reconciled state is saved.
+func ReconcileAppState(path string, snapshotSessions func() (map[string]struct{}, error)) (bool, error) {
 	unlock, err := AcquireAppStateLock(path)
 	if err != nil {
 		return false, err
@@ -13,6 +17,10 @@ func ReconcileAppState(path string, sessions map[string]struct{}) (bool, error) 
 	defer func() { _ = unlock() }()
 
 	state, err := LoadAppState(path)
+	if err != nil {
+		return false, err
+	}
+	sessions, err := snapshotSessions()
 	if err != nil {
 		return false, err
 	}

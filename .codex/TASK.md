@@ -156,7 +156,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Remove project-wide tmux rename migration code.
 * [x] Remove parallel `SessionProjects` and `SessionLabels` state maps.
 * [x] Remove strict unknown-field rejection.
-* [ ] Remove sidebar-triggered reconciliation writes.
+* [x] Remove sidebar-triggered reconciliation writes.
 * [ ] Remove file and directory sync requirements.
 * [ ] Remove popup PID ownership requirements.
 * [ ] Remove generalized rollback and compensation tests.

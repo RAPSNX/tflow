@@ -218,7 +218,9 @@ func TestReconcileAppStateRemovesMissingSessionsAndEmptyProjects(t *testing.T) {
 	if err := SaveAppState(path, state); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := ReconcileAppState(path, map[string]struct{}{"tflow-p-keep": {}})
+	changed, err := ReconcileAppState(path, func() (map[string]struct{}, error) {
+		return map[string]struct{}{"tflow-p-keep": {}}, nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,6 +233,45 @@ func TestReconcileAppStateRemovesMissingSessionsAndEmptyProjects(t *testing.T) {
 	}
 	if len(got.Projects) != 1 || got.Projects[0].Name != "small" || len(got.Projects[0].Sessions) != 1 || got.Projects[0].Sessions[0].ID != "tflow-p-keep" {
 		t.Fatalf("reconciled state = %#v", got)
+	}
+}
+
+func TestReconcileAppStateSnapshotsSessionsWhileHoldingStateLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	state := AppState{Projects: []Project{{Name: "small", Workdir: "/small", Sessions: []PersistentSession{{ID: "tflow-p-keep", Label: "keep"}}}}}
+	if err := SaveAppState(path, state); err != nil {
+		t.Fatal(err)
+	}
+
+	mutationDone := make(chan error, 1)
+	changed, err := ReconcileAppState(path, func() (map[string]struct{}, error) {
+		go func() {
+			_, err := MutateAppState(path, func(state AppState) (AppState, error) {
+				return state, nil
+			})
+			mutationDone <- err
+		}()
+
+		select {
+		case err := <-mutationDone:
+			t.Fatalf("concurrent mutation completed while the session snapshot was running: %v", err)
+		case <-time.After(50 * time.Millisecond):
+		}
+		return map[string]struct{}{"tflow-p-keep": {}}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("ReconcileAppState reported a change for unchanged state")
+	}
+	select {
+	case err := <-mutationDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("concurrent mutation did not complete after reconciliation released the lock")
 	}
 }
 
@@ -247,7 +288,9 @@ func TestReconcileAppStateDoesNotWriteUnchangedState(t *testing.T) {
 		return originalRename(oldPath, newPath)
 	}
 	t.Cleanup(func() { renameAppStateFile = originalRename })
-	changed, err := ReconcileAppState(path, map[string]struct{}{"tflow-p-keep": {}})
+	changed, err := ReconcileAppState(path, func() (map[string]struct{}, error) {
+		return map[string]struct{}{"tflow-p-keep": {}}, nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
