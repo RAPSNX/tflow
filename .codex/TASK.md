@@ -54,8 +54,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Persist reconciled state only when it changed.
 * [ ] Treat an absent dedicated tmux server as an empty session list.
 * [ ] Do not remove metadata when tmux returns another operational error.
+* [ ] Do not retain missing persistent-session metadata for lazy restoration.
 * [ ] Do not reconcile or write state during ordinary sidebar refreshes.
-* [ ] Test missing-session cleanup, empty-project cleanup, and tmux-error preservation.
+* [ ] Test missing-session cleanup without lazy restoration, empty-project cleanup, and tmux-error preservation.
 
 ### P0: Operation failure handling
 
@@ -92,6 +93,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 * [ ] Open and refresh the sidebar with one global tmux session-list query.
 * [ ] Filter sessions locally by current project or volatile instance.
+* [ ] Show only the owning instance's volatile sessions when the active session is volatile.
 * [ ] Compute the selected session index once per render.
 * [ ] Remove unconditional session marker synchronization.
 * [ ] Ensure an unchanged refresh performs no per-session tmux writes.
@@ -101,15 +103,20 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 ### P1: Project and session behavior
 
 * [ ] Create new project sessions in the project's configured workdir.
-* [ ] Create volatile sessions in the current working directory.
+* [ ] Create volatile sessions in the active pane's working directory.
 * [ ] Keep session labels unique inside a project.
 * [ ] Keep volatile labels unique inside their owning instance.
 * [ ] Allow different projects to reuse the same session label.
 * [ ] Allow different tflow instances to reuse the same volatile label.
+* [ ] Move persistent sessions between projects without changing their tmux session IDs.
+* [ ] Reject moves whose labels already exist in the target project.
+* [ ] Delete a project when its final session is moved out.
 * [ ] Delete a project when its final session is deleted.
+* [ ] Delete all persistent sessions and metadata when a project is deleted.
+* [ ] Switch from an active deleted project to the first session of the next project.
 * [ ] Create a volatile fallback when no project session remains.
 * [ ] Keep project and session order stable.
-* [ ] Test creation, rename, deletion, switching, and fallback behavior.
+* [ ] Test creation, rename, moves, deletion, switching, active-project deletion, and fallback behavior.
 
 ### P1: Generated labels
 
@@ -128,7 +135,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Verify `nix build --no-link .#tflow`.
 * [ ] Ensure the Nix package installs `bin/tflow`.
 * [ ] Add CI for formatting, `go vet`, and `go test ./...`.
-* [ ] Update README installation and keybinding documentation.
+* [ ] Update README installation, keybinding, and persistence documentation.
+* [ ] Remove the obsolete README claim that persistent sessions use lazy restoration.
 
 ## Remove obsolete implementation
 

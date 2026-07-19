@@ -52,7 +52,7 @@ The user works directly inside the active tmux session.
 
 Tmux owns popup process lifetime. tflow does not track popup PIDs or implement a separate process supervisor.
 
-The sidebar displays only sessions belonging to the current project or volatile instance.
+The sidebar displays persistent sessions belonging to the current project. When the active session is volatile, it displays only volatile sessions owned by the current tflow instance.
 
 ## Projects and sessions
 
@@ -67,11 +67,13 @@ A persistent session contains:
 * an internal tmux session ID
 * a user-facing label
 
-New project sessions start in the project's working directory. New volatile sessions start in the current working directory.
+New project sessions start in the project's working directory. New volatile sessions start in the active pane's working directory.
 
 Session labels must be unique inside their project. Volatile labels must be unique inside their owning instance.
 
-Deleting the final session of a project also deletes the project. If no project session remains available, tflow creates a volatile fallback session.
+Moving a persistent session to another project preserves its tmux session. A move fails when the target project already has the session label. Moving the final session out of a project deletes that project.
+
+Deleting the final session of a project also deletes the project. Deleting a project removes its persistent sessions and metadata. When the active session belongs to a deleted project, tflow switches to the first session in the next project before deleting it. If no project session remains available, tflow creates a volatile fallback session.
 
 ## Persistent state
 
@@ -127,7 +129,7 @@ The rename prevents readers from seeing partially written JSON. Sudden power-los
 
 Startup performs one reconciliation against the current tmux session list.
 
-Metadata for persistent sessions that no longer exist in tmux is removed. Projects without sessions are then removed.
+Metadata for persistent sessions that no longer exist in tmux is removed and is not retained for lazy restoration. Projects without sessions are then removed.
 
 Normal sidebar refreshes do not modify persistent state. They list tmux sessions once and filter the result locally.
 
