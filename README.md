@@ -26,7 +26,6 @@ The goal is simple: fewer terminal windows, cleaner context switching, and a fas
 - fresh volatile session on every start
 - map a group of terminals aka sessions to a project
 - minimal sidebar to handle sessions and projects
-- lazy restore for persistent project sessions
 
 ## Ideas
 
@@ -52,14 +51,14 @@ Persistent sessions belong to a project and survive terminal exit.
 | `Ctrl+C` | Close sidebar, or pass through when sidebar is closed |
 | `Esc` | Cancel current prompt or close sidebar |
 | `?` | Toggle help |
-| `Tab` | Switch focus between sessions and projects |
 | `j` / `k` | Move selection |
-| `Enter` | Switch to selected session or project |
+| `Enter` | Switch to selected session |
 | `n` | Create session |
 | `N` | Create project |
+| `p` | Switch project |
 | `e` | Edit project workdir |
-| `r` | Rename session or project |
-| `m` | Move session to project |
+| `r` | Rename session |
+| `R` | Rename project |
 | `d` | Delete session |
 | `D` | Delete project |
 
