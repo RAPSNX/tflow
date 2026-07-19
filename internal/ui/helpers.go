@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func (m model) saveState() error {
+func (m *model) saveState() error {
 	state := appState{Projects: make([]storedProject, 0, len(m.projects))}
 	for _, name := range m.projects {
 		name = normalizeProjectName(name)
@@ -19,7 +19,17 @@ func (m model) saveState() error {
 		}
 		state.Projects = append(state.Projects, project)
 	}
-	return saveAppState(m.statePath, normalizeAppState(state))
+	state = normalizeAppState(state)
+	if err := saveAppState(m.statePath, state); err != nil {
+		return err
+	}
+	m.persistentSessionOrder = make(map[string][]string, len(state.Projects))
+	for _, project := range state.Projects {
+		for _, session := range project.Sessions {
+			m.persistentSessionOrder[project.Name] = append(m.persistentSessionOrder[project.Name], session.ID)
+		}
+	}
+	return nil
 }
 
 func sanitizeProjectName(name string) string {

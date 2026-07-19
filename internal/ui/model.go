@@ -108,14 +108,15 @@ type model struct {
 
 	showHelp bool
 
-	sessions        []session
-	projects        []string
-	sessionProjects map[string]string
-	sessionLabels   map[string]string
-	projectConfigs  map[string]projectConfig
-	selectedProject string
-	selectedSession string
-	currentSession  string
+	sessions               []session
+	projects               []string
+	persistentSessionOrder map[string][]string
+	sessionProjects        map[string]string
+	sessionLabels          map[string]string
+	projectConfigs         map[string]projectConfig
+	selectedProject        string
+	selectedSession        string
+	currentSession         string
 
 	input               textinput.Model
 	renameTarget        renameTarget
@@ -166,6 +167,7 @@ func buildModel(manager tmuxController, current string) (model, error) {
 	}
 	state = normalizeAppState(state)
 	projects := make([]string, 0, len(state.Projects))
+	persistentSessionOrder := map[string][]string{}
 	sessionProjects := map[string]string{}
 	sessionLabels := map[string]string{}
 	projectConfigs := map[string]projectConfig{}
@@ -173,25 +175,27 @@ func buildModel(manager tmuxController, current string) (model, error) {
 		projects = append(projects, project.Name)
 		projectConfigs[project.Name] = projectConfig{Name: project.Name, Workdir: project.Workdir}
 		for _, session := range project.Sessions {
+			persistentSessionOrder[project.Name] = append(persistentSessionOrder[project.Name], session.ID)
 			sessionProjects[session.ID] = project.Name
 			sessionLabels[session.ID] = session.Label
 		}
 	}
 	return model{
-		tmux:            manager,
-		instanceID:      os.Getenv(menuInstanceEnv),
-		mode:            inputNone,
-		projects:        projects,
-		sessionProjects: sessionProjects,
-		sessionLabels:   sessionLabels,
-		projectConfigs:  projectConfigs,
-		selectedProject: "",
-		currentSession:  current,
-		input:           input,
-		cwd:             cwd,
-		statePath:       statePath,
-		status:          "",
-		err:             nil,
+		tmux:                   manager,
+		instanceID:             os.Getenv(menuInstanceEnv),
+		mode:                   inputNone,
+		projects:               projects,
+		persistentSessionOrder: persistentSessionOrder,
+		sessionProjects:        sessionProjects,
+		sessionLabels:          sessionLabels,
+		projectConfigs:         projectConfigs,
+		selectedProject:        "",
+		currentSession:         current,
+		input:                  input,
+		cwd:                    cwd,
+		statePath:              statePath,
+		status:                 "",
+		err:                    nil,
 	}, nil
 }
 

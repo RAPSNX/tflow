@@ -175,11 +175,20 @@ func (m model) uniqueMatchingProject(query string) (string, bool) {
 func (m model) projectSessions(project string) []session {
 	project = normalizeProjectName(project)
 	result := make([]session, 0, len(m.sessions))
+	sessionsByName := make(map[string]session, len(m.sessions))
 	for _, s := range m.sessions {
-		if s.Temporary {
-			continue
+		if !s.Temporary && normalizeProjectName(m.sessionProjects[s.Name]) == project {
+			sessionsByName[s.Name] = s
 		}
-		if normalizeProjectName(m.sessionProjects[s.Name]) == project {
+	}
+	for _, name := range m.persistentSessionOrder[project] {
+		if s, ok := sessionsByName[name]; ok {
+			result = append(result, s)
+			delete(sessionsByName, name)
+		}
+	}
+	for _, s := range m.sessions {
+		if _, ok := sessionsByName[s.Name]; ok {
 			result = append(result, s)
 		}
 	}

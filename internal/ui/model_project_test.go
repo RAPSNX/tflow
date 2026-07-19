@@ -379,15 +379,61 @@ func TestEditProjectSavesOnlyWorkdirToStoreState(t *testing.T) {
 	if got := final.projectConfigs["small"].Workdir; got != "/tmp/small" {
 		t.Fatalf("workdir = %q", got)
 	}
-	state, err := loadAppState(m.statePath)
+	savedState, err := loadAppState(m.statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	project, ok := storedProjectByName(state, "small")
+	project, ok := storedProjectByName(savedState, "small")
 	if !ok {
 		t.Fatal("saved project small is missing")
 	}
 	if got := project.Workdir; got != "/tmp/small" {
 		t.Fatalf("saved workdir = %q", got)
+	}
+}
+
+func TestSaveStatePreservesLoadedSessionOrder(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	state := appState{Projects: []storedProject{{
+		Name: "small",
+		Sessions: []persistentSession{
+			{ID: "tflow-p-first", Label: "first"},
+			{ID: "tflow-p-second", Label: "second"},
+		},
+	}}}
+	if err := saveAppState(appStatePath(), state); err != nil {
+		t.Fatal(err)
+	}
+	m, err := buildModel(fakeTmuxController{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.sessions = []session{{Name: "tflow-p-new"}, {Name: "tflow-p-second"}, {Name: "tflow-p-first"}}
+	m.sessionProjects["tflow-p-new"] = "small"
+	m.sessionLabels["tflow-p-new"] = "new"
+	if err := m.saveState(); err != nil {
+		t.Fatal(err)
+	}
+	m.sessions = []session{{Name: "tflow-p-second"}, {Name: "tflow-p-new"}, {Name: "tflow-p-first"}}
+	if err := m.saveState(); err != nil {
+		t.Fatal(err)
+	}
+
+	savedState, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := storedProjectByName(savedState, "small")
+	if !ok {
+		t.Fatalf("stored projects = %#v", savedState.Projects)
+	}
+	want := []string{"tflow-p-first", "tflow-p-second", "tflow-p-new"}
+	if len(project.Sessions) != len(want) {
+		t.Fatalf("stored sessions = %#v", project.Sessions)
+	}
+	for index, id := range want {
+		if got := project.Sessions[index].ID; got != id {
+			t.Fatalf("session %d = %q, want %q", index, got, id)
+		}
 	}
 }

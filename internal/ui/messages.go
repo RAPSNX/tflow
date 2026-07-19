@@ -219,6 +219,10 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cfg := m.projectConfig(msg.oldName)
 		delete(m.projectConfigs, msg.oldName)
+		if sessions, ok := m.persistentSessionOrder[msg.oldName]; ok {
+			delete(m.persistentSessionOrder, msg.oldName)
+			m.persistentSessionOrder[msg.newName] = sessions
+		}
 		cfg.Name = msg.newName
 		m.setProjectConfig(cfg)
 		m.projects = replaceProject(m.projects, msg.oldName, msg.newName)

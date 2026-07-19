@@ -115,7 +115,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Delete all persistent sessions and metadata when a project is deleted.
 * [ ] Switch from an active deleted project to the first session of the next project.
 * [ ] Create a volatile fallback when no project session remains.
-* [ ] Keep project and session order stable.
+* [x] Keep project and session order stable.
 * [ ] Test creation, rename, moves, deletion, switching, active-project deletion, and fallback behavior.
 
 ### P1: Generated labels
