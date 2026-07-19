@@ -78,12 +78,13 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 	var name string
 	created := false
 	for attempts := 0; attempts < startupSessionRetryLimit; attempts++ {
-		name = nextTempSessionName(existing)
+		label := nextTempSessionNameForInstance(existing, instanceID)
+		name = volatileSessionName(instanceID, label)
 		if _, err := manager.CreateSession(name, cwd, ""); err != nil {
 			if !isSessionExists(err) {
 				return "", err
 			}
-			existing = append(existing, session{Name: name})
+			existing = append(existing, session{Name: name, Temporary: true, Instance: instanceID})
 			continue
 		}
 		created = true

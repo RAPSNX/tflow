@@ -28,7 +28,7 @@ func (m *model) beginProjectRename() (tea.Model, tea.Cmd) {
 	m.renameTarget = renameTarget{project: project}
 	m.input.SetValue(project)
 	m.input.CursorEnd()
-	m.input.Prompt = "project: "
+	m.input.Prompt = ""
 	m.input.Focus()
 	m.status = ""
 	return m, nil

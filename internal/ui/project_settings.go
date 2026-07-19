@@ -17,7 +17,7 @@ func (m model) editProject() (tea.Model, tea.Cmd) {
 	m.mode = inputEditProject
 	m.projectEditConfig = m.projectConfig(project)
 	m.projectEditConfig.Name = project
-	m.input.Prompt = "workdir: "
+	m.input.Prompt = ""
 	m.input.SetValue(m.projectEditConfig.Workdir)
 	m.input.Focus()
 	m.input.CursorEnd()

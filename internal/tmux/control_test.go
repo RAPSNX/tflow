@@ -37,6 +37,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"set-option", "-g", "status-left", "#[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] project #[fg=#89b4fa]#{@tflow-project} #[bg=#181825,fg=#313244,nobold]  #[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] session #[fg=#94e2d5]#{?@tflow-session-label,#{@tflow-session-label},#S} #[bg=#181825,fg=#313244,nobold]"},
 		{"set-option", "-g", "window-status-format", ""},
 		{"set-option", "-g", "window-status-current-format", ""},
+		{"set-window-option", "-g", "remain-on-exit", "on"},
 		{"set-option", "-g", "default-shell", "/bin/zsh"},
 		{"set-option", "-g", "default-command", "exec '/bin/zsh' -l"},
 		{"bind-key", "-n", "C-f", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
@@ -77,5 +78,35 @@ func TestEnsureControlModeDoesNotBakeProcessInstanceEnvIntoToggleKey(t *testing.
 	}
 	if strings.Contains(got[4], CurrentInstanceEnv+"='instance-1'") {
 		t.Fatalf("bind args = %#v, should not bake process instance env into the shared key binding", got)
+	}
+}
+
+func TestEnsureControlModeInstallsClientLifecycleHooks(t *testing.T) {
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "", nil
+	}}
+
+	if err := manager.EnsureControlMode("/tmp/tflow", Palette{}); err != nil {
+		t.Fatalf("EnsureControlMode returned error: %v", err)
+	}
+	for hook, command := range map[string]string{
+		"client-attached": "remember-client",
+		"client-detached": "cleanup-client",
+	} {
+		found := false
+		for _, call := range calls {
+			if len(call) != 4 || call[0] != "set-hook" || call[1] != "-g" || call[2] != hook {
+				continue
+			}
+			if strings.Contains(call[3], "run-shell") && strings.Contains(call[3], CurrentSessionEnv) && strings.Contains(call[3], CurrentClientEnv) && strings.Contains(call[3], command) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing %s hook for %s in %#v", hook, command, calls)
+		}
 	}
 }

@@ -193,17 +193,31 @@ func TestStartWithManagerCleansUpWhenAttachCommandFails(t *testing.T) {
 	}
 }
 
-func TestHelpEscReturnsToSessionList(t *testing.T) {
+func TestHelpToggleDoesNotBlockShortcuts(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
-	m.mode = inputHelp
+	m.projects = []string{defaultProjectName}
+	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
+	m.sessionProjects = map[string]string{"dev": defaultProjectName, "api": defaultProjectName}
+	m.selectedProject = defaultProjectName
+	m.selectedSession = "dev"
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
 	got := updated.(model)
-	if cmd != nil {
-		t.Fatal("Esc from help should not close the popup")
+	if cmd != nil || !got.showHelp || got.mode != inputNone {
+		t.Fatalf("help toggle state = %#v, cmd = %v", got, cmd)
 	}
-	if got.mode != inputNone {
-		t.Fatalf("mode = %v, want inputNone", got.mode)
+
+	updated, cmd = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	got = updated.(model)
+	if cmd != nil || got.showHelp || got.selectedSession != "api" {
+		t.Fatalf("shortcut did not hide help and move selection: %#v, cmd = %v", got, cmd)
+	}
+
+	got.showHelp = true
+	updated, cmd = got.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got = updated.(model)
+	if cmd != nil || got.showHelp {
+		t.Fatalf("Esc did not hide help: %#v, cmd = %v", got, cmd)
 	}
 }
 

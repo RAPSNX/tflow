@@ -2,176 +2,177 @@
 
 `tflow` is a terminal session manager built on top of `tmux`.
 
-The goal is a simple, tmux-native design:
+The design stays tmux-native and deliberately small:
 
-- the active terminal stays a real `tmux` terminal
-- the sidebar is opened as a real `tmux` popup
-- the top UI shows the current project and session
+- the active terminal is a real `tmux` terminal
+- the sidebar is a real `tmux` popup
+- the top status shows the current project and session
 - persistent metadata lives in one state file
 
-The architecture should stay practical and avoid terminal capture, VT replay, or a full outer TUI around the live session.
+`tflow` does not capture terminal output, replay VT state, run a background garbage-collection daemon, or wrap the live terminal in an outer TUI.
 
-## Runtime Model
+## Runtime model
 
-`tflow` owns a dedicated `tmux` socket.
+`tflow` owns one dedicated `tmux` socket. Each managed session is an ordinary `tmux` session.
 
-Each session managed by `tflow` is an ordinary `tmux` session.
+Starting `tflow` creates a volatile session and attaches one tmux client. That client receives a collision-resistant tflow instance ID. The marker stays on the client when it switches between volatile and persistent sessions so popup actions, fallback session creation, and cleanup can always resolve the owning instance.
 
-On startup, `tflow` creates one volatile session and attaches the user to it.
+Volatile sessions belong to one tflow instance. Their internal tmux identifiers include the instance ID so independently started tflow instances can use the same visible label without collision. The instance component is never displayed: the sidebar and top status show only the session label.
 
-Volatile sessions belong only to the current `tflow` instance. They are used for scratch work and are removed when that instance exits normally or `Ctrl+Q` is confirmed.
+Persistent sessions are ordinary tmux sessions grouped into projects by tflow metadata. Their internal identifiers may also differ from their display labels so different projects can reuse a label.
 
-Sessions created outside a project are volatile, belong to the current `tflow` instance, and follow the same cleanup rules.
+Managed panes use tmux `remain-on-exit`. When a shell exits, the pane remains visibly exited instead of allowing tmux to move the client into another session. tflow does not automatically switch or respawn it. The user can delete it through the sidebar or quit the instance.
 
-`tflow` contains a reviewed, compiled list of exactly 25 animal names. The list is fetched once from a public animal API during development and is never requested at runtime.
+### Instance cleanup
 
-The startup volatile session and the initial session of every newly created project receive a randomly selected animal name from that list. A single-animal session name is exactly the selected animal name.
+Volatile sessions are removed when their owning client detaches, including normal exit, terminal closure, or confirmed `Ctrl+Q`. Persistent sessions and volatile sessions owned by other instances are never removed by that cleanup.
 
-When all single-animal names are in use for volatile sessions, `tflow` uses an unused two-animal name from the same list. It adds a numeric suffix only after all such combinations are in use.
+Cleanup is idempotent. Confirmed quit, the attaching process returning, and the tmux client-detach hook may all request the same cleanup safely.
 
-Persistent sessions are ordinary `tmux` sessions grouped into projects by `tflow` metadata. They are not restored from a complex runtime snapshot.
+### Popup cleanup
+
+Each sidebar popup belongs to one tmux client. A client-scoped tmux environment record stores the PID of that popup's wrapper process.
+
+The wrapper starts the menu as its child. On normal close, toggle, quit, detach, startup failure, or a termination signal, it terminates and reaps the menu child before clearing its record. The controller may clear a record only when the client or recorded process no longer exists. It must not affect another client's live popup.
+
+This is process ownership, not a general process manager: no background reaper, registry, or periodic garbage-collection worker is required.
+
+### Animal labels
+
+`tflow` contains a reviewed, compiled list of exactly 25 animal names. The list is fetched once during development and is never requested at runtime.
+
+The startup volatile session and the initial session of a newly created project receive a randomly selected animal display label. When all single-animal labels are already used in the relevant namespace, tflow uses an unused two-animal label and adds a numeric suffix only after all combinations are used.
+
+For volatile sessions, uniqueness is scoped to the visible labels of the owning instance; the hidden internal tmux ID provides global uniqueness across instances.
 
 ## Terminal UI
 
-On startup, the user should see a normal live terminal session.
+On startup, the user sees a normal live terminal session.
 
-The primary interaction model is:
+- `Ctrl+F` toggles a slim sidebar popup anchored to the left edge of the active client.
+- Opening or closing the sidebar does not resize or move the live terminal.
+- Successful sidebar actions close the popup and restore focus to the active terminal.
+- Benign popup-close errors are not shown to the user.
+- `Ctrl+Q` opens quit confirmation from the live terminal, even when the sidebar is closed.
 
-- the active terminal runs directly inside `tmux`
-- `Ctrl+F` toggles a slim sidebar as a `tmux` popup overlay anchored to the left edge of the active client
-- every successful sidebar action closes the sidebar and returns focus to the active terminal session
-- toggling or closing the sidebar does not resize or move the active terminal
-- closing the sidebar does not surface tmux error text to the user
-- `Ctrl+Q` opens the quit confirmation from the live terminal even when the sidebar is closed
+The tmux top status shows `project` and `session` badges. The project value is empty in volatile mode. Status markers are updated when creation, rename, migration, switching, or reconciliation changes metadata. A volatile rename explicitly updates its session-label marker.
 
-The top UI shows two badges:
+The sidebar contains:
 
-- `project`
-- `session`
+- a centered `TFLOW` badge
+- the current context's session list
+- optional inline shortcut help below the list, separated by a gap
+- a conditional status row at the bottom
 
-In volatile mode, the project badge value is empty. The project and session badges are synchronized before focus returns to the terminal after every successful action.
+Help is non-blocking. `?` toggles it without changing the current list or mode. The next recognized shortcut performs its normal action and automatically hides help. `Esc` hides help first.
 
-The sidebar is shown on the left and contains:
+Opening or refreshing the sidebar performs one authoritative session-list query against the dedicated tmux socket, filters the result locally to the active instance or project, computes selection once, and renders it. An unchanged refresh performs no per-session tmux writes. Marker repair happens only for actual metadata changes or required reconciliation, never merely because the sidebar opened.
 
-- a `TFLOW` header centered
-- a session list
-- a conditional status row anchored at the bottom
-- there is no metadata, help, or status row displayed by default
+Recoverable user-action problems are yellow warnings. Failed tmux, store, or other operations are red errors. The status row is hidden when there is no feedback.
 
-All sidebar management workflows use centered dialog overlays. Dialogs never cover the bottom status row.
+## Visual design
 
-The bottom status row is hidden unless feedback is needed. Recoverable user-action problems are yellow warnings; failed tmux, store, or other operations are red errors.
+The sidebar uses Bubble Tea for interaction and Lip Gloss for terminal-safe text, color, padding, and borders.
 
-The sidebar handles the core management actions:
+- `TFLOW` is a centered blue badge with a dark foreground.
+- `live` is a green badge immediately before the actually active session label.
+- The active row has one continuous selected background across its indentation, badge, spacing, and label.
+- `live` appears exactly once and remains legible when its row is selected.
 
-- create project or session
-- rename project or session
-- delete project or session
-- switch to another project
-- update project settings
-- quit the current `tflow` instance
-- typing `?` will open a help list, with all available shortcuts, one per row
+Every input, settings, and confirmation dialog uses one centered card:
 
-## Design
+- a subtle rounded outer border
+- an accent badge and concise title, followed by one horizontal divider
+- no accidental inner right or bottom border
+- context only when it is necessary to make the decision
+- a focused input without a `project:` or `session:` prefix
+- a centered, single-line footer containing only separated `Enter` and `Esc` keycaps
 
-The sidebar uses Charmbracelet Bubble Tea for interaction and Lip Gloss for terminal-native layout and styling. Visual design is limited to terminal-safe text, color, padding, and borders.
+Create, rename, settings, and normal confirmations use blue and teal accents. Destructive confirmations use a red header badge and red `Enter` keycap; `Esc` remains neutral. Confirmation copy is direct, for example: `Remove all instances and quit?`
 
-Badges share a compact, filled style with bold text and horizontal padding:
+## Projects and sessions
 
-- `TFLOW` is the centered sidebar brand badge, with a blue background and dark foreground.
-- `live` is a green badge shown immediately before the label of the actually active session.
+A project contains a unique name and a default `workdir`. A session belongs to at most one project.
 
-The `live` badge appears exactly once in the session list. It represents the active terminal session, not merely the keyboard-selected row, and remains legible when that row is selected.
+Creating a project stores the current working directory as its default `workdir` and creates an initial session there with a random animal label. It does not display unrelated information about the current project and does not change the active sidebar context until the user switches to it.
 
-Every input, rename, settings, and confirmation dialog uses the same centered structured-card layout:
+New project sessions start in the project's `workdir`. New volatile sessions start in the current working directory and belong to the current tflow instance.
 
-- a dark rounded card with a subtle border
-- an accent badge and clear title in the header, followed by a divider
-- muted context text and, where needed, a bordered focused input field
-- a footer of keyboard keycaps: the primary action on `Enter` and cancellation on `Esc`
+Project session labels are unique within a project. Volatile session labels are unique within their owning instance. Different projects and independently started tflow instances may reuse the same visible label.
 
-Create, rename, settings, and normal confirmations use the blue and teal interface accents. Deletion confirmations use a red header badge and red `Enter` action keycap; `Esc` remains neutral.
+Switching projects opens a focused search dialog. `Up` and `Down` select a match and `Enter` activates the selected project's first session. Switching from volatile mode requires confirmation; switching between projects is direct.
 
-## Projects and Sessions
-
-Projects are lightweight groups over `tmux` sessions.
-
-A project contains:
-
-- a unique project name
-- a default `workdir`
-
-Creating a project stores the current working directory as its default `workdir` and creates its initial session there with a random animal name.
-
-A session belongs to at most one project.
-
-When a new session is created:
-
-- inside a project, it starts in that project `workdir` when one is set
-- outside a project, it starts in the current working directory as a volatile session owned by the current `tflow` instance
-
-Switching to another project is always supported.
-
-Switching to a project opens a dialog with a focused search field and matching-project list. `Up` and `Down` select a match, and `Enter` switches to the selected project.
-
-Switching to a project selects that project's first session and closes the sidebar.
-
-Switching from a volatile session to a project requires confirmation.
-
-Switching from one project to another is direct.
-
-Deleting the last session of a project requires a confirmation dialog that explicitly states the whole project will be deleted. Confirming deletes both the session and project.
-
-After deleting a project or session, `tflow` activates the first session of the next project in project order, wrapping to the first project when needed. If no project remains, it creates and activates a volatile session.
+Deleting the final session of a project requires confirmation that the project will also be deleted. After deletion, tflow activates the first session of the next project in project order, wrapping when necessary. If no project remains, it creates and activates a volatile session.
 
 Project settings contain only the project `workdir`.
 
 ## State
 
-`tflow` does not use a user-edited `config.yaml` or per-project YAML files.
+There is no user-edited tflow configuration file or per-project YAML.
 
-All persistent metadata lives in one JSON file:
+Persistent metadata lives at:
 
-- `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set
-- `~/.config/tflow/store.json` when `XDG_STATE_HOME` is unset or empty
+- `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set and non-empty
+- `~/.local/state/tflow/store.json` otherwise
 
-`tflow` never stores state in `~/.local/share`.
-
-The store keeps only the metadata needed for `tflow` to rebuild project and sidebar state:
+The canonical JSON store contains only:
 
 - project order
+- project `workdir` values
 - project membership for sessions
-- display labels for project-scoped sessions
-- the `workdir` for each project
+- display labels for project sessions
 
-The store uses one canonical JSON schema. Unknown fields and obsolete fields such as session types, project protection, cluster settings, and agent settings make the store invalid and startup fails with a clear error.
+Volatile session ownership is runtime state and is not persisted. Packaging integrations such as Home Manager must not render or manage `store.json`.
 
-The state file is owned and updated by `tflow`. Packaging integrations such as Home Manager must not render or manage `store.json`.
+Unknown or obsolete fields make the store invalid and startup fails with a path-qualified error. A missing store is created empty when needed.
 
-If the state file does not exist, `tflow` creates an empty one when needed.
+### Safe updates
 
-If the state file is invalid, startup should fail with a clear error.
+All mutations use one locked read-modify-write operation:
 
-## Key Interactions
+1. acquire the store lock
+2. load the latest store
+3. apply the requested mutation
+4. write a complete temporary file in the same directory
+5. set mode `0600`, flush the file, rename it over `store.json`, and flush the directory
+6. release the lock
+
+Reloading while holding the lock preserves changes made by another tflow instance without a custom merge algorithm. Serial order decides concurrent changes to the same resource. Atomic replacement is required: interruption must leave the previous valid store available.
+
+### Reconciliation and failures
+
+Before startup attaches and after a successful sidebar refresh, tflow reconciles persistent metadata with an authoritative tmux session list. It removes metadata for missing sessions and then removes projects with no live sessions. A confirmed absent dedicated tmux server is an authoritative empty list; other tmux errors do not trigger cleanup or state writes.
+
+Recovery rules stay local to each operation:
+
+- if session creation cannot be persisted, kill the newly created tmux session
+- if rename cannot be persisted, rename the tmux session back
+- after delete failure or external disappearance, reload and reconcile from tmux
+- surface the original operation error
+
+A generalized transaction, compensation, or background reconciliation framework is not part of the design.
+
+## Key interactions
 
 - `Ctrl+F`: toggle the sidebar
-- `Ctrl+Q`: confirm shutdown of the current `tflow` instance and remove its volatile sessions
-- `Ctrl+C`: close the sidebar when it is open
-- `Esc`: cancel the active prompt or confirmation before closing the sidebar
-- `?`: open the shortcut help list; `Esc` returns to the session list
+- `Ctrl+Q`: confirm shutdown of the current instance and remove its volatile sessions
+- `Ctrl+C`: close the sidebar
+- `Esc`: cancel the active dialog, hide help, or close the sidebar
+- `?`: toggle inline shortcut help
 - `j` / `k`: move through the current list
-- `Enter` on a session: switch to that session and close the sidebar
-- `n`: create a new session
-- `N`: create a new project
-- `p`: switch to another project
-- `r`: rename the selected session
-- `R`: rename the current project
-- `d`: delete the selected session with confirmation
-- `D`: delete the current project with confirmation
+- `Enter`: switch to the selected session or confirm a dialog
+- `n`: create a session
+- `N`: create a project
+- `p`: switch project
+- `r` / `R`: rename the selected session / current project
+- `d` / `D`: delete the selected session / current project
 - `e`: edit project settings
 
-## Dependencies and Design
+## Installation and dependencies
 
-- `tmux` is required
-- Charmbracelet libraries are used for the sidebar UI
-- the design should prefer simple session handling over speculative abstractions
+- `tmux` is required.
+- Bubble Tea and Lip Gloss provide the sidebar UI.
+- The first alpha supports installation through both Nix and `go install`.
+- The Go command lives at `cmd/tflow` and installs as `tflow` once the Go install task is complete.
+- Broader tmux 3.2-current error-message compatibility is post-alpha work.
+- Prefer direct, testable session handling over speculative abstractions.

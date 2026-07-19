@@ -1,13 +1,17 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func (m model) sessionLabel(name string) string {
+	if s, ok := m.findSession(name); ok && s.Temporary {
+		if label := volatileSessionLabel(name, s.Instance); label != "" {
+			return label
+		}
+	}
 	if m.sessionLabels != nil {
 		if label := strings.TrimSpace(m.sessionLabels[name]); label != "" {
 			return label
@@ -52,6 +56,19 @@ func (m model) hasSessionLabel(project, label string, exceptName string) bool {
 	return false
 }
 
+func (m model) hasVolatileSessionLabel(label, exceptName string) bool {
+	label = sanitizeSessionName(label)
+	for _, s := range m.sessions {
+		if s.Name == exceptName || !m.isCurrentInstanceVolatile(s) {
+			continue
+		}
+		if m.sessionLabel(s.Name) == label {
+			return true
+		}
+	}
+	return false
+}
+
 func (m model) projectConfig(project string) projectConfig {
 	project = normalizeProjectName(project)
 	if cfg, ok := m.projectConfigs[project]; ok {
@@ -84,9 +101,9 @@ func (m model) createSessionDir() string {
 
 func (m *model) startSessionCreate() (tea.Model, tea.Cmd) {
 	m.mode = inputCreateSession
-	m.input.Prompt = "session: "
+	m.input.Prompt = ""
 	m.input.SetValue("")
 	m.input.Focus()
-	m.status = fmt.Sprintf("Create a new terminal session in %s.", fallbackText(m.contextProject(), "current directory"))
+	m.status = ""
 	return m, nil
 }

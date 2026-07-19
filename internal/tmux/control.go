@@ -16,6 +16,8 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 	}
 	toggleShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" toggle-menu"), " ")
 	quitShell := strings.Join(append(parts, "exec "+ShellQuote(binaryPath)+" open-quit"), " ")
+	rememberClientShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" remember-client"), " ")
+	cleanupClientShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" cleanup-client"), " ")
 	commands := [][]string{
 		{"set-option", "-g", "status", "on"},
 		{"set-option", "-g", "status-position", "top"},
@@ -31,8 +33,11 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		{"set-option", "-g", "window-status-format", ""},
 		{"set-option", "-g", "window-status-current-format", ""},
 		{"set-option", "-g", "detach-on-destroy", "off"},
+		{"set-window-option", "-g", "remain-on-exit", "on"},
 		{"set-option", "-g", "default-shell", userShell()},
 		{"set-option", "-g", "default-command", loginShellCommand()},
+		{"set-hook", "-g", "client-attached", "run-shell " + ShellQuote(rememberClientShell)},
+		{"set-hook", "-g", "client-detached", "run-shell " + ShellQuote(cleanupClientShell)},
 		{"bind-key", "-n", menuToggleKey, "run-shell", toggleShell},
 		{"bind-key", "-n", quitKey, "run-shell", quitShell},
 	}

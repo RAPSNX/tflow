@@ -1,150 +1,106 @@
-# Architecture implementation checklist
+# tflow implementation checklist
 
-This checklist is derived from `.codex/ARCHITECTURE.md`. Checked items were verified against the implementation and tests on `main`; unchecked items are required to complete the architecture.
+This checklist is derived from `.codex/ARCHITECTURE.md`. Open work is ordered by the priority required to reach the first usable release. Completed work is kept separately so the active roadmap contains no mixed checked and unchecked sections.
 
-## Planned work sessions
+## Alpha 0.0.1 roadmap
 
-Every previously open task is grouped below for a dedicated implementation session. Task wording is preserved; the sessions are ordered by dependency.
+### P0: Runtime ownership and cleanup
 
-### Session 1: Animal naming foundation
+- [ ] Store one client-scoped popup wrapper PID and ensure close, toggle, quit, detach, signals, and startup failure terminate and reap the menu child before clearing it.
+- [ ] Remove popup records whose client or process is confirmed missing without disturbing another client's live popup.
+- [ ] Test multiple volatile instances alongside persistent sessions, popup termination, and stale-record recovery.
 
-- [x] Fetch, review, and compile a fixed list of exactly 25 animal names; do not make runtime API requests.
-- [x] Give the startup volatile session and every initial project session a random plain animal name without a `-temp` suffix.
-- [x] Use unique two-animal volatile-session names after the single-name pool is exhausted, and numeric suffixes only after all combinations are exhausted.
-- [x] Create a project-scoped initial session displayed with a random animal name.
-- [x] Create the project's initial randomly named session in that persisted directory.
-- [x] Add deterministic tests for startup and project-default animal names, collisions, two-animal fallback, and the absence of runtime HTTP usage.
+### P0: State safety and reconciliation
 
-### Session 2: Canonical persistent state
+- [ ] Route every state mutation through one lock-protected operation that reloads the latest store before applying the mutation.
+- [ ] Replace direct writes with same-directory durable atomic replacement: mode `0600`, file sync, rename, and directory sync.
+- [ ] Distinguish an absent dedicated tmux server from other session-list errors.
+- [ ] Reconcile before startup attach and after successful sidebar refresh: remove missing-session metadata and then remove empty projects.
+- [ ] Skip reconciliation writes when tmux cannot provide an authoritative session list.
+- [ ] Keep failure recovery operation-specific: kill a newly created session, rename a session back, or reload/reconcile after delete failure or external disappearance.
+- [ ] Test interrupted writes, concurrent disjoint updates, serial same-resource updates, absent-server cleanup, operational-error preservation, missing-session cleanup, empty-project cleanup, and direct rollback paths.
 
-- [x] Reduce the canonical schema to `project_order`, project `workdir` entries, `session_projects`, and `session_labels`.
-- [x] Remove `session_types`, `protect`, `agent_binary`, and `cluster` from store types, normalization, encoding, and UI state.
-- [x] Replace legacy format detection and migration with one strict canonical decoder.
-- [x] Reject unknown fields and obsolete fields with a clear startup error that names the offending field.
-- [x] Stop reading legacy state from `$XDG_CONFIG_HOME/tflow/state.json`.
-- [x] Persist metadata only for project sessions; never store instance-owned volatile sessions.
-- [x] Add a newly created project session to the model before saving, so project-session metadata is retained by the persistence filter.
-- [x] Keep the state file writable and exclusively owned by the application.
-- [x] Add strict-store tests for every removed field, unknown fields, and the canonical round trip.
+### P1: Sidebar correctness and performance
 
-### Session 3: Terminal UI and lifecycle polish
+- [ ] Open and refresh the sidebar with one global session-list query and local context filtering.
+- [ ] Remove unconditional marker synchronization and every per-session tmux write from an unchanged refresh.
+- [ ] Compute the selected session index once per render instead of once per row.
+- [ ] Keep metadata repair limited to creation, rename, migration, or required reconciliation.
+- [ ] Test that an unchanged refresh performs one list query and no `set-option` calls.
+- [ ] Test multiple instances and projects: only the current context is displayed and total server session count does not add writes.
+- [ ] Test that opening the sidebar does not create or retain an extra popup/menu process.
 
-- [x] Render the centered `TFLOW` badge using the documented blue filled badge style.
-- [x] Render a green filled `live` badge immediately before the active session label, including in a selected row.
-- [x] Apply the documented structured-card layout to every input, rename, settings, and confirmation dialog.
-- [x] Add dialog headers, dividers, context or bordered input areas, and `Enter`/`Esc` keycap footers.
-- [x] Use red header and primary-action keycaps exclusively for deletion confirmations.
-- [x] Add rendering tests for the `TFLOW` and active-session `live` badges, including selected-row contrast.
-- [x] Add rendering tests covering the shared dialog structure and destructive-confirmation red accents.
-- [x] Add regression coverage for dialog project switching, persistent status rendering, deletion navigation, volatile fallback, and focus restoration.
+### P1: Installation and release readiness
 
-### Session 4: Packaging and release verification
+- [ ] Change the Go module path to `github.com/rapsnx/tflow` and update internal imports.
+- [ ] Move the executable entry point from `cmd/main.go` to `cmd/tflow/main.go` so `go install github.com/rapsnx/tflow/cmd/tflow@latest` installs `tflow`.
+- [ ] Update the Nix package for `cmd/tflow` without an executable rename workaround.
+- [ ] Correct the README installation instructions and align the Go version badge with `go.mod`.
+- [ ] Add CI that checks formatting, `go vet`, and `go test ./...`.
+- [ ] Verify `go install` and `nix build --no-link .#tflow`, including an output executable at `bin/tflow`.
 
-- [x] Remove Home Manager project settings and `home.file` generation for `store.json`; keep the module package-only.
-- [x] Fix the Nix build target to compile `cmd/main.go` and install the executable as `bin/tflow`.
-- [x] Add Home Manager evaluation coverage confirming it does not manage `store.json`.
-- [x] Run `nix build --no-link .#tflow` and verify the output contains `bin/tflow`.
+## After alpha 0.0.1
 
-### Session 5: Post-feature refactoring
+- [ ] Broaden tmux compatibility handling across supported 3.2-current error-message variants.
+- [ ] Remove the unused session-creation command parameter.
+- [ ] Replace custom integer min/max helpers with the standard library where supported.
+- [ ] Add performance benchmarks only if command-count tests and real measurements show they are needed.
 
-- [x] Remove dead session-type, project-tree, metadata-header, and unused style helpers.
-- [x] Split `internal/store/state.go` by schema, codec, and normalization responsibilities.
-- [x] Split tmux popup/control, instance ownership, and quit behavior into focused files.
-- [x] Split UI message handling, key dispatch, modal updates, and lifecycle orchestration into focused files.
-- [x] Split oversized store, tmux, and UI tests by the behavior they cover.
+## Completed
 
-## Completed checklist
+### Runtime and session ownership
 
-## Tmux runtime and lifecycle
+- [x] Run ordinary tmux sessions on a dedicated `tflow` socket and attach the live terminal directly.
+- [x] Create a startup volatile session and tag it with a collision-resistant instance ID.
+- [x] Keep volatile tmux identifiers globally unique across independently started tflow instances while displaying only their labels.
+- [x] Keep volatile sessions from being overwritten or renamed when a new session is created.
+- [x] Scope volatile listing, creation, rename, deletion, and explicit quit cleanup to the current instance.
+- [x] Keep persistent sessions alive when an instance exits.
+- [x] Enable `remain-on-exit` for managed panes.
+- [x] Open the sidebar and quit confirmation as tmux popups without resizing the active terminal.
+- [x] Validate state before startup session creation and roll back startup on later setup failure.
+- [x] Preserve the instance marker on a newly attached client so it survives tmux-native session switches.
+- [x] Clean up only the detached client's volatile sessions through an idempotent client-detach hook.
+- [x] Refresh a volatile session's tmux display-label marker on rename and roll back if the marker update fails.
+- [x] Cover attach-marker preservation, repeated detach cleanup, and volatile rename rollback with regression tests.
 
-- [x] Run all managed sessions on the dedicated `tflow` tmux socket.
-- [x] Use ordinary tmux sessions and attach the live terminal directly to tmux.
-- [x] Create one volatile session on startup and tag it with a collision-resistant instance ID.
-- [x] Clean up only volatile sessions owned by the exiting instance.
-- [x] Keep persistent project sessions alive when the current instance exits.
-- [x] Open the sidebar as a left-anchored tmux popup without resizing the active terminal.
-- [x] Suppress benign tmux errors while toggling or closing the popup.
-- [x] Validate or create `store.json` before creating the startup tmux session.
-- [x] Roll back a newly created startup session if temporary tagging, control-mode setup, or later startup preparation fails.
-- [x] Mark every session created outside a project as volatile and owned by the current instance.
-- [x] Show and manage only the current instance's volatile sessions while outside a project.
-- [x] Ensure normal exit and confirmed `Ctrl+Q` remove every volatile session created by that instance.
-- [x] Bind `Ctrl+Q` in tmux so quit confirmation opens from the live terminal while the sidebar is closed.
-- [x] Add an internal `open-quit` command that opens the popup directly in quit-confirmation mode.
+### State and project model
 
-## Top UI and sidebar
+- [x] Use one strict JSON schema containing project order, project workdirs, session projects, and session labels.
+- [x] Reject unknown and obsolete fields with a clear startup error.
+- [x] Persist only project-session metadata; keep volatile ownership out of the store.
+- [x] Use `$XDG_STATE_HOME/tflow/store.json`, falling back to `~/.local/state/tflow/store.json`.
+- [x] Remove YAML, legacy migration, session types, project protection, cluster, and agent settings.
+- [x] Keep project names unique, labels unique within a project, and project order stable.
+- [x] Use project-scoped internal identifiers so different projects can reuse labels.
+- [x] Create an initial random-animal session in each new project's persisted workdir.
+- [x] Delete project metadata with its final session and select the next project or a volatile fallback.
 
-- [x] Show project and session badges through the tmux top status UI.
-- [x] Keep the project badge value empty for volatile sessions.
-- [x] Show project-scoped session display labels instead of internal tmux identifiers.
-- [x] Render a flat session list for the active project context.
-- [x] Support `j` and `k` navigation with `Enter` switching to the selected session and closing the popup.
-- [x] Close the popup with `Ctrl+C` and cancel an active prompt or confirmation with `Esc`.
-- [x] Center the `TFLOW` header and remove project/session metadata from the popup header.
-- [x] Remove the always-visible shortcut line from the normal sidebar.
-- [x] Add a `?` help view containing every supported shortcut on its own row.
-- [x] Make `Esc` return from help to the session list without closing the popup.
-- [x] Keep the inline command/status area available without showing metadata or help by default.
-- [x] Remove undocumented normal-mode aliases and legacy confirmation shortcuts so key dispatch and help agree exactly.
-- [x] Add table-driven coverage for every documented key and for removed bindings.
+### Sidebar and dialogs
 
-## Projects and sessions
+- [x] Render a centered `TFLOW` badge and one legible `live` badge on the active row.
+- [x] Render the active row with continuous highlighting across indentation, badge, spacing, and label.
+- [x] Show project and session labels in tmux status without exposing volatile instance IDs.
+- [x] Implement session navigation and project switching with the documented shortcuts.
+- [x] Show non-blocking inline `?` help below the session list, toggle it with `?`, and hide it on the next shortcut.
+- [x] Use consistent centered dialog cards with one divider, prefix-free inputs, and centered keycap-only `Enter` / `Esc` footers.
+- [x] Use concise confirmation text and destructive red accents.
+- [x] Keep dialogs clear of the conditional bottom status row and distinguish warnings from errors.
+- [x] Close the sidebar and restore terminal focus after successful actions.
 
-- [x] Keep project names unique and preserve project order.
-- [x] Use project-scoped tmux identifiers so different projects can reuse session labels.
-- [x] Persist session display labels independently from tmux identifiers.
-- [x] Reject duplicate display labels within one project.
-- [x] Migrate unscoped project sessions to scoped tmux identifiers without losing project membership or selection.
-- [x] Rename project session identifiers with rollback after a partial tmux rename failure.
-- [x] Start project sessions in the configured project `workdir`.
-- [x] Start sessions outside a project in the current working directory.
-- [x] Switch projects from a newline-separated prefix search, require a unique match, and select the target project's first session.
-- [x] Require confirmation when switching from a volatile session to a project and switch directly between projects.
-- [x] Support `r` and `d` for the selected session and `R` and `D` for the current project.
-- [x] Require confirmation before deleting a session, including the final session of a project.
-- [x] Persist the current working directory as a newly created project's default `workdir`.
-- [x] Keep sidebar context aligned with the active volatile session instead of selecting the first stored project automatically.
-- [x] Keep project creation from changing the active sidebar context until the user switches projects.
-- [x] Make `n` open the session-name prompt directly and create a plain terminal session.
-- [x] Remove the terminal/k9s/agent session-kind submenu and all session-type badges and startup commands.
-- [x] Make `e` edit and persist only the current project's `workdir`.
-- [x] Remove project protection, cluster configuration, and agent-binary behavior.
-- [x] On confirmation, delete the project metadata together with its final session so every remaining project stays switchable.
-- [x] Ensure volatile session rename and deletion never write persistent project metadata.
-
-## State
-
-- [x] Store persistent metadata at `$XDG_STATE_HOME/tflow/store.json` when set, otherwise at `~/.config/tflow/store.json`; never use `~/.local/share`.
-
-- [x] Create an empty state file when none exists.
-- [x] Fail startup with a path-qualified error when the state file contains invalid JSON.
-- [x] Persist project order, session membership, display labels, and project workdirs.
-- [x] Avoid user-edited `config.yaml` and per-project YAML files.
-
-## Packaging and cleanup
+### Packaging and refactoring
 
 - [x] Keep reusable code in focused `internal/store`, `internal/tmux`, and `internal/ui` packages.
-- [x] Remove YAML dependencies, command mode, move-session flow, and obsolete editable-config code.
+- [x] Split oversized state, tmux, UI, and test files by responsibility.
+- [x] Remove dead session-type, project-tree, metadata-header, command-mode, move-session, and unused style code.
+- [x] Keep the Home Manager module package-only and stop it from managing `store.json`.
+- [x] Build the current `cmd/main.go` with Nix and install it as `bin/tflow`.
+- [x] Verify the package with Home Manager evaluation coverage and `nix build --no-link .#tflow`.
 
-## Verification
+### Verification coverage
 
-- [x] Add regression tests for global quit invocation and instance-scoped volatile session creation and cleanup.
-- [x] Add rendering tests for the centered header, metadata-free default sidebar, and one-shortcut-per-row help view.
-- [x] Add context tests covering volatile startup with existing projects and project creation without implicit switching.
-- [x] Add tests for persisted project workdirs and final-session project deletion.
-- [x] Add startup rollback tests for state validation and tmux setup failures.
-- [x] Run `gofmt` on every changed Go file.
-- [x] Run `go test ./...`.
-- [x] Run `go build ./...`.
-- [x] Run `go vet ./...`.
-
-
-## Dialog, status, and lifecycle follow-up
-
-- [x] Replace inline project switching with a searchable dialog that supports `Up`/`Down` selection and `Enter` activation.
-- [x] Render management flows as dialogs and keep the conditional bottom status row visible while a dialog is open.
-- [x] Render recoverable action problems as yellow warnings and operation failures as red errors.
-- [x] Start every new project with a renameable `code` session.
-- [x] Explain in the final-session confirmation that the entire project will be deleted.
-- [x] After a deletion, activate the next project's first session, wrapping by project order, or create a volatile fallback session when none remain.
-- [x] Close the sidebar and restore terminal focus after successful actions, after synchronizing the top project and session badges.
+- [x] Cover animal naming, collisions, project defaults, and absence of runtime HTTP calls.
+- [x] Cover strict store decoding and canonical round trips.
+- [x] Cover instance-scoped volatile behavior, global quit invocation, and startup rollback.
+- [x] Cover sidebar badges, help, dialogs, project context, deletion navigation, fallback creation, and focus restoration.
+- [x] Run formatting, `go test ./...`, `go build ./...`, and `go vet ./...` for completed implementation sessions.

@@ -64,8 +64,8 @@ func TestPStartsProjectSwitchMode(t *testing.T) {
 	if got.mode != inputSwitchProject {
 		t.Fatalf("mode = %v, want inputSwitchProject", got.mode)
 	}
-	if got.input.Prompt != "project: " {
-		t.Fatalf("prompt = %q, want project prompt", got.input.Prompt)
+	if got.input.Prompt != "" {
+		t.Fatalf("prompt = %q, want no input prompt", got.input.Prompt)
 	}
 }
 
@@ -80,8 +80,8 @@ func TestNStartsProjectCreateMode(t *testing.T) {
 	if got.mode != inputCreateProject {
 		t.Fatalf("mode = %v, want inputCreateProject", got.mode)
 	}
-	if got.input.Prompt != "project: " {
-		t.Fatalf("prompt = %q, want project prompt", got.input.Prompt)
+	if got.input.Prompt != "" {
+		t.Fatalf("prompt = %q, want no input prompt", got.input.Prompt)
 	}
 	if got.status != "" {
 		t.Fatalf("status = %q", got.status)

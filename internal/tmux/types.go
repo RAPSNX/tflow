@@ -48,6 +48,8 @@ type Controller interface {
 	CloseMenu() error
 	QuitAll() error
 	CleanupVolatileSessions(instanceID string) error
+	RememberCurrentClient() error
+	CleanupDetachedClient() error
 }
 
 type Runner func(args ...string) (string, error)

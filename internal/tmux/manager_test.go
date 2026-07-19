@@ -104,7 +104,7 @@ func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	}
 }
 
-func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
+func TestSetSessionTemporaryKeepsSessionAliveWhenUnattached(t *testing.T) {
 	var calls [][]string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
@@ -119,6 +119,7 @@ func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
 
 	for _, want := range [][]string{
 		{"set-option", "-t", "otter-temp", "destroy-unattached", "off"},
+		{"set-hook", "-u", "-t", "otter-temp", "client-attached"},
 		{"set-option", "-t", "otter-temp", "@tflow-temp", "1"},
 		{"set-option", "-t", "otter-temp", "@tflow-instance", "instance-1"},
 	} {
@@ -134,28 +135,32 @@ func TestSetSessionTemporaryTogglesTmuxOptions(t *testing.T) {
 		}
 	}
 
-	var hook string
 	for _, call := range calls {
-		if len(call) == 5 && call[0] == "set-hook" && call[1] == "-t" && call[2] == "otter-temp" && call[3] == "client-attached" {
-			hook = call[4]
-			break
+		if len(call) >= 4 && call[0] == "set-hook" && call[1] == "-t" && call[2] == "otter-temp" && call[3] == "client-attached" {
+			t.Fatalf("installed destructive client-attached hook: %#v", call)
 		}
 	}
-	if hook == "" {
-		t.Fatalf("missing client-attached hook in %#v", calls)
+}
+
+func TestSetSessionTemporarySetsVolatileDisplayLabel(t *testing.T) {
+	var calls [][]string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
+			return "", nil
+		},
 	}
-	for _, want := range []string{
-		"run-shell",
-		"#{hook_client}",
-		menuInstancePrefix,
-		"instance-1",
-		"destroy-unattached",
-		"client-attached",
-	} {
-		if !strings.Contains(hook, want) {
-			t.Fatalf("hook = %q, want %q", hook, want)
+	name := VolatileSessionName("instance-1", "otter")
+	if err := manager.SetSessionTemporary(name, true, "instance-1"); err != nil {
+		t.Fatalf("SetSessionTemporary returned error: %v", err)
+	}
+	want := []string{"set-option", "-t", name, sessionLabelMarker, "otter"}
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+			return
 		}
 	}
+	t.Fatalf("missing call %v in %#v", want, calls)
 }
 
 func TestSetSessionTemporaryClearsDeferredCleanupWhenMadePersistent(t *testing.T) {
@@ -284,6 +289,27 @@ func TestNextTempSessionName(t *testing.T) {
 	}
 }
 
+func TestNextTempSessionNameForInstanceIgnoresOtherInstances(t *testing.T) {
+	existing := make([]Session, 0, len(tempSessionAnimals))
+	for _, animal := range tempSessionAnimals {
+		existing = append(existing, Session{Name: VolatileSessionName("instance-1", animal), Temporary: true, Instance: "instance-1"})
+	}
+	if got := NextTempSessionNameForInstance(existing, "instance-2"); !ContainsAnimalName(got) {
+		t.Fatalf("NextTempSessionNameForInstance = %q, want an available single animal", got)
+	}
+}
+
+func TestVolatileSessionNameKeepsLabelSeparate(t *testing.T) {
+	first := VolatileSessionName("instance-1", "code")
+	second := VolatileSessionName("instance-2", "code")
+	if first == second {
+		t.Fatalf("volatile names collide: %q", first)
+	}
+	if got := VolatileSessionLabel(first, "instance-1"); got != "code" {
+		t.Fatalf("VolatileSessionLabel = %q, want code", got)
+	}
+}
+
 func TestNextTempSessionNameUsesPairsThenSuffixes(t *testing.T) {
 	existing := make([]Session, 0, len(tempSessionAnimals)+len(tempSessionAnimals)*(len(tempSessionAnimals)-1))
 	for _, animal := range tempSessionAnimals {
@@ -299,4 +325,136 @@ func TestNextTempSessionNameUsesPairsThenSuffixes(t *testing.T) {
 	if got := NextTempSessionName(existing); got != "otter-fox-2" {
 		t.Fatalf("NextTempSessionName = %q, want otter-fox-2", got)
 	}
+}
+
+func TestRememberCurrentClientStoresAttachedSessionInstance(t *testing.T) {
+	t.Setenv(CurrentSessionEnv, VolatileSessionName("instance-1", "otter"))
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if args[0] == "show-options" {
+			return "instance-1", nil
+		}
+		return "", nil
+	}}
+
+	if err := manager.RememberCurrentClient(); err != nil {
+		t.Fatalf("RememberCurrentClient returned error: %v", err)
+	}
+	want := []string{"set-environment", "-gh", instanceEnvKey("/dev/pts/4"), "instance-1"}
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+			return
+		}
+	}
+	t.Fatalf("calls = %#v, want %v", calls, want)
+}
+
+func TestCleanupDetachedClientRemovesOwnedSessionsAndMarker(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "@2")
+
+	var calls [][]string
+	markerPresent := true
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		switch args[0] {
+		case "show-environment":
+			if markerPresent {
+				return instanceEnvKey("@2") + "=instance-1\n", nil
+			}
+			return "", nil
+		case "list-sessions":
+			return strings.Join([]string{
+				VolatileSessionName("instance-1", "otter") + "\t1\t0\t1\tinstance-1",
+				VolatileSessionName("instance-2", "fox") + "\t1\t0\t1\tinstance-2",
+				"project--dev\t1\t0\t0\t",
+			}, "\n"), nil
+		case "set-environment":
+			if len(args) == 3 && args[1] == "-gu" && args[2] == instanceEnvKey("@2") {
+				markerPresent = false
+			}
+			return "", nil
+		default:
+			return "", nil
+		}
+	}}
+
+	if err := manager.CleanupDetachedClient(); err != nil {
+		t.Fatalf("CleanupDetachedClient returned error: %v", err)
+	}
+	if err := manager.CleanupDetachedClient(); err != nil {
+		t.Fatalf("second CleanupDetachedClient returned error: %v", err)
+	}
+	wants := [][]string{
+		{"kill-session", "-t", VolatileSessionName("instance-1", "otter")},
+		{"set-environment", "-gu", instanceEnvKey("@2")},
+	}
+	for _, want := range wants {
+		found := false
+		for _, call := range calls {
+			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("calls = %#v, want %v", calls, want)
+		}
+	}
+	kills := 0
+	for _, call := range calls {
+		if len(call) == 3 && call[0] == "kill-session" {
+			kills++
+		}
+	}
+	if kills != 1 {
+		t.Fatalf("kill count = %d, want 1", kills)
+	}
+}
+
+func TestRenameSessionUpdatesVolatileDisplayLabel(t *testing.T) {
+	oldName := VolatileSessionName("instance-1", "otter")
+	newName := VolatileSessionName("instance-1", "fox")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "", nil
+	}}
+
+	if err := manager.RenameSession(oldName, newName); err != nil {
+		t.Fatalf("RenameSession returned error: %v", err)
+	}
+	want := []string{"set-option", "-t", newName, sessionLabelMarker, "fox"}
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+			return
+		}
+	}
+	t.Fatalf("calls = %#v, want %v", calls, want)
+}
+
+func TestRenameSessionRollsBackWhenVolatileDisplayLabelUpdateFails(t *testing.T) {
+	oldName := VolatileSessionName("instance-1", "otter")
+	newName := VolatileSessionName("instance-1", "fox")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if args[0] == "set-option" {
+			return "", fmt.Errorf("set label failed")
+		}
+		return "", nil
+	}}
+
+	if err := manager.RenameSession(oldName, newName); err == nil {
+		t.Fatal("RenameSession returned nil error")
+	}
+	want := []string{"rename-session", "-t", newName, oldName}
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+			return
+		}
+	}
+	t.Fatalf("calls = %#v, want rollback %v", calls, want)
 }

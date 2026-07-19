@@ -20,6 +20,8 @@ var tempSessionAnimals = []string{
 	"kestrel", "lemur", "manatee", "narwhal", "penguin",
 }
 
+const volatileSessionPrefix = "volatile-"
+
 func ContainsAnimalName(name string) bool {
 	for _, animal := range tempSessionAnimals {
 		if name == animal {
@@ -56,6 +58,40 @@ func ProjectSessionName(project, label string) string {
 		return ""
 	}
 	return project + "--" + label
+}
+
+// VolatileSessionName returns a tmux-safe, instance-qualified name for a
+// volatile session. The label is intentionally kept separate for display.
+func VolatileSessionName(instanceID, label string) string {
+	instanceID = store.NormalizeProjectName(instanceID)
+	label = store.NormalizeProjectName(label)
+	if instanceID == "" || label == "" {
+		return ""
+	}
+	return volatileSessionPrefix + instanceID + "--" + label
+}
+
+// VolatileSessionLabel returns the display label encoded in a volatile session
+// name for the supplied instance. It returns an empty string for other names.
+func VolatileSessionLabel(name, instanceID string) string {
+	instanceID = store.NormalizeProjectName(instanceID)
+	if instanceID == "" {
+		return ""
+	}
+	prefix := volatileSessionPrefix + instanceID + "--"
+	if !strings.HasPrefix(name, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(name, prefix)
+}
+
+func volatileSessionLabel(name string) string {
+	name = strings.TrimPrefix(strings.TrimSpace(name), volatileSessionPrefix)
+	parts := strings.SplitN(name, "--", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+		return ""
+	}
+	return strings.TrimSpace(parts[1])
 }
 
 func NextTempSessionName(existing []Session) string {
@@ -98,6 +134,23 @@ func NextTempSessionName(existing []Session) string {
 			}
 		}
 	}
+}
+
+// NextTempSessionNameForInstance chooses a label unused by volatile sessions
+// owned by this instance. Other tflow instances may use the same visible label.
+func NextTempSessionNameForInstance(existing []Session, instanceID string) string {
+	labels := make([]Session, 0, len(existing))
+	for _, session := range existing {
+		if !session.Temporary || session.Instance != instanceID {
+			continue
+		}
+		label := VolatileSessionLabel(session.Name, instanceID)
+		if label == "" {
+			label = session.Name // Legacy volatile sessions used their label as the tmux name.
+		}
+		labels = append(labels, Session{Name: label})
+	}
+	return NextTempSessionName(labels)
 }
 
 func Run(args ...string) (string, error) {

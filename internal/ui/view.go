@@ -12,8 +12,6 @@ func (m model) View() string {
 	}
 
 	switch m.mode {
-	case inputHelp:
-		return appStyle.Width(m.width).Height(m.height).Render(m.renderHelp())
 	case inputSwitchProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderProjectSwitchOverlay())
 	case inputCreateSession:
@@ -37,7 +35,11 @@ func (m model) View() string {
 
 func (m model) renderMenu() string {
 	innerWidth := max(28, m.width-4)
-	body := lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(innerWidth), m.renderSessionPanel(innerWidth))
+	sections := []string{m.renderHeader(innerWidth), m.renderSessionPanel(innerWidth)}
+	if m.showHelp {
+		sections = append(sections, "", m.renderHelp())
+	}
+	body := lipgloss.JoinVertical(lipgloss.Left, sections...)
 	footer := m.renderFooter(innerWidth)
 	if footer == "" {
 		return body
@@ -64,12 +66,19 @@ func (m model) renderSessionPanel(width int) string {
 }
 
 func (m model) renderSessionRow(index int, s session) string {
-	content := m.sessionLabel(s.Name)
-	if s.Name == m.currentSession {
-		content = currentBadgeStyle.Render("live") + " " + content
-	}
+	label := m.sessionLabel(s.Name)
 	project := normalizeProjectName(m.sessionProjects[s.Name])
-	style := m.rowStyle(index == m.selectedSessionIndex(), project)
+	selected := index == m.selectedSessionIndex()
+	style := m.rowStyle(selected, project)
+	content := label
+	if s.Name == m.currentSession {
+		content = currentBadgeStyle.Render("live") + " " + label
+		if selected {
+			// The live badge resets terminal styles after rendering. Reapply the
+			// selected row style so the label stays highlighted beside the badge.
+			content = currentBadgeStyle.Render("live") + selectedSessionStyle.Copy().Padding(0).Render(" "+label)
+		}
+	}
 	return style.Width(max(16, m.width-12)).Render(content)
 }
 
@@ -117,8 +126,17 @@ func (m model) renderDialog(box string) string {
 	return lipgloss.JoinVertical(lipgloss.Left, dialog, footerStyle.Width(m.width).Render(status))
 }
 
-func (m model) renderDialogCard(badge, title, context, body, primary string, destructive bool) string {
-	width := max(24, min(44, m.width-6))
+func (m model) dialogCardWidth() int {
+	return min(44, max(1, m.width-4))
+}
+
+func (m model) dialogContentWidth() int {
+	return max(1, m.dialogCardWidth()-overlayStyle.GetHorizontalFrameSize())
+}
+
+func (m model) renderDialogCard(badge, title, context, body string, destructive bool) string {
+	width := m.dialogCardWidth()
+	contentWidth := m.dialogContentWidth()
 	badgeStyle := dialogHeaderBadgeStyle
 	primaryStyle := keycapStyle
 	if destructive {
@@ -126,14 +144,19 @@ func (m model) renderDialogCard(badge, title, context, body, primary string, des
 		primaryStyle = destructiveKeycapStyle
 	}
 	header := lipgloss.JoinHorizontal(lipgloss.Left, badgeStyle.Render(strings.ToUpper(badge)), " ", titleStyle.Render(title))
-	divider := dialogDividerStyle.Render(strings.Repeat("─", max(16, width-8)))
-	footer := lipgloss.JoinHorizontal(lipgloss.Left,
-		primaryStyle.Render("Enter"), " ", mutedStyle.Render(primary), "   ",
-		countBadgeStyle.Render("Esc"), " ", mutedStyle.Render("Cancel"),
+	divider := dialogDividerStyle.Render(strings.Repeat("─", contentWidth))
+	footer := lipgloss.PlaceHorizontal(contentWidth, lipgloss.Center,
+		lipgloss.JoinHorizontal(lipgloss.Left, primaryStyle.Render("Enter"), " ", countBadgeStyle.Render("Esc")),
 	)
-	lines := []string{header, divider, mutedStyle.Render(context)}
+	lines := []string{header, divider}
+	if context != "" {
+		lines = append(lines, mutedStyle.Render(context))
+	}
 	if body != "" {
-		lines = append(lines, "", body)
+		if context != "" {
+			lines = append(lines, "")
+		}
+		lines = append(lines, body)
 	}
 	lines = append(lines, "", footer)
 	box := overlayStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
@@ -141,7 +164,8 @@ func (m model) renderDialogCard(badge, title, context, body, primary string, des
 }
 
 func (m model) renderInputField() string {
-	return dialogInputStyle.Width(max(18, min(38, m.width-12))).Render(inputStyle.Render(m.input.View()))
+	width := min(38, m.dialogContentWidth())
+	return dialogInputStyle.Width(width).Render(inputStyle.Render(m.input.View()))
 }
 
 func (m model) renderProjectSwitchOverlay() string {
@@ -159,55 +183,60 @@ func (m model) renderProjectSwitchOverlay() string {
 		}
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left, m.renderInputField(), "", lipgloss.JoinVertical(lipgloss.Left, list...))
-	return m.renderDialogCard("switch", "Switch Project", "Search projects. Up and Down select a match.", body, "Switch", false)
+	return m.renderDialogCard("switch", "Project", "Choose a project.", body, false)
 }
 
 func (m model) renderInputOverlay(title string) string {
-	badge, primary := "create", "Create"
-	if title == "Project Settings" {
-		badge, primary = "settings", "Save"
+	badge := "create"
+	switch title {
+	case "New Session":
+		title = "Session"
+	case "New Project":
+		title = "Project"
+	case "Project Settings":
+		badge, title = "settings", "Project"
 	}
-	context := "project: " + fallbackText(m.contextProject(), "none")
-	return m.renderDialogCard(badge, title, context, m.renderInputField(), primary, false)
+	return m.renderDialogCard(badge, title, "", m.renderInputField(), false)
 }
 
 func (m model) renderDeleteOverlay() string {
-	target := "selection"
+	title, message := "Selection", "Delete selection?"
 	switch {
 	case m.deleteTarget.project != "":
-		target = "project " + m.deleteTarget.project
+		title = "Project"
+		message = "Delete project " + m.deleteTarget.project + " and all its sessions?"
 	case m.deleteTarget.session != "":
-		target = "session " + m.deleteTarget.session
+		title = "Session"
+		message = "Delete " + m.sessionLabel(m.deleteTarget.session) + "?"
 	}
-	message := "Delete " + target + "?"
 	if m.deleteTarget.session != "" {
 		project := normalizeProjectName(m.sessionProjects[m.deleteTarget.session])
 		if project != "" && len(m.projectSessions(project)) == 1 {
-			message = "This will delete the whole project " + project + "."
+			title = "Project"
+			message = "Delete project " + project + " and its session?"
 		}
 	}
-	return m.renderDialogCard("delete", "Confirm Delete", message, "", "Delete", true)
+	return m.renderDialogCard("delete", title, message, "", true)
 }
 
 func (m model) renderProjectSwitchConfirmOverlay() string {
-	context := "Switch from the current volatile session to project " + fallbackText(m.switchProjectTarget, "none") + "?"
-	return m.renderDialogCard("confirm", "Confirm Project Switch", context, "", "Switch", false)
+	context := "Switch to " + fallbackText(m.switchProjectTarget, "none") + "?"
+	return m.renderDialogCard("confirm", "Project Switch", context, "", false)
 }
 
 func (m model) renderQuitConfirmOverlay() string {
-	return m.renderDialogCard("confirm", "Confirm Quit", "Remove this tflow instance volatile sessions and detach?", "", "Quit", false)
+	return m.renderDialogCard("confirm", "Quit", "Remove this instance’s volatile sessions and quit?", "", false)
 }
 
 func (m model) renderRenameOverlay() string {
-	title := "Rename"
+	title := "Session"
 	current := ""
 	switch {
 	case m.renameTarget.project != "":
-		title = "Rename Project"
+		title = "Project"
 		current = m.renameTarget.project
 	case m.renameTarget.session != "":
-		title = "Rename Session"
-		current = m.renameTarget.session
+		current = m.sessionLabel(m.renameTarget.session)
 	}
-	return m.renderDialogCard("rename", title, "current: "+fallbackText(current, "none"), m.renderInputField(), "Save", false)
+	return m.renderDialogCard("rename", title, "Current: "+fallbackText(current, "none"), m.renderInputField(), false)
 }

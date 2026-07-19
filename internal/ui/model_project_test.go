@@ -400,7 +400,7 @@ func TestEditProjectStartsInlineSettingsFlow(t *testing.T) {
 	if got.mode != inputEditProject {
 		t.Fatalf("mode = %v, want inputEditProject", got.mode)
 	}
-	if got.input.Prompt != "workdir: " {
+	if got.input.Prompt != "" {
 		t.Fatalf("prompt = %q", got.input.Prompt)
 	}
 	if got.input.Value() != "/tmp/small" {

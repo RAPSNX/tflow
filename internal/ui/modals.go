@@ -8,12 +8,6 @@ import (
 
 func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.mode {
-	case inputHelp:
-		if msg.Type == tea.KeyEsc {
-			m.mode = inputNone
-			m.status = ""
-		}
-		return m, nil
 	case inputCreateSession:
 		switch msg.Type {
 		case tea.KeyEsc:
@@ -29,13 +23,19 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			project := m.contextProject()
-			if m.hasSessionLabel(project, label, "") {
+			if project != "" && m.hasSessionLabel(project, label, "") {
 				m.status = "Session name already exists in this project."
+				return m, nil
+			}
+			if project == "" && m.hasVolatileSessionLabel(label, "") {
+				m.status = "Session name already exists."
 				return m, nil
 			}
 			name := label
 			if project != "" {
 				name = projectSessionName(project, label)
+			} else {
+				name = volatileSessionName(m.instanceID, label)
 			}
 			if _, ok := m.findSession(name); ok {
 				m.status = "Session name already exists."

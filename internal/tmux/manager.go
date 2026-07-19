@@ -83,31 +83,25 @@ func (m Manager) SetSessionTemporary(name string, temporary bool, instanceID str
 	if _, err := m.runner()("set-option", "-t", name, "destroy-unattached", "off"); err != nil {
 		return err
 	}
-	if temporary {
-		hook := rememberClientInstanceHook(name, instanceID)
-		if _, err := m.runner()("set-hook", "-t", name, "client-attached", hook); err != nil {
-			return err
-		}
-	} else {
-		if _, err := m.runner()("set-hook", "-u", "-t", name, "client-attached"); err != nil {
-			return err
-		}
+	// Volatile sessions are removed explicitly when their tflow instance exits.
+	// Keep them alive while a client switches to another session, and clear the
+	// legacy hook that previously re-enabled destroy-unattached after attach.
+	if _, err := m.runner()("set-hook", "-u", "-t", name, "client-attached"); err != nil {
+		return err
 	}
 	if _, err := m.runner()("set-option", "-t", name, tempMarker, marker); err != nil {
 		return err
 	}
-	_, err := m.runner()("set-option", "-t", name, instanceMarker, instanceID)
-	return err
-}
-
-func rememberClientInstanceHook(sessionName, instanceID string) string {
-	script := strings.Join([]string{
-		"client_key=$(printf '%s' '#{hook_client}' | tr -c '[:alnum:]' '_')",
-		"tmux -L " + ShellQuote(socketName) + " set-environment -gh " + `"` + menuInstancePrefix + `${client_key}" ` + ShellQuote(instanceID) + " >/dev/null 2>&1",
-		shellTmuxCommand("set-option", "-t", sessionName, "destroy-unattached", "on") + " >/dev/null 2>&1",
-		shellTmuxCommand("set-hook", "-u", "-t", sessionName, "client-attached") + " >/dev/null 2>&1",
-	}, "; ")
-	return "run-shell " + ShellQuote(script)
+	if _, err := m.runner()("set-option", "-t", name, instanceMarker, instanceID); err != nil {
+		return err
+	}
+	if temporary {
+		if label := VolatileSessionLabel(name, instanceID); label != "" {
+			_, err := m.runner()("set-option", "-t", name, sessionLabelMarker, label)
+			return err
+		}
+	}
+	return nil
 }
 
 func (Manager) AttachCommand(name string) (*exec.Cmd, error) {
@@ -134,8 +128,18 @@ func (m Manager) RenameSession(oldName, newName string) error {
 	if oldName == newName {
 		return nil
 	}
-	_, err := m.runner()("rename-session", "-t", oldName, newName)
-	return err
+	if _, err := m.runner()("rename-session", "-t", oldName, newName); err != nil {
+		return err
+	}
+	if label := volatileSessionLabel(newName); label != "" {
+		if _, err := m.runner()("set-option", "-t", newName, sessionLabelMarker, label); err != nil {
+			if _, rollbackErr := m.runner()("rename-session", "-t", newName, oldName); rollbackErr != nil {
+				return fmt.Errorf("update volatile session label: %w; rollback rename: %v", err, rollbackErr)
+			}
+			return fmt.Errorf("update volatile session label: %w", err)
+		}
+	}
+	return nil
 }
 
 func (m Manager) SwitchClient(name string) error {
