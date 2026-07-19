@@ -201,6 +201,11 @@ func (m Manager) RunBackground(command string) error {
 	return err
 }
 func (m Manager) DisplayMessage(message string) error {
-	_, err := m.runner()("display-message", message)
+	args := []string{"display-message"}
+	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
+		args = append(args, "-c", clientID)
+	}
+	args = append(args, message)
+	_, err := m.runner()(args...)
 	return err
 }

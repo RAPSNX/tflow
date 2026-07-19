@@ -205,6 +205,23 @@ func TestSetSessionTemporaryRequiresInstanceIDWhenVolatile(t *testing.T) {
 	}
 }
 
+func TestDisplayMessageTargetsCurrentClient(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "", nil
+	}}
+
+	if err := manager.DisplayMessage("create failed"); err != nil {
+		t.Fatalf("DisplayMessage returned error: %v", err)
+	}
+	want := []string{"display-message", "-c", "/dev/pts/4", "create failed"}
+	if len(calls) != 1 || strings.Join(calls[0], "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("calls = %#v, want %v", calls, want)
+	}
+}
+
 func TestCreateSessionReturnsDuplicateSessionError(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {

@@ -105,7 +105,7 @@ func (m *model) createProjectRequest(request createRequest) error {
 	}
 	current, ok := m.findSession(request.Current)
 	if ok && current.Temporary && current.Instance == request.Instance {
-		return m.promoteVolatileSessions(request.Project, request.Current)
+		return m.promoteVolatileSessions(request.Project, request.Workdir, request.Current)
 	}
 	s, err := m.createPersistentSession(request.Workdir, "")
 	if err != nil {
@@ -129,10 +129,11 @@ func (m *model) createProjectRequest(request createRequest) error {
 	return m.tmux.SwitchClient(s.Name)
 }
 
-func (m *model) promoteVolatileSessions(project, current string) error {
+func (m *model) promoteVolatileSessions(project, workdir, current string) error {
 	m.addProject(project)
-	m.setProjectConfig(projectConfig{Name: project, Workdir: m.cwd})
+	m.setProjectConfig(projectConfig{Name: project, Workdir: workdir})
 	active := ""
+	promoted := make([]string, 0)
 	for index := range m.sessions {
 		s := m.sessions[index]
 		if !s.Temporary || s.Instance != m.instanceID {
@@ -152,15 +153,7 @@ func (m *model) promoteVolatileSessions(project, current string) error {
 		m.sessions[index].Name, m.sessions[index].Temporary, m.sessions[index].Instance = name, false, ""
 		m.assignSessionProject(name, project)
 		m.setSessionLabel(name, label)
-		if err := m.tmux.SetSessionTemporary(name, false, ""); err != nil {
-			return err
-		}
-		if err := m.tmux.SetSessionProject(name, project); err != nil {
-			return err
-		}
-		if err := m.tmux.SetSessionLabel(name, label); err != nil {
-			return err
-		}
+		promoted = append(promoted, name)
 		if s.Name == current {
 			active = name
 		}
@@ -170,6 +163,17 @@ func (m *model) promoteVolatileSessions(project, current string) error {
 	}
 	if err := m.saveState(); err != nil {
 		return err
+	}
+	for _, name := range promoted {
+		if err := m.tmux.SetSessionTemporary(name, false, ""); err != nil {
+			return err
+		}
+		if err := m.tmux.SetSessionProject(name, project); err != nil {
+			return err
+		}
+		if err := m.tmux.SetSessionLabel(name, m.sessionLabel(name)); err != nil {
+			return err
+		}
 	}
 	return m.tmux.SwitchClient(active)
 }
