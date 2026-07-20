@@ -95,7 +95,7 @@ func openMenu(ctx context.Context, manager tmuxController, runProgram menuProgra
 		menu.status = "Confirm shutdown of this tflow instance."
 	}
 	finalModel, err := runProgram(ctx, menu)
-	if ctx.Err() != nil {
+	if ctx.Err() != nil && isCancellationInducedPopupExit(ctx, err) {
 		return nil
 	}
 	if err != nil {
@@ -106,6 +106,30 @@ func openMenu(ctx context.Context, manager tmuxController, runProgram menuProgra
 
 func runMenuProgram(ctx context.Context, menu tea.Model) (tea.Model, error) {
 	return tea.NewProgram(menu, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
+}
+
+// isCancellationInducedPopupExit reports whether err is the kind of error
+// Bubble Tea's Program.Run produces solely because the context passed via
+// tea.WithContext was canceled, as opposed to a genuine, unrelated Bubble
+// Tea or terminal error that happened to occur while a cancellation was
+// also pending. Bubble Tea wraps every "killed" exit in ErrProgramKilled,
+// including exits caused by a real underlying error (tea.go wraps it as
+// fmt.Errorf("%w: %w", ErrProgramKilled, err) regardless of context state),
+// so ErrProgramKilled alone cannot distinguish the two cases. What does
+// distinguish them is whether the error chain also contains the exact
+// context error the program was canceled with: a pure cancellation wraps
+// ctx.Err() itself, while a real error wraps some other, unrelated error.
+// Only the former should be swallowed as part of graceful signal shutdown;
+// per the architecture, signal-driven cleanup must never replace another
+// operation's real error.
+func isCancellationInducedPopupExit(ctx context.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+		return true
+	}
+	return false
 }
 
 func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) (string, error) {

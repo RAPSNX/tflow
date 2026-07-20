@@ -391,6 +391,84 @@ func TestOpenMenuCancellationDoesNotQuitInstance(t *testing.T) {
 	}
 }
 
+func TestOpenMenuReportsRealErrorDespitePendingCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	realErr := errors.New("terminal write failed")
+	quit := false
+	err := openMenu(ctx, fakeTmuxController{
+		quitAll: func() error {
+			quit = true
+			return nil
+		},
+	}, func(ctx context.Context, menu tea.Model) (tea.Model, error) {
+		// A signal arrives (canceling the outer context) at roughly the
+		// same time the popup program independently fails for its own,
+		// unrelated reason. Mirror Bubble Tea's real wrapping shape: every
+		// "killed" exit is wrapped in tea.ErrProgramKilled, whether or not
+		// the underlying cause was the cancellation.
+		cancel()
+		return model{exitAction: menuExitQuit}, fmt.Errorf("%w: %w", tea.ErrProgramKilled, realErr)
+	})
+	if err == nil {
+		t.Fatal("openMenu returned nil error, want the real popup failure reported")
+	}
+	if !errors.Is(err, realErr) {
+		t.Fatalf("openMenu error = %v, want it to wrap the real popup failure %v", err, realErr)
+	}
+	if quit {
+		t.Fatal("OpenMenu invoked QuitAll despite reporting a real error")
+	}
+}
+
+func TestOpenMenuSkipsExitActionOnPureCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	quit := false
+	err := openMenu(ctx, fakeTmuxController{
+		quitAll: func() error {
+			quit = true
+			return nil
+		},
+	}, func(ctx context.Context, menu tea.Model) (tea.Model, error) {
+		// Mirror Bubble Tea's real wrapping shape for a pure cancellation:
+		// ErrProgramKilled wrapping the context's own cancellation error,
+		// with no other real error involved.
+		cancel()
+		return model{exitAction: menuExitQuit}, fmt.Errorf("%w: %w", tea.ErrProgramKilled, ctx.Err())
+	})
+	if err != nil {
+		t.Fatalf("openMenu returned error: %v", err)
+	}
+	if quit {
+		t.Fatal("OpenMenu invoked QuitAll after context cancellation")
+	}
+}
+
+func TestIsCancellationInducedPopupExit(t *testing.T) {
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if isCancellationInducedPopupExit(canceledCtx, nil) {
+		t.Fatal("a nil error must never be treated as a cancellation-induced exit")
+	}
+	if !isCancellationInducedPopupExit(canceledCtx, context.Canceled) {
+		t.Fatal("a bare context.Canceled error must be treated as cancellation-induced")
+	}
+	if !isCancellationInducedPopupExit(canceledCtx, fmt.Errorf("%w: %w", tea.ErrProgramKilled, canceledCtx.Err())) {
+		t.Fatal("ErrProgramKilled wrapping the context's own error must be treated as cancellation-induced")
+	}
+	realErr := errors.New("terminal write failed")
+	if isCancellationInducedPopupExit(canceledCtx, fmt.Errorf("%w: %w", tea.ErrProgramKilled, realErr)) {
+		t.Fatal("ErrProgramKilled wrapping a real, unrelated error must not be treated as cancellation-induced")
+	}
+	if isCancellationInducedPopupExit(canceledCtx, realErr) {
+		t.Fatal("a real, unrelated error must not be treated as cancellation-induced")
+	}
+}
+
 func TestHelpToggleDoesNotBlockShortcuts(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 	m.projects = []string{defaultProjectName}
