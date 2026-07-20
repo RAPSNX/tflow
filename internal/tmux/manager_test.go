@@ -327,6 +327,29 @@ func TestCurrentPaneDirRetriesAfterStaleClientError(t *testing.T) {
 	}
 }
 
+func TestCurrentPaneDirDoesNotRetryEmptyPathFromResolvedClient(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		// The client resolves successfully but its active pane path is empty.
+		return "", nil
+	}}
+
+	if _, err := manager.CurrentPaneDir(); err == nil {
+		t.Fatal("CurrentPaneDir returned nil error, want empty pane directory failure")
+	}
+	wantCalls := [][]string{
+		{"display-message", "-p", "-c", "/dev/pts/4", "#{pane_current_path}"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v (no fallback to a different client's pane)", calls, wantCalls)
+	}
+	if strings.Join(calls[0], "\x00") != strings.Join(wantCalls[0], "\x00") {
+		t.Fatalf("calls[0] = %#v, want %v", calls[0], wantCalls[0])
+	}
+}
+
 func TestCurrentPaneDirReturnsErrorWhenRetryAlsoFails(t *testing.T) {
 	t.Setenv(CurrentClientEnv, "/dev/pts/4")
 	manager := Manager{Run: func(args ...string) (string, error) {

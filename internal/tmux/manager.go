@@ -219,23 +219,20 @@ func (m Manager) CurrentPaneDir() (string, error) {
 	}
 	args = append(args, "#{pane_current_path}")
 	out, err := m.runner()(args...)
-	if err == nil {
-		if dir := strings.TrimSpace(out); dir != "" {
-			return dir, nil
+	if err != nil {
+		if !hasClient {
+			return "", err
 		}
-	} else if !hasClient {
-		return "", err
-	}
-	// A popup can retain a stale client identifier after the tmux client that opened it has been recreated.
-	// Retry without the stale target when tmux fails to resolve that client or returns an empty path.
-	if hasClient {
+		// A popup can retain a stale client identifier after the tmux client that opened it has been recreated.
+		// Retry without the stale target only when tmux fails to resolve that client. A resolved client whose
+		// active pane path is legitimately empty must not fall back to a different client's active pane.
 		out, err = m.runner()("display-message", "-p", "#{pane_current_path}")
 		if err != nil {
 			return "", err
 		}
-		if dir := strings.TrimSpace(out); dir != "" {
-			return dir, nil
-		}
+	}
+	if dir := strings.TrimSpace(out); dir != "" {
+		return dir, nil
 	}
 	return "", fmt.Errorf("active pane directory is empty")
 }
