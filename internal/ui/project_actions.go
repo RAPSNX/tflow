@@ -100,11 +100,9 @@ func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.syncSelection()
-	if err := m.syncTmuxSessionProjects(); err != nil {
-		m.err = err
-		m.status = err.Error()
-		return m, nil
-	}
+	// Every session in the deleted project was already killed above, and no
+	// other project's sessions are affected by removing this one, so there
+	// is nothing left to write.
 	m.err = nil
 	m.status = ""
 	if !activeProjectDeleted {

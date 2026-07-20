@@ -48,7 +48,6 @@ type Controller interface {
 	KillSession(name string) error
 	SwitchClient(name string) error
 	EnsureControlMode(binaryPath string, palette Palette) error
-	SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error
 	ToggleMenu(binaryPath string) error
 	OpenQuit(binaryPath string) error
 	CloseMenu() error

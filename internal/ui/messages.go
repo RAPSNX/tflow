@@ -66,7 +66,7 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.finishSessionCreationFollowUpError(err)
 			}
 		}
-		if err := m.syncTmuxSessionProjects(); err != nil {
+		if err := m.syncSessionMarkers(msg.session.Name); err != nil {
 			m.err = err
 			m.status = err.Error()
 			return m.finishSessionCreationFollowUpError(err)
@@ -115,11 +115,8 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		if err := m.syncTmuxSessionProjects(); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
-		}
+		// The killed session no longer exists in tmux and no other session's
+		// markers are affected by removing it, so there is nothing to write.
 		m.err = nil
 		m.status = ""
 		if found && deleted.Temporary {
@@ -167,7 +164,7 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = err.Error()
 			return m, nil
 		}
-		if err := m.syncTmuxSessionProjects(); err != nil {
+		if err := m.syncSessionMarkers(msg.session.Name); err != nil {
 			m.err = err
 			m.status = err.Error()
 			return m, nil
@@ -210,11 +207,10 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.mode = inputNone
 		m.renameTarget = renameTarget{}
-		if err := m.syncTmuxSessionProjects(); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
-		}
+		// The rename command already wrote this session's label marker
+		// synchronously (see commitRename), and a label rename never
+		// changes project membership, so no further tmux writes are
+		// needed here.
 		m.err = nil
 		m.status = ""
 		return m, m.closeMenuCmd()
@@ -249,10 +245,15 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.syncSelection()
-		if err := m.syncTmuxSessionProjects(); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
+		// Only the renamed project's own sessions carry its name in their
+		// tmux project marker; every other project's sessions are
+		// unaffected and must not be rewritten.
+		for _, s := range m.projectSessions(msg.newName) {
+			if err := m.tmux.SetSessionProject(s.Name, msg.newName); err != nil {
+				m.err = err
+				m.status = err.Error()
+				return m, nil
+			}
 		}
 		m.err = nil
 		m.status = ""
