@@ -79,6 +79,40 @@ func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 	}
 }
 
+func TestSyncSessionProjectsStripsDelimitersFromLabels(t *testing.T) {
+	var calls [][]string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
+			return "", nil
+		},
+	}
+
+	err := manager.SyncSessionProjects(map[string]string{
+		"dev": "small",
+	}, map[string]string{
+		"dev": "Deploy\tTool\nExtra Row",
+	})
+	if err != nil {
+		t.Fatalf("SyncSessionProjects returned error: %v", err)
+	}
+
+	want := []string{"set-option", "-t", "dev", "@tflow-session-label", "DeployToolExtra Row"}
+	found := false
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+			found = true
+			break
+		}
+		if len(call) == 5 && call[3] == sessionLabelMarker && strings.ContainsAny(call[4], "\t\n\r") {
+			t.Fatalf("call %v wrote a label containing a delimiter character", call)
+		}
+	}
+	if !found {
+		t.Fatalf("missing call %v in %#v", want, calls)
+	}
+}
+
 func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
@@ -182,6 +216,50 @@ func TestSetSessionLabelUsesMetadata(t *testing.T) {
 	want := []string{"set-option", "-t", "tflow-v-instance-1-abc", sessionLabelMarker, "otter"}
 	if len(calls) != 1 || strings.Join(calls[0], "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("calls = %#v, want %v", calls, want)
+	}
+}
+
+// TestSetSessionLabelStripsDelimitersBeforeRoundTrip verifies that a label
+// containing a tab or newline is filtered before it reaches tmux metadata,
+// so a subsequent ListSessions call (which parses each row with
+// strings.Split(line, "\t")) sees exactly one session with the same label a
+// user would have seen displayed, instead of a truncated or split row.
+func TestSetSessionLabelStripsDelimitersBeforeRoundTrip(t *testing.T) {
+	var storedLabel string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		if len(args) == 5 && args[0] == "set-option" && args[3] == sessionLabelMarker {
+			storedLabel = args[4]
+		}
+		return "", nil
+	}}
+
+	pastedLabel := "Deploy\tTool\nExtra Row"
+	if err := manager.SetSessionLabel("tflow-v-instance-1-abc", pastedLabel); err != nil {
+		t.Fatalf("SetSessionLabel returned error: %v", err)
+	}
+	if strings.ContainsAny(storedLabel, "\t\n\r") {
+		t.Fatalf("stored label %q still contains a delimiter character", storedLabel)
+	}
+	want := "DeployToolExtra Row"
+	if storedLabel != want {
+		t.Fatalf("stored label = %q, want %q", storedLabel, want)
+	}
+
+	// Simulate tmux's list-sessions output using the label exactly as tmux
+	// would have stored it, to confirm ListSessions round-trips a single
+	// session row rather than splitting on the injected delimiters.
+	listManager := Manager{Run: func(args ...string) (string, error) {
+		return "tflow-v-instance-1-abc\t1\t0\t1\tinstance-1\t" + storedLabel + "\n", nil
+	}}
+	sessions, err := listManager.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions returned error: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("len(sessions) = %d, want 1 (label injection split the row)", len(sessions))
+	}
+	if sessions[0].Label != want {
+		t.Fatalf("round-tripped label = %q, want %q", sessions[0].Label, want)
 	}
 }
 

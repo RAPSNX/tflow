@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"unicode"
 
 	"tflow/internal/store"
 )
@@ -46,12 +47,21 @@ func SanitizeSessionName(name string) string {
 	return store.NormalizeProjectName(name)
 }
 
-// NormalizeSessionLabel trims a user-entered session label without altering
-// its casing or characters. User-entered labels preserve their exact
+// NormalizeSessionLabel trims a user-entered session label and strips control
+// characters (including the tab and newline bytes ListSessions uses to
+// delimit fields and rows) without altering casing or any other printable
+// character. This keeps tmux's tab/newline-delimited session metadata safe
+// to parse while leaving user-entered labels preserving their exact
 // displayed value; only slug-shaped internal tmux identifiers go through
 // SanitizeSessionName.
 func NormalizeSessionLabel(label string) string {
-	return strings.TrimSpace(label)
+	filtered := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, label)
+	return strings.TrimSpace(filtered)
 }
 
 func PersistentSessionName(id string) string {

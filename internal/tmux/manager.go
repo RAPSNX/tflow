@@ -149,7 +149,7 @@ func (m Manager) SyncSessionProjects(sessionProjects, sessionLabels map[string]s
 			}
 			return err
 		}
-		label := strings.TrimSpace(sessionLabels[name])
+		label := NormalizeSessionLabel(sessionLabels[name])
 		if label == "" {
 			label = name
 		}
