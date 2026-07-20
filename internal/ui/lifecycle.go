@@ -105,7 +105,15 @@ func openMenu(ctx context.Context, manager tmuxController, runProgram menuProgra
 }
 
 func runMenuProgram(ctx context.Context, menu tea.Model) (tea.Model, error) {
-	return tea.NewProgram(menu, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
+	// Bubble Tea installs its own SIGINT/SIGTERM handler by default, which
+	// races with the signal.NotifyContext-driven ctx above: on a real
+	// SIGINT it can independently return ErrProgramKilled wrapping
+	// ErrInterrupted, an error that does not wrap ctx.Err() and so would be
+	// (mis)treated as a genuine popup failure rather than graceful signal
+	// shutdown. The runtime context is the single source of truth for
+	// signal-driven cancellation (see the "Graceful signal shutdown"
+	// architecture note), so disable Bubble Tea's competing handler.
+	return tea.NewProgram(menu, tea.WithAltScreen(), tea.WithContext(ctx), tea.WithoutSignalHandler()).Run()
 }
 
 // isCancellationInducedPopupExit reports whether err is the kind of error
@@ -122,11 +130,29 @@ func runMenuProgram(ctx context.Context, menu tea.Model) (tea.Model, error) {
 // Only the former should be swallowed as part of graceful signal shutdown;
 // per the architecture, signal-driven cleanup must never replace another
 // operation's real error.
+//
+// runMenuProgram disables Bubble Tea's own competing SIGINT/SIGTERM handler
+// via tea.WithoutSignalHandler(), so in production this should be the only
+// path that ever needs to distinguish these cases. As defense in depth,
+// this also recognizes tea.ErrInterrupted: if Bubble Tea's own signal
+// handler nonetheless fires (for example if it is ever re-enabled, or run
+// through a different Program constructor), a real SIGINT reaching that
+// handler while our own runtime context is also canceled is definitionally
+// the same signal-driven shutdown, just detected through Bubble Tea's own
+// mechanism rather than ctx -- so it must not be reported as an
+// operational error either.
 func isCancellationInducedPopupExit(ctx context.Context, err error) bool {
 	if err == nil {
 		return false
 	}
-	if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+	ctxErr := ctx.Err()
+	if ctxErr == nil {
+		return false
+	}
+	if errors.Is(err, ctxErr) {
+		return true
+	}
+	if errors.Is(err, tea.ErrInterrupted) {
 		return true
 	}
 	return false

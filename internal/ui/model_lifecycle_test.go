@@ -467,6 +467,41 @@ func TestIsCancellationInducedPopupExit(t *testing.T) {
 	if isCancellationInducedPopupExit(canceledCtx, realErr) {
 		t.Fatal("a real, unrelated error must not be treated as cancellation-induced")
 	}
+	if !isCancellationInducedPopupExit(canceledCtx, fmt.Errorf("%w: %w", tea.ErrProgramKilled, tea.ErrInterrupted)) {
+		t.Fatal("ErrProgramKilled wrapping ErrInterrupted while our own context is canceled must be treated as cancellation-induced")
+	}
+
+	uncanceledCtx := context.Background()
+	if isCancellationInducedPopupExit(uncanceledCtx, fmt.Errorf("%w: %w", tea.ErrProgramKilled, tea.ErrInterrupted)) {
+		t.Fatal("ErrInterrupted must not be treated as cancellation-induced when our own context was never canceled")
+	}
+}
+
+func TestOpenMenuTreatsCompetingSignalHandlerInterruptAsGracefulCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	quit := false
+	err := openMenu(ctx, fakeTmuxController{
+		quitAll: func() error {
+			quit = true
+			return nil
+		},
+	}, func(ctx context.Context, menu tea.Model) (tea.Model, error) {
+		// Simulate Bubble Tea's own competing SIGINT handler winning the
+		// race: it reports ErrInterrupted (wrapped in ErrProgramKilled) for
+		// the real signal, independent of and without wrapping our own
+		// signal.NotifyContext-driven ctx, which is canceled by the same
+		// SIGINT at roughly the same time.
+		cancel()
+		return model{exitAction: menuExitQuit}, fmt.Errorf("%w: %w", tea.ErrProgramKilled, tea.ErrInterrupted)
+	})
+	if err != nil {
+		t.Fatalf("openMenu returned error: %v, want graceful cancellation for a real SIGINT", err)
+	}
+	if quit {
+		t.Fatal("OpenMenu invoked QuitAll after signal-driven cancellation")
+	}
 }
 
 func TestHelpToggleDoesNotBlockShortcuts(t *testing.T) {
