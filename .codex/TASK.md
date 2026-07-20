@@ -118,9 +118,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep volatile labels unique inside their owning instance.
 * [x] Allow different projects to reuse the same session label.
 * [x] Allow different tflow instances to reuse the same volatile label.
-* [ ] Move persistent sessions between projects without changing their tmux session IDs.
-* [ ] Reject moves whose labels already exist in the target project.
-* [ ] Delete a project when its final session is moved out.
+* [x] Move persistent sessions between projects without changing their tmux session IDs.
+* [x] Reject moves whose labels already exist in the target project.
+* [x] Delete a project when its final session is moved out.
 * [x] Delete a project when its final session is deleted.
 * [x] Delete all persistent sessions and metadata when a project is deleted.
 * [x] Switch only when the active project is deleted, selecting the first session in the next project.

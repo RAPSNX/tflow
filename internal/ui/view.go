@@ -30,6 +30,8 @@ func (m model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderQuitConfirmOverlay())
 	case inputRename:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderRenameOverlay())
+	case inputMoveSession:
+		return appStyle.Width(m.width).Height(m.height).Render(m.renderSessionMoveOverlay())
 	default:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderMenu())
 	}
@@ -109,6 +111,7 @@ func (m model) renderHelp() string {
 		"p       Switch project",
 		"r       Rename session",
 		"R       Rename project",
+		"m       Move session to project",
 		"d       Delete session",
 		"D       Delete project",
 		"e       Edit project settings",
@@ -238,6 +241,25 @@ func (m model) renderProjectSwitchConfirmOverlay() string {
 
 func (m model) renderQuitConfirmOverlay() string {
 	return m.renderDialogCard("confirm", "Quit", "Remove this instance’s volatile sessions and quit?", "", false)
+}
+
+func (m model) renderSessionMoveOverlay() string {
+	matches := m.matchingMoveProjects(m.input.Value())
+	list := []string{}
+	if len(matches) == 0 {
+		list = append(list, mutedStyle.Render("No matching projects."))
+	} else {
+		for index, project := range matches {
+			style := sessionStyle
+			if index == m.moveProjectIndex {
+				style = selectedSessionStyle
+			}
+			list = append(list, style.Render(project))
+		}
+	}
+	body := lipgloss.JoinVertical(lipgloss.Left, m.renderInputField(), "", lipgloss.JoinVertical(lipgloss.Left, list...))
+	context := "Move " + fallbackText(m.sessionLabel(m.moveTarget.session), "session") + " to…"
+	return m.renderDialogCard("move", "Session", context, body, false)
 }
 
 func (m model) renderRenameOverlay() string {
