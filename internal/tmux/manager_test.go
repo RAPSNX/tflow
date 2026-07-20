@@ -107,6 +107,35 @@ func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	}
 }
 
+func TestListSessionsTreatsAnyAttachedClientCountAsAttached(t *testing.T) {
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			return strings.Join([]string{
+				"none\t1\t0\t0\t\tnone",
+				"one\t1\t1\t0\t\tone",
+				"many\t1\t3\t0\t\tmany",
+			}, "\n") + "\n", nil
+		},
+	}
+
+	sessions, err := manager.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions returned error: %v", err)
+	}
+	if len(sessions) != 3 {
+		t.Fatalf("len(sessions) = %d", len(sessions))
+	}
+	if sessions[0].Attached {
+		t.Fatalf("session %q with count 0 should not be attached", sessions[0].Name)
+	}
+	if !sessions[1].Attached {
+		t.Fatalf("session %q with count 1 should be attached", sessions[1].Name)
+	}
+	if !sessions[2].Attached {
+		t.Fatalf("session %q with count 3 should be attached", sessions[2].Name)
+	}
+}
+
 func TestListSessionsTreatsAbsentDedicatedServerAsEmpty(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {

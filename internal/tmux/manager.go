@@ -34,7 +34,9 @@ func (m Manager) ListSessions() ([]Session, error) {
 			fmt.Sscanf(parts[1], "%d", &session.Windows)
 		}
 		if len(parts) > 2 {
-			session.Attached = strings.TrimSpace(parts[2]) == "1"
+			var attachedCount int
+			fmt.Sscanf(parts[2], "%d", &attachedCount)
+			session.Attached = attachedCount > 0
 		}
 		if len(parts) > 3 {
 			session.Temporary = strings.TrimSpace(parts[3]) == "1"
