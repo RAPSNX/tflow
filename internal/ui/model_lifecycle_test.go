@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"tflow/internal/diag"
 )
 
 func TestNewModelStartsWithoutProjectsWhenStateIsEmpty(t *testing.T) {
@@ -167,6 +170,37 @@ func TestPrepareStartupRollsBackCreatedSessionOnLaterFailure(t *testing.T) {
 				t.Fatalf("calls = %s, want %s", got, want)
 			}
 		})
+	}
+}
+
+func TestPrepareStartupEmitsDiagnosticWhenCleanupKillFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) { return nil, nil },
+		createSession: func(name, cwd, command string) (session, error) {
+			return session{Name: name}, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			return fmt.Errorf("tag failed")
+		},
+		killSession: func(name string) error {
+			return fmt.Errorf("kill failed")
+		},
+	}
+	_, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1")
+	if err == nil || !strings.Contains(err.Error(), "tag failed") {
+		t.Fatalf("prepareStartup error = %v, want the original tag failure", err)
+	}
+	if strings.Contains(err.Error(), "kill failed") {
+		t.Fatalf("prepareStartup error = %v, want the kill failure not to replace the original error", err)
+	}
+	if !strings.Contains(buf.String(), "kill orphaned startup session") {
+		t.Fatalf("diagnostic output = %q, want a kill-failure diagnostic", buf.String())
 	}
 }
 

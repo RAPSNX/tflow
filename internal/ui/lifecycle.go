@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"tflow/internal/diag"
 	runtmux "tflow/internal/tmux"
 )
 
@@ -31,7 +32,9 @@ func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string
 	cmd, err := manager.AttachCommand(sessionName)
 	if err != nil {
 		// Preserve the attach error; volatile cleanup is deliberately best effort.
-		_ = manager.CleanupVolatileSessions(instanceID)
+		if cleanupErr := manager.CleanupVolatileSessions(instanceID); cleanupErr != nil {
+			diag.Warnf("clean up volatile sessions for instance %q after attach failure: %v", instanceID, cleanupErr)
+		}
 		return err
 	}
 	cmd.Stdin = os.Stdin
@@ -106,17 +109,23 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 	}
 	if err := manager.SetSessionTemporary(name, true, instanceID); err != nil {
 		// Preserve the setup error; deleting the newly created session is best effort.
-		_ = manager.KillSession(name)
+		if killErr := manager.KillSession(name); killErr != nil {
+			diag.Warnf("kill orphaned startup session %q after tagging failure: %v", name, killErr)
+		}
 		return "", fmt.Errorf("tag startup session: %w", err)
 	}
 	if err := manager.SetSessionLabel(name, label); err != nil {
 		// Preserve the setup error; deleting the newly created session is best effort.
-		_ = manager.KillSession(name)
+		if killErr := manager.KillSession(name); killErr != nil {
+			diag.Warnf("kill orphaned startup session %q after label failure: %v", name, killErr)
+		}
 		return "", fmt.Errorf("set startup session label: %w", err)
 	}
 	if err := manager.EnsureControlMode(binaryPath); err != nil {
 		// Preserve the setup error; deleting the newly created session is best effort.
-		_ = manager.KillSession(name)
+		if killErr := manager.KillSession(name); killErr != nil {
+			diag.Warnf("kill orphaned startup session %q after control-mode failure: %v", name, killErr)
+		}
 		return "", fmt.Errorf("prepare tmux control mode: %w", err)
 	}
 	return name, nil

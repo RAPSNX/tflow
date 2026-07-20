@@ -46,6 +46,14 @@ func SanitizeSessionName(name string) string {
 	return store.NormalizeProjectName(name)
 }
 
+// NormalizeSessionLabel trims a user-entered session label without altering
+// its casing or characters. User-entered labels preserve their exact
+// displayed value; only slug-shaped internal tmux identifiers go through
+// SanitizeSessionName.
+func NormalizeSessionLabel(label string) string {
+	return strings.TrimSpace(label)
+}
+
 func PersistentSessionName(id string) string {
 	id = SanitizeSessionName(id)
 	if id == "" {
