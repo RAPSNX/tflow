@@ -1,26 +1,32 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	runtmux "tflow/internal/tmux"
 	"tflow/internal/ui"
 )
 
 func main() {
-	if err := run(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
+	defer stop()
+
+	if err := run(ctx); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run() error {
+func run(ctx context.Context) error {
 	args := os.Args[1:]
 	if len(args) > 0 {
 		switch args[0] {
 		case "menu":
-			return ui.OpenMenu()
+			return ui.OpenMenu(ctx)
 		case "open-quit":
 			return ui.OpenQuit()
 		case "toggle-menu":
@@ -38,5 +44,5 @@ func run() error {
 			return fmt.Errorf("unknown command %q", args[0])
 		}
 	}
-	return ui.Start()
+	return ui.Start(ctx)
 }

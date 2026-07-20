@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -253,7 +254,7 @@ func TestStartWithManagerCleansUpWhenAttachCommandFails(t *testing.T) {
 	manager := fakeTmuxController{
 		listSessions:        func() ([]session, error) { return nil, nil },
 		setSessionTemporary: func(name string, temporary bool, instanceID string) error { return nil },
-		attachCommand: func(name string) (*exec.Cmd, error) {
+		attachCommand: func(ctx context.Context, name string) (*exec.Cmd, error) {
 			return nil, fmt.Errorf("attach unavailable")
 		},
 		cleanupVolatile: func(instanceID string) error {
@@ -262,11 +263,57 @@ func TestStartWithManagerCleansUpWhenAttachCommandFails(t *testing.T) {
 		},
 	}
 
-	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err == nil {
+	if err := startWithManager(context.Background(), manager, "/tmp/tflow", "/tmp/project", "instance-1"); err == nil {
 		t.Fatal("startWithManager returned nil error")
 	}
 	if got, want := fmt.Sprint(cleaned), "[instance-1]"; got != want {
 		t.Fatalf("cleanup calls = %s, want %s", got, want)
+	}
+}
+
+func TestStartWithManagerCleansUpWhenContextIsCanceled(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var cleaned []string
+	manager := fakeTmuxController{
+		attachCommand: func(ctx context.Context, name string) (*exec.Cmd, error) {
+			cancel()
+			return exec.CommandContext(ctx, "sh", "-lc", "exec sleep 30"), nil
+		},
+		cleanupVolatile: func(instanceID string) error {
+			cleaned = append(cleaned, instanceID)
+			return nil
+		},
+	}
+
+	if err := startWithManager(ctx, manager, "/tmp/tflow", "/tmp/project", "instance-1"); err != nil {
+		t.Fatalf("startWithManager returned error: %v", err)
+	}
+	if got, want := fmt.Sprint(cleaned), "[instance-1]"; got != want {
+		t.Fatalf("cleanup calls = %s, want %s", got, want)
+	}
+}
+
+func TestOpenMenuCancellationDoesNotQuitInstance(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	quit := false
+	err := openMenu(ctx, fakeTmuxController{
+		quitAll: func() error {
+			quit = true
+			return nil
+		},
+	}, func(ctx context.Context, menu tea.Model) (tea.Model, error) {
+		return model{exitAction: menuExitQuit}, context.Canceled
+	})
+	if err != nil {
+		t.Fatalf("openMenu returned error: %v", err)
+	}
+	if quit {
+		t.Fatal("OpenMenu invoked QuitAll after context cancellation")
 	}
 }
 

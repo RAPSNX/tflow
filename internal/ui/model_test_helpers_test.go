@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"testing"
@@ -18,7 +19,7 @@ type fakeTmuxController struct {
 	currentPaneDir      func() (string, error)
 	setSessionTemporary func(name string, temporary bool, instanceID string) error
 	setSessionLabel     func(name, label string) error
-	attachCommand       func(name string) (*exec.Cmd, error)
+	attachCommand       func(ctx context.Context, name string) (*exec.Cmd, error)
 	killSession         func(name string) error
 	switchClient        func(name string) error
 	ensureControlMode   func(binaryPath string) error
@@ -89,11 +90,11 @@ func (f fakeTmuxController) SetSessionLabel(name, label string) error {
 	return nil
 }
 
-func (f fakeTmuxController) AttachCommand(name string) (*exec.Cmd, error) {
+func (f fakeTmuxController) AttachCommand(ctx context.Context, name string) (*exec.Cmd, error) {
 	if f.attachCommand != nil {
-		return f.attachCommand(name)
+		return f.attachCommand(ctx, name)
 	}
-	return exec.Command("sh", "-lc", ":"), nil
+	return exec.CommandContext(ctx, "sh", "-lc", ":"), nil
 }
 
 func (f fakeTmuxController) KillSession(name string) error {

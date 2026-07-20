@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -108,8 +109,8 @@ func TestStartWithManagerCleansUpInstanceVolatileSessionsAfterAttach(t *testing.
 		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
 			return nil
 		},
-		attachCommand: func(name string) (*exec.Cmd, error) {
-			return exec.Command("sh", "-c", ":"), nil
+		attachCommand: func(ctx context.Context, name string) (*exec.Cmd, error) {
+			return exec.CommandContext(ctx, "sh", "-c", ":"), nil
 		},
 		cleanupVolatile: func(instanceID string) error {
 			cleaned = append(cleaned, instanceID)
@@ -117,7 +118,7 @@ func TestStartWithManagerCleansUpInstanceVolatileSessionsAfterAttach(t *testing.
 		},
 	}
 
-	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-2"); err != nil {
+	if err := startWithManager(context.Background(), manager, "/tmp/tflow", "/tmp/project", "instance-2"); err != nil {
 		t.Fatalf("startWithManager returned error: %v", err)
 	}
 	if got, want := fmt.Sprint(cleaned), fmt.Sprint([]string{"instance-2"}); got != want {

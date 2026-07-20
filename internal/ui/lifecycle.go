@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -10,16 +11,16 @@ import (
 	runtmux "tflow/internal/tmux"
 )
 
-func Start() error {
+func Start(ctx context.Context) error {
 	cwd := defaultSessionDir()
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	return startWithManager(newSessionManager(), exe, cwd, newInstanceID())
+	return startWithManager(ctx, newSessionManager(), exe, cwd, newInstanceID())
 }
 
-func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string) error {
+func startWithManager(ctx context.Context, manager tmuxController, binaryPath, cwd, instanceID string) (result error) {
 	if err := os.Setenv(menuInstanceEnv, instanceID); err != nil {
 		return err
 	}
@@ -27,27 +28,36 @@ func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if cleanupErr := manager.CleanupVolatileSessions(instanceID); cleanupErr != nil && result == nil {
+			result = cleanupErr
+		}
+	}()
 
-	cmd, err := manager.AttachCommand(sessionName)
+	cmd, err := manager.AttachCommand(ctx, sessionName)
 	if err != nil {
-		// Preserve the attach error; volatile cleanup is deliberately best effort.
-		_ = manager.CleanupVolatileSessions(instanceID)
 		return err
 	}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	runErr := cmd.Run()
-	cleanupErr := manager.CleanupVolatileSessions(instanceID)
-	if runErr != nil {
-		// Preserve the client error; volatile cleanup is deliberately best effort.
-		return runErr
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+		return err
 	}
-	return cleanupErr
+	return nil
 }
 
-func OpenMenu() error {
-	menu, err := buildModel(newSessionManager(), os.Getenv(menuCurrentEnv))
+func OpenMenu(ctx context.Context) error {
+	return openMenu(ctx, newSessionManager(), runMenuProgram)
+}
+
+type menuProgramRunner func(context.Context, tea.Model) (tea.Model, error)
+
+func openMenu(ctx context.Context, manager tmuxController, runProgram menuProgramRunner) error {
+	menu, err := buildModel(manager, os.Getenv(menuCurrentEnv))
 	if err != nil {
 		return err
 	}
@@ -55,11 +65,18 @@ func OpenMenu() error {
 		menu.mode = inputConfirmQuit
 		menu.status = "Confirm shutdown of this tflow instance."
 	}
-	finalModel, err := tea.NewProgram(menu, tea.WithAltScreen()).Run()
+	finalModel, err := runProgram(ctx, menu)
+	if ctx.Err() != nil {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	return runMenuExitAction(newSessionManager(), finalModel)
+	return runMenuExitAction(manager, finalModel)
+}
+
+func runMenuProgram(ctx context.Context, menu tea.Model) (tea.Model, error) {
+	return tea.NewProgram(menu, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
 }
 
 func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) (string, error) {
