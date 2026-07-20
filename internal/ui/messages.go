@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	runtmux "tflow/internal/tmux"
 )
 
 func (m model) finishSessionCreationFollowUpError(err error) (tea.Model, tea.Cmd) {
@@ -247,9 +249,15 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncSelection()
 		// Only the renamed project's own sessions carry its name in their
 		// tmux project marker; every other project's sessions are
-		// unaffected and must not be rewritten.
+		// unaffected and must not be rewritten. A session may have been
+		// killed in tmux outside tflow after the sidebar loaded; skip it
+		// and keep updating the rest instead of treating a vanished
+		// session as a hard failure.
 		for _, s := range m.projectSessions(msg.newName) {
 			if err := m.tmux.SetSessionProject(s.Name, msg.newName); err != nil {
+				if runtmux.IsNoSession(err) || runtmux.IsNoServer(err) {
+					continue
+				}
 				m.err = err
 				m.status = err.Error()
 				return m, nil

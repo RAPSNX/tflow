@@ -120,7 +120,7 @@ func (Manager) AttachCommand(name string) (*exec.Cmd, error) {
 
 func (m Manager) KillSession(name string) error {
 	_, err := m.runner()("kill-session", "-t", name)
-	if err != nil && (isNoSession(err) || IsNoServer(err)) {
+	if err != nil && (IsNoSession(err) || IsNoServer(err)) {
 		return nil
 	}
 	return err

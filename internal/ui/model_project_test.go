@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -110,6 +111,51 @@ func TestRenamingProjectWritesMarkersOnlyForItsOwnSessions(t *testing.T) {
 	want := []string{"tflow-p-1=garage", "tflow-p-2=garage"}
 	if fmt.Sprint(projectWrites) != fmt.Sprint(want) {
 		t.Fatalf("project marker writes = %#v, want only the renamed project's sessions: %#v", projectWrites, want)
+	}
+}
+
+// TestRenamingProjectSkipsVanishedSessions proves that if a session from the
+// renamed project was killed in tmux outside tflow after the sidebar loaded,
+// the resulting "can't find session" error from SetSessionProject is
+// tolerated: the vanished session is skipped and the remaining sessions in
+// the same project still get their marker updated, instead of the loop
+// stopping early and surfacing a spurious failure.
+func TestRenamingProjectSkipsVanishedSessions(t *testing.T) {
+	tmp := t.TempDir()
+	var projectWrites []string
+	m := newModel(fakeTmuxController{
+		setSessionProject: func(name, project string) error {
+			if name == "tflow-p-1" {
+				return errors.New("can't find session: tflow-p-1")
+			}
+			projectWrites = append(projectWrites, name+"="+project)
+			return nil
+		},
+	}, "").(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{"small", "garden"}
+	m.projectConfigs = map[string]projectConfig{
+		"small":  {Name: "small", Workdir: "/small"},
+		"garden": {Name: "garden", Workdir: "/garden"},
+	}
+	m.sessions = []session{{Name: "tflow-p-1"}, {Name: "tflow-p-2"}, {Name: "tflow-p-9"}}
+	m.sessionProjects = map[string]string{"tflow-p-1": "small", "tflow-p-2": "small", "tflow-p-9": "garden"}
+	m.sessionLabels = map[string]string{"tflow-p-1": "otter", "tflow-p-2": "fox", "tflow-p-9": "bee"}
+	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-1", "tflow-p-2"}, "garden": {"tflow-p-9"}}
+	m.selectedProject = "small"
+
+	updated, cmd := m.Update(projectRenamedMsg{oldName: "small", newName: "garage"})
+	if cmd == nil {
+		t.Fatal("expected close command")
+	}
+	got := updated.(model)
+	if got.err != nil {
+		t.Fatalf("project rename reported error for an already-vanished session: %v", got.err)
+	}
+
+	want := []string{"tflow-p-2=garage"}
+	if fmt.Sprint(projectWrites) != fmt.Sprint(want) {
+		t.Fatalf("project marker writes = %#v, want the vanished session skipped and the rest written: %#v", projectWrites, want)
 	}
 }
 
