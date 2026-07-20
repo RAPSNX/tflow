@@ -37,6 +37,45 @@ func TestSwitchClientUsesExplicitClientWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestSwitchClientRetriesAfterStaleClientError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) > 1 && args[1] == "-c" {
+			return "", fmt.Errorf("can't find client /dev/pts/4")
+		}
+		return "", nil
+	}}
+
+	if err := manager.SwitchClient("otter-temp"); err != nil {
+		t.Fatalf("SwitchClient returned error: %v", err)
+	}
+	wantCalls := [][]string{
+		{"switch-client", "-c", "/dev/pts/4", "-t", "otter-temp"},
+		{"switch-client", "-t", "otter-temp"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
+	}
+	for i, want := range wantCalls {
+		if strings.Join(calls[i], "\x00") != strings.Join(want, "\x00") {
+			t.Fatalf("calls[%d] = %#v, want %v", i, calls[i], want)
+		}
+	}
+}
+
+func TestSwitchClientReturnsErrorWhenRetryAlsoFails(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	manager := Manager{Run: func(args ...string) (string, error) {
+		return "", fmt.Errorf("no current client")
+	}}
+
+	if err := manager.SwitchClient("otter-temp"); err == nil {
+		t.Fatal("SwitchClient returned nil error, want stale client failure")
+	}
+}
+
 func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
 	var calls [][]string
 	manager := Manager{
@@ -300,6 +339,34 @@ func TestDisplayMessageTargetsCurrentClient(t *testing.T) {
 	want := []string{"display-message", "-c", "/dev/pts/4", "create failed"}
 	if len(calls) != 1 || strings.Join(calls[0], "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("calls = %#v, want %v", calls, want)
+	}
+}
+
+func TestDisplayMessageRetriesAfterStaleClientError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) > 1 && args[1] == "-c" {
+			return "", fmt.Errorf("can't find client /dev/pts/4")
+		}
+		return "", nil
+	}}
+
+	if err := manager.DisplayMessage("create failed"); err != nil {
+		t.Fatalf("DisplayMessage returned error: %v", err)
+	}
+	wantCalls := [][]string{
+		{"display-message", "-c", "/dev/pts/4", "create failed"},
+		{"display-message", "create failed"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
+	}
+	for i, want := range wantCalls {
+		if strings.Join(calls[i], "\x00") != strings.Join(want, "\x00") {
+			t.Fatalf("calls[%d] = %#v, want %v", i, calls[i], want)
+		}
 	}
 }
 

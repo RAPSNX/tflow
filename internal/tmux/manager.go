@@ -130,12 +130,23 @@ func (m Manager) KillSession(name string) error {
 
 func (m Manager) SwitchClient(name string) error {
 	args := []string{"switch-client"}
-	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
+	clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv))
+	hasClient := clientID != ""
+	if hasClient {
 		args = append(args, "-c", clientID)
 	}
 	args = append(args, "-t", name)
-	_, err := m.runner()(args...)
-	return err
+	if _, err := m.runner()(args...); err != nil {
+		if !hasClient {
+			return err
+		}
+		// TFLOW_CURRENT_CLIENT can outlive the tmux client it named, e.g. a create-worker inherits it from a
+		// popup whose client was already recreated. Retry without the stale target so tmux resolves the live
+		// client itself instead of leaving the newly created session un-focused.
+		_, err = m.runner()("switch-client", "-t", name)
+		return err
+	}
+	return nil
 }
 
 func (m Manager) SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error {
@@ -204,12 +215,21 @@ func (m Manager) RunBackground(command string) error {
 }
 func (m Manager) DisplayMessage(message string) error {
 	args := []string{"display-message"}
-	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
+	clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv))
+	hasClient := clientID != ""
+	if hasClient {
 		args = append(args, "-c", clientID)
 	}
 	args = append(args, message)
-	_, err := m.runner()(args...)
-	return err
+	if _, err := m.runner()(args...); err != nil {
+		if !hasClient {
+			return err
+		}
+		// Same stale-client fallback as SwitchClient: don't let a gone client swallow the error report.
+		_, err = m.runner()("display-message", message)
+		return err
+	}
+	return nil
 }
 
 func (m Manager) CurrentPaneDir() (string, error) {
