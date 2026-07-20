@@ -295,6 +295,49 @@ func TestCurrentPaneDirTargetsCurrentClient(t *testing.T) {
 	}
 }
 
+func TestCurrentPaneDirRetriesAfterStaleClientError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) > 2 && args[2] == "-c" {
+			return "", fmt.Errorf("can't find client /dev/pts/4")
+		}
+		return "/workspace/project\n", nil
+	}}
+
+	dir, err := manager.CurrentPaneDir()
+	if err != nil {
+		t.Fatalf("CurrentPaneDir returned error: %v", err)
+	}
+	if dir != "/workspace/project" {
+		t.Fatalf("directory = %q", dir)
+	}
+	wantCalls := [][]string{
+		{"display-message", "-p", "-c", "/dev/pts/4", "#{pane_current_path}"},
+		{"display-message", "-p", "#{pane_current_path}"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
+	}
+	for i, want := range wantCalls {
+		if strings.Join(calls[i], "\x00") != strings.Join(want, "\x00") {
+			t.Fatalf("calls[%d] = %#v, want %v", i, calls[i], want)
+		}
+	}
+}
+
+func TestCurrentPaneDirReturnsErrorWhenRetryAlsoFails(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	manager := Manager{Run: func(args ...string) (string, error) {
+		return "", fmt.Errorf("no current client")
+	}}
+
+	if _, err := manager.CurrentPaneDir(); err == nil {
+		t.Fatal("CurrentPaneDir returned nil error, want stale client failure")
+	}
+}
+
 func TestCreateSessionReturnsDuplicateSessionError(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {

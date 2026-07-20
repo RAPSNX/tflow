@@ -212,20 +212,23 @@ func (m Manager) DisplayMessage(message string) error {
 
 func (m Manager) CurrentPaneDir() (string, error) {
 	args := []string{"display-message", "-p"}
-	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
+	clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv))
+	hasClient := clientID != ""
+	if hasClient {
 		args = append(args, "-c", clientID)
 	}
 	args = append(args, "#{pane_current_path}")
 	out, err := m.runner()(args...)
-	if err != nil {
+	if err == nil {
+		if dir := strings.TrimSpace(out); dir != "" {
+			return dir, nil
+		}
+	} else if !hasClient {
 		return "", err
 	}
-	if dir := strings.TrimSpace(out); dir != "" {
-		return dir, nil
-	}
 	// A popup can retain a stale client identifier after the tmux client that opened it has been recreated.
-	// Retry without the stale target when tmux returns an empty path.
-	if len(args) > 3 {
+	// Retry without the stale target when tmux fails to resolve that client or returns an empty path.
+	if hasClient {
 		out, err = m.runner()("display-message", "-p", "#{pane_current_path}")
 		if err != nil {
 			return "", err
