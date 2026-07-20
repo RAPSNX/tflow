@@ -152,13 +152,13 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P1: Installation and verification
 
-* [ ] Use module path `github.com/rapsnx/tflow`.
-* [ ] Move the executable entry point from `cmd/main.go` to `cmd/tflow/main.go`.
+* [x] Use module path `github.com/rapsnx/tflow`.
+* [x] Move the executable entry point from `cmd/main.go` to `cmd/tflow/main.go`.
 * [ ] Verify `go install github.com/rapsnx/tflow/cmd/tflow@latest`.
-* [ ] Verify `nix build --no-link .#tflow`.
-* [ ] Ensure the Nix package installs `bin/tflow`.
-* [ ] Add CI for formatting, `go vet`, and `go test ./...`.
-* [ ] Update README installation documentation after the module and entry-point work is complete.
+* [x] Verify `nix build --no-link .#tflow`.
+* [x] Ensure the Nix package installs `bin/tflow`.
+* [x] Add CI for formatting, `go vet`, and `go test ./...`.
+* [x] Update README installation documentation after the module and entry-point work is complete.
 * [x] Align README keybinding and persistence documentation with the implemented behavior.
 
 ## Remove obsolete implementation

@@ -65,7 +65,7 @@ Persistent sessions belong to a project and survive terminal exit.
 ## Install
 
 ```sh
-go install github.com/rapsnx/tflow@latest
+go install github.com/rapsnx/tflow/cmd/tflow@latest
 ```
 
 ## Run

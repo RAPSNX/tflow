@@ -1,4 +1,4 @@
-module tflow
+module github.com/rapsnx/tflow
 
 go 1.25.0
 

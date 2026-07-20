@@ -4,7 +4,7 @@ import (
 	"os"
 	"os/exec"
 
-	runtmux "tflow/internal/tmux"
+	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
 
 const (

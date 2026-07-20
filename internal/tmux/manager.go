@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"tflow/internal/store"
+	"github.com/rapsnx/tflow/internal/store"
 )
 
 func (m Manager) ListSessions() ([]Session, error) {

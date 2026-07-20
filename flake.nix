@@ -24,10 +24,7 @@
           version = "0.1.0";
           src = self;
           vendorHash = "sha256-UORW9eGwCwt/rakuC10j3PEFCmlobyJk09jSIqVHZo8=";
-          subPackages = [ "cmd" ];
-          postInstall = ''
-            mv "$out/bin/cmd" "$out/bin/tflow"
-          '';
+          subPackages = [ "cmd/tflow" ];
         };
         homeManagerEvaluation = home-manager.lib.homeManagerConfiguration {
           inherit pkgs;

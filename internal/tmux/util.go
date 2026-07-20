@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"tflow/internal/store"
+	"github.com/rapsnx/tflow/internal/store"
 )
 
 var tempSessionAnimals = []string{

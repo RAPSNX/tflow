@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	runtmux "tflow/internal/tmux"
+	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
 
 func Start() error {
