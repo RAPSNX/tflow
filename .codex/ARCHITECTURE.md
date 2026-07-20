@@ -24,7 +24,7 @@ An instance ID is scoped to its attached tmux client and passed explicitly to th
 
 Managed panes use tmux `remain-on-exit`. tflow does not automatically respawn exited shells or switch the client to another session.
 
-Before executing an explicit sidebar-initiated switch, tflow determines whether every pane in the outgoing session has exited. If the target switch succeeds and every outgoing pane was exited, tflow removes only that outgoing session. This applies to direct session selection and project selection, which switches to the selected project's first session. Sessions with one or more live panes remain intact. tflow does not monitor for exited panes or remove sessions outside an explicit sidebar switch.
+Before executing an explicit sidebar-initiated switch, tflow determines whether every pane in the outgoing session has exited. If the target switch succeeds, the outgoing session differs from the switch target, and every outgoing pane was exited, tflow removes only that outgoing session. This applies to direct session selection and project selection, which switches to the selected project's first session. Sessions with one or more live panes remain intact, and tflow never removes the session it just switched to, including when a switch resolves to the session that was already current. tflow does not monitor for exited panes or remove sessions outside an explicit sidebar switch.
 
 ## Session identity
 
