@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -293,6 +294,79 @@ func TestStartWithManagerCleansUpWhenContextIsCanceled(t *testing.T) {
 	}
 	if got, want := fmt.Sprint(cleaned), "[instance-1]"; got != want {
 		t.Fatalf("cleanup calls = %s, want %s", got, want)
+	}
+}
+
+func TestStartWithManagerReportsAttachErrorDespitePendingCancellation(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var cleaned []string
+	manager := fakeTmuxController{
+		attachCommand: func(ctx context.Context, name string) (*exec.Cmd, error) {
+			// A signal arrives (canceling the outer context) at roughly the
+			// same time the attach client independently fails for its own
+			// operational reason (e.g. the target session or tmux server
+			// disappeared). This command is deliberately not tied to ctx via
+			// exec.CommandContext, so its failure is its own, not one caused
+			// by the cancellation killing it.
+			cancel()
+			return exec.Command("sh", "-c", "exit 7"), nil
+		},
+		cleanupVolatile: func(instanceID string) error {
+			cleaned = append(cleaned, instanceID)
+			return nil
+		},
+	}
+
+	err := startWithManager(ctx, manager, "/tmp/tflow", "/tmp/project", "instance-1")
+	if err == nil {
+		t.Fatal("startWithManager returned nil error, want the real attach failure reported")
+	}
+	if ctx.Err() == nil {
+		t.Fatal("test setup invalid: context was not canceled")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 {
+		t.Fatalf("startWithManager error = %v, want the real exit status 7 from the attach command", err)
+	}
+	if got, want := fmt.Sprint(cleaned), "[instance-1]"; got != want {
+		t.Fatalf("cleanup calls = %s, want %s", got, want)
+	}
+}
+
+func TestIsCancellationInducedAttachFailure(t *testing.T) {
+	runExit := func(t *testing.T, code int) error {
+		t.Helper()
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("exit %d", code))
+		return cmd.Run()
+	}
+	runKilled := func(t *testing.T) error {
+		t.Helper()
+		ctx, cancel := context.WithCancel(context.Background())
+		cmd := exec.CommandContext(ctx, "sh", "-c", "exec sleep 30")
+		if err := cmd.Start(); err != nil {
+			t.Fatalf("failed to start process: %v", err)
+		}
+		cancel()
+		return cmd.Wait()
+	}
+
+	if err := runExit(t, 7); !errors.As(err, new(*exec.ExitError)) {
+		t.Fatalf("setup: expected *exec.ExitError, got %v (%T)", err, err)
+	} else if isCancellationInducedAttachFailure(err) {
+		t.Fatal("a process that exited on its own with a real error must not be treated as cancellation-induced")
+	}
+
+	if err := runKilled(t); err == nil {
+		t.Fatal("setup: expected an error from killing the process")
+	} else if !isCancellationInducedAttachFailure(err) {
+		t.Fatalf("a process killed by context cancellation must be treated as cancellation-induced, got %v", err)
+	}
+
+	if !isCancellationInducedAttachFailure(context.Canceled) {
+		t.Fatal("a bare context.Canceled error must be treated as cancellation-induced")
 	}
 }
 

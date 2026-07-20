@@ -2,8 +2,10 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -42,12 +44,39 @@ func startWithManager(ctx context.Context, manager tmuxController, binaryPath, c
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil && isCancellationInducedAttachFailure(err) {
 			return nil
 		}
 		return err
 	}
 	return nil
+}
+
+// isCancellationInducedAttachFailure reports whether err is the kind of
+// failure exec.CommandContext produces when it kills the attach process
+// because the context was canceled, as opposed to the attach process
+// failing on its own for an unrelated, operational reason (for example the
+// target tmux session or server disappearing). Only the former should be
+// swallowed as part of graceful signal shutdown; per the architecture,
+// signal-driven cleanup must never replace another operation's real error.
+func isCancellationInducedAttachFailure(err error) bool {
+	// exec.CommandContext returns the bare context error (rather than an
+	// *exec.ExitError) when the context was already done before the
+	// process could even be started.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	// Once the process is running, canceling the context kills it via a
+	// signal. That surfaces as an *exec.ExitError whose ProcessState shows
+	// the process was terminated by a signal rather than exiting on its
+	// own. A process that exits on its own (even with a nonzero status)
+	// reports ProcessState.Exited() == true and represents a genuine
+	// attach failure that must still be reported.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && !exitErr.ProcessState.Exited() {
+		return true
+	}
+	return false
 }
 
 func OpenMenu(ctx context.Context) error {
