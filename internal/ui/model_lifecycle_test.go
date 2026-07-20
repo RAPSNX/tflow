@@ -304,6 +304,36 @@ func TestStartWithManagerCleansUpWhenAttachCommandFails(t *testing.T) {
 	}
 }
 
+func TestStartWithManagerEmitsDiagnosticWhenCleanupFailsAfterClientError(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	manager := fakeTmuxController{
+		listSessions:        func() ([]session, error) { return nil, nil },
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error { return nil },
+		attachCommand: func(name string) (*exec.Cmd, error) {
+			return exec.Command("sh", "-c", "exit 1"), nil
+		},
+		cleanupVolatile: func(instanceID string) error {
+			return fmt.Errorf("cleanup failed")
+		},
+	}
+
+	err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-1")
+	if err == nil {
+		t.Fatal("startWithManager returned nil error")
+	}
+	if strings.Contains(err.Error(), "cleanup failed") {
+		t.Fatalf("startWithManager error = %v, want the cleanup failure not to replace the client error", err)
+	}
+	if !strings.Contains(buf.String(), "clean up volatile sessions") {
+		t.Fatalf("diagnostic output = %q, want a cleanup-failure diagnostic", buf.String())
+	}
+}
+
 func TestHelpToggleDoesNotBlockShortcuts(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 	m.projects = []string{defaultProjectName}

@@ -44,6 +44,9 @@ func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string
 	cleanupErr := manager.CleanupVolatileSessions(instanceID)
 	if runErr != nil {
 		// Preserve the client error; volatile cleanup is deliberately best effort.
+		if cleanupErr != nil {
+			diag.Warnf("clean up volatile sessions for instance %q after client error: %v", instanceID, cleanupErr)
+		}
 		return runErr
 	}
 	return cleanupErr
