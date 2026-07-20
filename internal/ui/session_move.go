@@ -130,7 +130,20 @@ func (m model) applySessionMove(sessionName, targetProject string) (tea.Model, t
 		return m, nil
 	}
 
+	// Source the tmux label marker from the label the mutation actually
+	// observed on disk, not from this popup's pre-mutation model.
+	// mutateAppState/mutateAppStateLocked reload the latest on-disk state
+	// before applying store.MoveSession, and MoveSession is a pure project
+	// reassignment that preserves whatever label the moved session already
+	// has. If another tflow instance renamed this session between when this
+	// popup's model was built and now, that rename landed in the reloaded
+	// `state` first. Falling back to m.sessionLabel(sessionName) (the stale
+	// model) would write the old label back into tmux and clobber the
+	// concurrent rename until a future full sync.
 	label := m.sessionLabel(sessionName)
+	if moved, ok := stateSessions(state)[sessionName]; ok {
+		label = moved.label
+	}
 
 	// Reflect the persisted result into in-memory bookkeeping only now that
 	// the store mutation has succeeded.

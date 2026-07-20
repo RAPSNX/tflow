@@ -545,3 +545,83 @@ func TestSuccessfulSessionMoveDoesNotLoseConcurrentState(t *testing.T) {
 		t.Fatalf("tflow-p-9 label = %q, want concurrent relabel to survive the later save", gardenLabel)
 	}
 }
+
+// TestSuccessfulSessionMoveWritesReloadedLabelNotStaleModelLabel guards
+// against another instance of the same stale-model-vs-freshly-reloaded-store
+// race: store.MoveSession is a pure project reassignment that preserves
+// whatever label the moved session currently has on disk. If another tflow
+// instance renames the session being moved after this popup's model was
+// built but before Enter is pressed, the locked mutation reloads that new
+// label before applying the move. The tmux label marker write must use that
+// reloaded label, not m.sessionLabels (the popup's stale, pre-mutation
+// model), or it silently writes the old name back into tmux even though the
+// store now has the new one.
+func TestSuccessfulSessionMoveWritesReloadedLabelNotStaleModelLabel(t *testing.T) {
+	tmp := t.TempDir()
+	statePath := tmp + "/state.json"
+	seedMoveState(t, statePath,
+		storedProject{Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "otter"}}},
+		storedProject{Name: "garden", Sessions: []persistentSession{{ID: "tflow-p-9", Label: "bee"}}},
+	)
+
+	var labelWrites []string
+	m := newModel(fakeTmuxController{
+		setSessionLabel: func(name, label string) error {
+			labelWrites = append(labelWrites, fmt.Sprintf("%s=%s", name, label))
+			return nil
+		},
+	}, "").(model)
+	m.statePath = statePath
+	m.projects = []string{"small", "garden"}
+	m.sessions = []session{{Name: "tflow-p-1"}, {Name: "tflow-p-9"}}
+	m.sessionProjects = map[string]string{"tflow-p-1": "small", "tflow-p-9": "garden"}
+	// This model's own bookkeeping still has the pre-rename label: it was
+	// built before the concurrent rename below happened.
+	m.sessionLabels = map[string]string{"tflow-p-1": "otter", "tflow-p-9": "bee"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}, "garden": {Name: "garden"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-1"
+
+	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	pending := *(updated.(*model))
+
+	// Simulate a second tflow instance renaming the session being moved,
+	// after this popup opened but before Enter is pressed.
+	if _, err := mutateAppState(statePath, func(latest appState) (appState, error) {
+		for i := range latest.Projects {
+			if latest.Projects[i].Name != "small" {
+				continue
+			}
+			for j := range latest.Projects[i].Sessions {
+				if latest.Projects[i].Sessions[j].ID == "tflow-p-1" {
+					latest.Projects[i].Sessions[j].Label = "raccoon"
+				}
+			}
+		}
+		return latest, nil
+	}); err != nil {
+		t.Fatalf("simulate concurrent rename: %v", err)
+	}
+
+	updated, _ = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	got, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatalf("updated model = %T", updated)
+	}
+	if got.err != nil {
+		t.Fatalf("move reported error: %v", got.err)
+	}
+
+	if fmt.Sprint(labelWrites) != fmt.Sprint([]string{"tflow-p-1=raccoon"}) {
+		t.Fatalf("label marker writes = %#v, want the reloaded label raccoon, not the stale model label otter", labelWrites)
+	}
+
+	saved, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	garden, ok := storedProjectByName(saved, "garden")
+	if !ok || len(garden.Sessions) != 2 || garden.Sessions[1].ID != "tflow-p-1" || garden.Sessions[1].Label != "raccoon" {
+		t.Fatalf("persisted target project = %#v, want tflow-p-1 to keep its concurrently renamed label", garden)
+	}
+}
