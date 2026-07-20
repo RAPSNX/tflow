@@ -202,3 +202,14 @@ func storedSessionByID(state appState, id string) (persistentSession, bool) {
 	}
 	return persistentSession{}, false
 }
+
+// fixedAttachContext returns a context factory that always hands back the
+// given ctx, with a no-op stop. It stands in for startWithManager's real
+// signalContext factory in tests, letting a test control cancellation
+// timing directly (for example by canceling ctx from within a fake
+// AttachCommand) without going through actual OS signals.
+func fixedAttachContext(ctx context.Context) func() (context.Context, context.CancelFunc) {
+	return func() (context.Context, context.CancelFunc) {
+		return ctx, func() {}
+	}
+}

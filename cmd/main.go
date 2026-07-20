@@ -43,15 +43,19 @@ func run() error {
 			return fmt.Errorf("unknown command %q", args[0])
 		}
 	}
-	ctx, stop := signalContext()
-	defer stop()
-	return ui.Start(ctx)
+	return ui.Start()
 }
 
-// signalContext is installed only for the long-running runtime boundaries
-// (the attached tmux client and the Bubble Tea popup program) that observe
-// cancellation. Other subcommands are short-lived, non-cancellation-aware
-// child invocations; installing a signal handler for them would intercept
+// signalContext is installed only for the long-running Bubble Tea popup
+// program, which observes cancellation directly and does no blocking,
+// non-context-aware setup beforehand. The default (attach) path builds its
+// own signal-aware context internally, at the attach boundary, rather than
+// here: prepareStartup runs several synchronous, non-context-aware tmux
+// setup calls first, and installing a signal handler before those run would
+// disable the Go runtime's default terminate-on-signal behavior for the
+// whole process while nothing is watching that context yet. Other
+// subcommands are short-lived, non-cancellation-aware child invocations;
+// installing a signal handler for them would intercept
 // SIGHUP/SIGINT/SIGTERM without anything reacting to it, leaving them
 // unkillable by signal until they happen to finish on their own.
 func signalContext() (context.Context, context.CancelFunc) {

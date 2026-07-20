@@ -118,7 +118,7 @@ func TestStartWithManagerCleansUpInstanceVolatileSessionsAfterAttach(t *testing.
 		},
 	}
 
-	if err := startWithManager(context.Background(), manager, "/tmp/tflow", "/tmp/project", "instance-2"); err != nil {
+	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-2", fixedAttachContext(context.Background())); err != nil {
 		t.Fatalf("startWithManager returned error: %v", err)
 	}
 	if got, want := fmt.Sprint(cleaned), fmt.Sprint([]string{"instance-2"}); got != want {

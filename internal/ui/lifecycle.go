@@ -6,23 +6,34 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	runtmux "tflow/internal/tmux"
 )
 
-func Start(ctx context.Context) error {
+func Start() error {
 	cwd := defaultSessionDir()
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	return startWithManager(ctx, newSessionManager(), exe, cwd, newInstanceID())
+	return startWithManager(newSessionManager(), exe, cwd, newInstanceID(), signalContext)
 }
 
-func startWithManager(ctx context.Context, manager tmuxController, binaryPath, cwd, instanceID string) (result error) {
+// startWithManager runs startup, then attaches to the resulting session.
+// newAttachContext builds the context used for the attach boundary; it is
+// called only once startup has produced a session to attach to, not any
+// earlier. prepareStartup and the tmux setup calls it makes are
+// synchronous and not context-aware, so installing a signal-driven context
+// before they run would disable the Go runtime's default terminate-on-
+// signal behavior for the whole process while nothing is watching that
+// context yet -- a SIGTERM arriving while startup is stuck in one of those
+// calls would then be silently swallowed instead of terminating tflow.
+func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string, newAttachContext func() (context.Context, context.CancelFunc)) (result error) {
 	if err := os.Setenv(menuInstanceEnv, instanceID); err != nil {
 		return err
 	}
@@ -35,6 +46,11 @@ func startWithManager(ctx context.Context, manager tmuxController, binaryPath, c
 			result = cleanupErr
 		}
 	}()
+
+	// Signal interception begins here, at the attach boundary, not before
+	// prepareStartup.
+	ctx, stop := newAttachContext()
+	defer stop()
 
 	cmd, err := manager.AttachCommand(ctx, sessionName)
 	if err != nil {
@@ -50,6 +66,14 @@ func startWithManager(ctx context.Context, manager tmuxController, binaryPath, c
 		return err
 	}
 	return nil
+}
+
+// signalContext creates the runtime context canceled by SIGHUP, SIGINT, and
+// SIGTERM for the attached tmux client. See startWithManager for why this
+// is constructed lazily at the attach boundary rather than at process
+// startup.
+func signalContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
 }
 
 // isCancellationInducedAttachFailure reports whether err is the kind of

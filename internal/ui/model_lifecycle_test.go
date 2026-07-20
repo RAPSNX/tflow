@@ -264,11 +264,62 @@ func TestStartWithManagerCleansUpWhenAttachCommandFails(t *testing.T) {
 		},
 	}
 
-	if err := startWithManager(context.Background(), manager, "/tmp/tflow", "/tmp/project", "instance-1"); err == nil {
+	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-1", fixedAttachContext(context.Background())); err == nil {
 		t.Fatal("startWithManager returned nil error")
 	}
 	if got, want := fmt.Sprint(cleaned), "[instance-1]"; got != want {
 		t.Fatalf("cleanup calls = %s, want %s", got, want)
+	}
+}
+
+func TestStartWithManagerBuildsAttachContextOnlyAfterStartupSetup(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	var calls []string
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			calls = append(calls, "listSessions")
+			return nil, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			calls = append(calls, "setSessionTemporary")
+			return nil
+		},
+		setSessionLabel: func(name, label string) error {
+			calls = append(calls, "setSessionLabel")
+			return nil
+		},
+		ensureControlMode: func(binaryPath string) error {
+			calls = append(calls, "ensureControlMode")
+			return nil
+		},
+		attachCommand: func(ctx context.Context, name string) (*exec.Cmd, error) {
+			calls = append(calls, "attachCommand")
+			return exec.CommandContext(ctx, "sh", "-c", ":"), nil
+		},
+		cleanupVolatile: func(instanceID string) error {
+			return nil
+		},
+	}
+	newAttachContext := func() (context.Context, context.CancelFunc) {
+		calls = append(calls, "newAttachContext")
+		return context.Background(), func() {}
+	}
+
+	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-1", newAttachContext); err != nil {
+		t.Fatalf("startWithManager returned error: %v", err)
+	}
+
+	want := []string{
+		"listSessions",
+		"setSessionTemporary",
+		"setSessionLabel",
+		"ensureControlMode",
+		"newAttachContext",
+		"attachCommand",
+	}
+	if got := fmt.Sprint(calls); got != fmt.Sprint(want) {
+		t.Fatalf("call order = %s, want %s (the signal-aware context must not be built until every non-context-aware startup call has completed)", got, want)
 	}
 }
 
@@ -289,7 +340,7 @@ func TestStartWithManagerCleansUpWhenContextIsCanceled(t *testing.T) {
 		},
 	}
 
-	if err := startWithManager(ctx, manager, "/tmp/tflow", "/tmp/project", "instance-1"); err != nil {
+	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-1", fixedAttachContext(ctx)); err != nil {
 		t.Fatalf("startWithManager returned error: %v", err)
 	}
 	if got, want := fmt.Sprint(cleaned), "[instance-1]"; got != want {
@@ -320,7 +371,7 @@ func TestStartWithManagerReportsAttachErrorDespitePendingCancellation(t *testing
 		},
 	}
 
-	err := startWithManager(ctx, manager, "/tmp/tflow", "/tmp/project", "instance-1")
+	err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-1", fixedAttachContext(ctx))
 	if err == nil {
 		t.Fatal("startWithManager returned nil error, want the real attach failure reported")
 	}
