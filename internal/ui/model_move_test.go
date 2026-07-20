@@ -438,3 +438,110 @@ func TestSuccessfulSessionMoveClosesSidebar(t *testing.T) {
 		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
 }
+
+// TestSuccessfulSessionMoveDoesNotLoseConcurrentState guards against a
+// three-way merge data-loss race. mutateAppState reloads the latest on-disk
+// state before applying MoveSession, so the state returned to
+// applySessionMove can include a project or label change written by another
+// tflow instance since this popup's model was built. applySessionMove only
+// folds the moved session into m.projects/m.sessionProjects/m.sessionLabels;
+// if it anchored stateBase to that broader returned state instead of to its
+// own tracked view, a later unrelated saveState from this sidebar would see
+// the concurrent entries as present in base but missing from desired and
+// delete or revert them (mergeAppStates in helpers.go treats that shape as
+// an intentional deletion).
+func TestSuccessfulSessionMoveDoesNotLoseConcurrentState(t *testing.T) {
+	tmp := t.TempDir()
+	statePath := tmp + "/state.json"
+	seedMoveState(t, statePath,
+		storedProject{Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "otter"}}},
+		storedProject{Name: "garden", Sessions: []persistentSession{{ID: "tflow-p-9", Label: "bee"}}},
+	)
+
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.statePath = statePath
+	m.projects = []string{"small", "garden"}
+	m.sessions = []session{{Name: "tflow-p-1"}, {Name: "tflow-p-9"}}
+	m.sessionProjects = map[string]string{"tflow-p-1": "small", "tflow-p-9": "garden"}
+	m.sessionLabels = map[string]string{"tflow-p-1": "otter", "tflow-p-9": "bee"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}, "garden": {Name: "garden"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-1"
+	// Anchor stateBase to what this model actually observed for statePath,
+	// mirroring buildModel, so the concurrent write below is only visible
+	// through the mutation's own "latest" reload, never through this
+	// model's tracked base.
+	initial, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.stateBase = initial
+	m.stateBasePath = statePath
+
+	// Simulate a second tflow instance writing to the shared store after
+	// this popup opened: it adds a brand-new project with its own session
+	// and relabels an existing, unrelated session this model already knows
+	// about.
+	if _, err := mutateAppState(statePath, func(latest appState) (appState, error) {
+		latest.Projects = append(latest.Projects, storedProject{
+			Name:     "concurrent",
+			Sessions: []persistentSession{{ID: "tflow-p-99", Label: "otter99"}},
+		})
+		for i := range latest.Projects {
+			if latest.Projects[i].Name != "garden" {
+				continue
+			}
+			for j := range latest.Projects[i].Sessions {
+				if latest.Projects[i].Sessions[j].ID == "tflow-p-9" {
+					latest.Projects[i].Sessions[j].Label = "wasp"
+				}
+			}
+		}
+		return latest, nil
+	}); err != nil {
+		t.Fatalf("simulate concurrent write: %v", err)
+	}
+
+	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	pending := *(updated.(*model))
+
+	updated, _ = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	got, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatalf("updated model = %T", updated)
+	}
+	if got.err != nil {
+		t.Fatalf("move reported error: %v", got.err)
+	}
+
+	// A later, unrelated save from this same sidebar (e.g. a subsequent
+	// rename) must not delete or revert the concurrent instance's writes.
+	if err := got.saveState(); err != nil {
+		t.Fatalf("saveState after move: %v", err)
+	}
+
+	saved, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	concurrent, ok := storedProjectByName(saved, "concurrent")
+	if !ok {
+		t.Fatal("concurrent project was deleted by a later save after a successful move")
+	}
+	if len(concurrent.Sessions) != 1 || concurrent.Sessions[0].ID != "tflow-p-99" || concurrent.Sessions[0].Label != "otter99" {
+		t.Fatalf("concurrent project sessions = %#v, want unchanged tflow-p-99=otter99", concurrent.Sessions)
+	}
+	garden, ok := storedProjectByName(saved, "garden")
+	if !ok {
+		t.Fatal("garden project missing after move and save")
+	}
+	var gardenLabel string
+	for _, s := range garden.Sessions {
+		if s.ID == "tflow-p-9" {
+			gardenLabel = s.Label
+		}
+	}
+	if gardenLabel != "wasp" {
+		t.Fatalf("tflow-p-9 label = %q, want concurrent relabel to survive the later save", gardenLabel)
+	}
+}
