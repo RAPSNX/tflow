@@ -13,19 +13,18 @@ import (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
-	defer stop()
-
-	if err := run(ctx); err != nil {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(ctx context.Context) error {
+func run() error {
 	args := os.Args[1:]
 	if len(args) > 0 {
 		switch args[0] {
 		case "menu":
+			ctx, stop := signalContext()
+			defer stop()
 			return ui.OpenMenu(ctx)
 		case "open-quit":
 			return ui.OpenQuit()
@@ -44,5 +43,17 @@ func run(ctx context.Context) error {
 			return fmt.Errorf("unknown command %q", args[0])
 		}
 	}
+	ctx, stop := signalContext()
+	defer stop()
 	return ui.Start(ctx)
+}
+
+// signalContext is installed only for the long-running runtime boundaries
+// (the attached tmux client and the Bubble Tea popup program) that observe
+// cancellation. Other subcommands are short-lived, non-cancellation-aware
+// child invocations; installing a signal handler for them would intercept
+// SIGHUP/SIGINT/SIGTERM without anything reacting to it, leaving them
+// unkillable by signal until they happen to finish on their own.
+func signalContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
 }
