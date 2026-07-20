@@ -130,8 +130,15 @@ func TestMoveSessionMovesBetweenProjectsAndWritesOnlyItsMarkers(t *testing.T) {
 	}
 
 	updated, cmd = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd != nil {
-		t.Fatal("move is applied synchronously and should not return a command")
+	if cmd == nil {
+		t.Fatal("expected close command after a successful move")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("close returned error: %v", msg.err)
+	}
+	if msg.switchSession != "" {
+		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
 	got, ok := unwrapMenuModel(updated)
 	if !ok {
@@ -140,6 +147,9 @@ func TestMoveSessionMovesBetweenProjectsAndWritesOnlyItsMarkers(t *testing.T) {
 
 	if got.err != nil {
 		t.Fatalf("move reported error: %v (status %q)", got.err, got.status)
+	}
+	if got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone after a successful move", got.mode)
 	}
 	if got.sessionProjects["tflow-p-1"] != "garden" {
 		t.Fatalf("sessionProjects[tflow-p-1] = %q, want garden", got.sessionProjects["tflow-p-1"])
@@ -374,5 +384,57 @@ func TestEscCancelsSessionMoveWithoutMutatingState(t *testing.T) {
 	small, ok := storedProjectByName(saved, "small")
 	if !ok || len(small.Sessions) != 1 {
 		t.Fatalf("persisted source project changed after cancelled move: %#v", small)
+	}
+}
+
+// TestSuccessfulSessionMoveClosesSidebar guards against the successful-move
+// path returning nil instead of the shared close command. Per
+// .codex/ARCHITECTURE.md, successful sidebar actions close the popup and
+// return focus to the active terminal, matching every other successful
+// mutation (session creation, rename, deletion).
+func TestSuccessfulSessionMoveClosesSidebar(t *testing.T) {
+	tmp := t.TempDir()
+	statePath := tmp + "/state.json"
+	seedMoveState(t, statePath,
+		storedProject{Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "otter"}}},
+		storedProject{Name: "garden", Sessions: []persistentSession{{ID: "tflow-p-9", Label: "bee"}}},
+	)
+
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.statePath = statePath
+	m.projects = []string{"small", "garden"}
+	m.sessions = []session{{Name: "tflow-p-1"}, {Name: "tflow-p-9"}}
+	m.sessionProjects = map[string]string{"tflow-p-1": "small", "tflow-p-9": "garden"}
+	m.sessionLabels = map[string]string{"tflow-p-1": "otter", "tflow-p-9": "bee"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}, "garden": {Name: "garden"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-1"
+
+	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	pending := *(updated.(*model))
+
+	updated, cmd := pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	got, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatalf("updated model = %T", updated)
+	}
+	if got.err != nil {
+		t.Fatalf("move reported error: %v", got.err)
+	}
+	if got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone after a successful move", got.mode)
+	}
+	if cmd == nil {
+		t.Fatal("expected close command after a successful move, got nil (popup would stay open)")
+	}
+	msg, ok := cmd().(menuActionMsg)
+	if !ok {
+		t.Fatalf("cmd() = %T, want menuActionMsg", cmd())
+	}
+	if msg.err != nil {
+		t.Fatalf("close returned error: %v", msg.err)
+	}
+	if msg.switchSession != "" {
+		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
 }

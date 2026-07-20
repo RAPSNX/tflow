@@ -172,5 +172,5 @@ func (m model) applySessionMove(sessionName, targetProject string) (tea.Model, t
 	}
 	m.err = nil
 	m.status = fmt.Sprintf("Moved %s to %s.", label, targetProject)
-	return m, nil
+	return m, m.closeMenuCmd()
 }
