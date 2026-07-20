@@ -223,5 +223,16 @@ func (m Manager) CurrentPaneDir() (string, error) {
 	if dir := strings.TrimSpace(out); dir != "" {
 		return dir, nil
 	}
+	// A popup can retain a stale client identifier after the tmux client that opened it has been recreated.
+	// Retry without the stale target when tmux returns an empty path.
+	if len(args) > 3 {
+		out, err = m.runner()("display-message", "-p", "#{pane_current_path}")
+		if err != nil {
+			return "", err
+		}
+		if dir := strings.TrimSpace(out); dir != "" {
+			return dir, nil
+		}
+	}
 	return "", fmt.Errorf("active pane directory is empty")
 }

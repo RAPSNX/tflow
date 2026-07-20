@@ -152,3 +152,19 @@ func TestNewInstanceIDWithEntropyDiffersWithinSameTick(t *testing.T) {
 		t.Fatalf("same-tick instance ids matched: %q", first)
 	}
 }
+
+func TestSessionsLoadedRecoversAttachedVolatileSessionWhenCurrentContextIsStale(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "stale-session").(model)
+	m.instanceID = "instance-1"
+	m.projects = []string{"old-project"}
+	m.sessions = []session{{Name: "stale-session", Temporary: true, Instance: "instance-1"}}
+
+	updated, _ := m.Update(sessionsLoadedMsg{sessions: []session{{Name: "tflow-v-instance-1-live", Temporary: true, Instance: "instance-1", Attached: true}}})
+	got := updated.(model)
+	if got.currentSession != "tflow-v-instance-1-live" {
+		t.Fatalf("currentSession = %q, want attached volatile session", got.currentSession)
+	}
+	if sessions := got.contextSessions(); len(sessions) != 1 || sessions[0].Name != got.currentSession {
+		t.Fatalf("context sessions = %#v, want recovered live session", sessions)
+	}
+}
