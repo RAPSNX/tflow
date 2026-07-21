@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -412,6 +413,77 @@ func TestStartWithManagerCleansUpWhenContextIsCanceled(t *testing.T) {
 	}
 }
 
+// TestStartWithManagerTreatsGracefulTerminationAsCancellationInduced covers
+// the case a plain "was the process signal-terminated" heuristic cannot: a
+// client that traps SIGTERM (sent because cmd.Cancel now asks for graceful
+// termination instead of an immediate kill) and exits cleanly with its own
+// nonzero code. That exit shape is indistinguishable from a genuine
+// operational failure by exit code alone, so startWithManager must rely on
+// having actually invoked Cancel for this process, not on the shape of the
+// resulting error.
+func TestStartWithManagerTreatsGracefulTerminationAsCancellationInduced(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	manager := fakeTmuxController{
+		attachCommand: func(ctx context.Context, name string) (*exec.Cmd, error) {
+			time.AfterFunc(50*time.Millisecond, cancel)
+			// Traps SIGTERM and exits 42 (a clean, nonzero exit -- not a
+			// signal-terminated one) instead of the sleep-only scripts used
+			// elsewhere, which are signal-terminated by default and don't
+			// exercise this case. The busy-wait loop (rather than a
+			// foreground `sleep`) avoids most shells deferring trap
+			// execution until a foreground child's own wait() returns.
+			return exec.CommandContext(ctx, "sh", "-c", `trap 'exit 42' TERM; while :; do sleep 0.05; done`), nil
+		},
+	}
+
+	start := time.Now()
+	err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-1", fixedAttachContext(ctx))
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("startWithManager returned error: %v, want the graceful-exit-42 treated as cancellation-induced", err)
+	}
+	if elapsed >= attachTerminationWaitDelay {
+		t.Fatalf("startWithManager took %v, want it to return promptly once the client's trap exits rather than waiting out the full grace period", elapsed)
+	}
+}
+
+// TestStartWithManagerForceKillsAfterWaitDelayExpires covers the bounded
+// side of "graceful termination first, forceful only after a bounded
+// wait": a client that ignores SIGTERM entirely must still be terminated,
+// once the grace period elapses, rather than left running indefinitely.
+func TestStartWithManagerForceKillsAfterWaitDelayExpires(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	original := attachTerminationWaitDelay
+	attachTerminationWaitDelay = 100 * time.Millisecond
+	t.Cleanup(func() { attachTerminationWaitDelay = original })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	manager := fakeTmuxController{
+		attachCommand: func(ctx context.Context, name string) (*exec.Cmd, error) {
+			time.AfterFunc(50*time.Millisecond, cancel)
+			return exec.CommandContext(ctx, "sh", "-c", `trap '' TERM; while :; do sleep 0.05; done`), nil
+		},
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-1", fixedAttachContext(ctx))
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("startWithManager returned error: %v, want the force-killed client treated as cancellation-induced", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("startWithManager did not return after the SIGTERM-ignoring client should have been force-killed")
+	}
+}
+
 func TestStartWithManagerReportsAttachErrorDespitePendingCancellation(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -423,11 +495,15 @@ func TestStartWithManagerReportsAttachErrorDespitePendingCancellation(t *testing
 			// A signal arrives (canceling the outer context) at roughly the
 			// same time the attach client independently fails for its own
 			// operational reason (e.g. the target session or tmux server
-			// disappeared). This command is deliberately not tied to ctx via
-			// exec.CommandContext, so its failure is its own, not one caused
-			// by the cancellation killing it.
+			// disappeared). This command is deliberately tied to an
+			// unrelated, never-canceled context rather than the outer ctx
+			// (still via exec.CommandContext, since startWithManager now
+			// sets Cancel/WaitDelay on the returned *exec.Cmd, which Go
+			// only permits for CommandContext-constructed commands), so its
+			// failure is its own, not one caused by the cancellation
+			// killing it.
 			cancel()
-			return exec.Command("sh", "-c", "exit 7"), nil
+			return exec.CommandContext(context.Background(), "sh", "-c", "exit 7"), nil
 		},
 		cleanupVolatile: func(instanceID string) error {
 			cleaned = append(cleaned, instanceID)
