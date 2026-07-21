@@ -44,11 +44,16 @@ func RunCreateWorker(encoded string) error {
 }
 
 func runCreateWorker(manager tmuxController, request createRequest) error {
-	unlock, err := lockAppState(appStatePath())
+	path := appStatePath()
+	unlock, err := lockAppState(path)
 	if err != nil {
-		return fmt.Errorf("lock state %q: %w", appStatePath(), err)
+		return fmt.Errorf("lock state %q: %w", path, err)
 	}
-	defer func() { _ = unlock() }()
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release app-state lock %q after create-worker: %v", path, unlockErr)
+		}
+	}()
 
 	m, err := buildModel(manager, request.Current)
 	if err != nil {
