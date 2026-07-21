@@ -70,11 +70,11 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P1: Volatile instance lifecycle
 
-* [ ] Keep one instance ID exclusively on the attached tmux client; never inherit or consult it through the tmux server environment.
+* [x] Keep one instance ID exclusively on the attached tmux client; never inherit or consult it through the tmux server environment.
 * [x] Preserve the instance ID when the client switches between sessions.
-* [ ] Remove only the detached client's volatile sessions.
+* [x] Remove only the detached client's volatile sessions.
 * [x] Never remove persistent sessions during instance cleanup.
-* [ ] Never remove volatile sessions belonging to another instance.
+* [x] Never remove volatile sessions belonging to another instance.
 * [x] Keep cleanup idempotent.
 * [x] Test multiple simultaneous tflow instances and repeated cleanup.
 
@@ -145,7 +145,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Emit a diagnostic for best-effort cleanup failures while returning the original operation error.
 * [ ] Test non-active session and project deletion without client switching, active-project deletion switching, and no-project fallback creation.
 * [ ] Test a mid-promotion rename failure leaves no persistent-name orphan or stale ownership marker.
-* [ ] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment.
+* [x] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment.
 * [x] Test fallback working-directory selection uses the active pane rather than the popup or server working directory.
 * [ ] Test label case preservation and exact-scope duplicate handling.
 * [x] Add mutation command-count tests proving unrelated tmux session markers are not rewritten.

@@ -6,7 +6,10 @@ import (
 	"testing"
 )
 
-func TestQuitAllPrefersStoredClientInstanceOverAmbientEnv(t *testing.T) {
+func TestQuitAllResolvesInstanceFromSessionOnlyIgnoringServerEnv(t *testing.T) {
+	// QuitAll must resolve the instance solely from the current session's
+	// @tflow-instance marker; it must never fall back to a client-scoped
+	// registry in the tmux global server environment, which no longer exists.
 	t.Setenv(CurrentSessionEnv, "dev")
 	t.Setenv(CurrentClientEnv, "@2")
 	t.Setenv(CurrentInstanceEnv, "instance-stale")
@@ -16,9 +19,11 @@ func TestQuitAllPrefersStoredClientInstanceOverAmbientEnv(t *testing.T) {
 		Run: func(args ...string) (string, error) {
 			switch args[0] {
 			case "show-options":
-				return "", nil
+				return "instance-live", nil
 			case "show-environment":
-				return instanceEnvKey("@2") + "=instance-live\n", nil
+				// Even if the global environment still holds a stale entry, it
+				// must never be consulted for instance resolution.
+				return "TFLOW_MENU_INSTANCE_2=instance-stale\n", nil
 			case "list-sessions":
 				return strings.Join([]string{
 					"otter-temp\t1\t0\t1\tinstance-stale",
@@ -202,7 +207,6 @@ func TestQuitAllDetachesExplicitClientWhenAvailable(t *testing.T) {
 	for _, want := range []string{
 		"tmux -L 'tflow' 'display-popup' '-C' '-c' '@2'",
 		"tmux -L 'tflow' 'set-environment' '-gu' '" + popupEnvKey("@2") + "'",
-		"tmux -L 'tflow' 'set-environment' '-gu' '" + instanceEnvKey("@2") + "'",
 		"tmux -L 'tflow' 'detach-client' '-t' '@2'",
 	} {
 		if !strings.Contains(got[1], want) {

@@ -99,17 +99,6 @@ func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
 	if !found {
 		t.Fatalf("missing call %v in %#v", wantMark, calls)
 	}
-	wantInstance := []string{"set-environment", "-gh", instanceEnvKey("@2"), "instance-1"}
-	found = false
-	for _, call := range calls {
-		if strings.Join(call, "\x00") == strings.Join(wantInstance, "\x00") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("missing call %v in %#v", wantInstance, calls)
-	}
 
 	got := strings.Join(popupArgs, " ")
 	for _, want := range []string{"display-popup", "-c @2", "-E", "-w " + menuWidth, "-h " + menuHeight, "-x 0", "-y C", "-e " + CurrentSessionEnv + "=otter-temp", "-e " + CurrentClientEnv + "=@2", "-e " + CurrentInstanceEnv + "=instance-1"} {
@@ -127,7 +116,10 @@ func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
 	}
 }
 
-func TestToggleMenuFallsBackToStoredClientInstanceEnv(t *testing.T) {
+func TestToggleMenuFromPersistentSessionResolvesEmptyInstanceWithoutServerEnvFallback(t *testing.T) {
+	// A persistent session (no @tflow-instance marker) must never let the popup
+	// inherit a stale instance ID left in the tmux global server environment by
+	// an earlier volatile session that this client used to be attached to.
 	var popupArgs []string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
@@ -144,7 +136,9 @@ func TestToggleMenuFallsBackToStoredClientInstanceEnv(t *testing.T) {
 			case "show-options":
 				return "", nil
 			case "show-environment":
-				return instanceEnvKey("@2") + "=instance-1\n", nil
+				// Even if the global environment still holds a stale entry from a
+				// prior client-scoped registry, it must never be consulted.
+				return "TFLOW_MENU_INSTANCE_2=instance-stale\n", nil
 			case "set-environment":
 				return "", nil
 			case "display-popup":
@@ -161,8 +155,8 @@ func TestToggleMenuFallsBackToStoredClientInstanceEnv(t *testing.T) {
 	}
 
 	got := strings.Join(popupArgs, " ")
-	if !strings.Contains(got, "-e "+CurrentInstanceEnv+"=instance-1") {
-		t.Fatalf("display-popup command = %q, want stored client instance env", got)
+	if strings.Contains(got, "-e "+CurrentInstanceEnv+"=") {
+		t.Fatalf("display-popup command = %q, want no instance env for a persistent session", got)
 	}
 }
 

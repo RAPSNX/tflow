@@ -5,22 +5,8 @@ import (
 	"strings"
 )
 
-func (m Manager) resolveInstanceID(currentSession, currentClient string) (string, error) {
-	instanceID, err := m.sessionInstanceID(currentSession)
-	if err != nil {
-		return "", err
-	}
-	if instanceID != "" {
-		return instanceID, nil
-	}
-	instanceID, err = m.clientInstanceID(currentClient)
-	if err != nil {
-		return "", err
-	}
-	if instanceID != "" {
-		return instanceID, nil
-	}
-	return "", nil
+func (m Manager) resolveInstanceID(currentSession string) (string, error) {
+	return m.sessionInstanceID(currentSession)
 }
 
 func (m Manager) currentValue(format string) (string, error) {
@@ -70,86 +56,19 @@ func (m Manager) sessionInstanceID(sessionName string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-func (m Manager) clientInstanceID(clientID string) (string, error) {
-	clientID = strings.TrimSpace(clientID)
-	if clientID == "" {
-		return "", nil
-	}
-	out, err := m.runner()("show-environment", "-gh")
-	if err != nil {
-		return "", err
-	}
-	key := instanceEnvKey(clientID) + "="
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, key) {
-			return strings.TrimPrefix(line, key), nil
-		}
-	}
-	return "", nil
-}
-
-func (m Manager) rememberClientInstance(clientID, instanceID string) error {
-	clientID = strings.TrimSpace(clientID)
-	instanceID = strings.TrimSpace(instanceID)
-	if clientID == "" || instanceID == "" {
-		return nil
-	}
-	_, err := m.runner()("set-environment", "-gh", instanceEnvKey(clientID), instanceID)
-	return err
-}
-
-func (m Manager) forgetClientInstance(clientID string) error {
-	clientID = strings.TrimSpace(clientID)
-	if clientID == "" {
-		return nil
-	}
-	_, err := m.runner()("set-environment", "-gu", instanceEnvKey(clientID))
-	if isBenignPopupCleanupError(err) {
-		return nil
-	}
-	return err
-}
-
-func (m Manager) RememberCurrentClient() error {
-	currentSession, err := m.contextValue(CurrentSessionEnv, "#{session_name}")
-	if err != nil {
-		return err
-	}
-	clientID, err := m.contextValue(CurrentClientEnv, "#{client_name}")
-	if err != nil {
-		return err
-	}
-	instanceID, err := m.sessionInstanceID(currentSession)
-	if err != nil {
-		return err
-	}
-	if instanceID == "" {
-		return m.forgetClientInstance(clientID)
-	}
-	return m.rememberClientInstance(clientID, instanceID)
-}
-
 func (m Manager) CleanupDetachedClient() error {
-	clientID, err := m.contextValue(CurrentClientEnv, "#{client_name}")
+	session, err := m.contextValue(CurrentSessionEnv, "#{session_name}")
 	if err != nil {
 		return err
 	}
-	instanceID, err := m.clientInstanceID(clientID)
+	instanceID, err := m.sessionInstanceID(session)
 	if err != nil {
 		return err
 	}
 	if instanceID == "" {
 		return nil
 	}
-	if err := m.CleanupVolatileSessions(instanceID); err != nil {
-		return err
-	}
-	return m.forgetClientInstance(clientID)
-}
-
-func RememberCurrentClient() error {
-	return New().RememberCurrentClient()
+	return m.CleanupVolatileSessions(instanceID)
 }
 
 func CleanupDetachedClient() error {
