@@ -46,6 +46,7 @@ type Controller interface {
 	SetSessionLabel(name, label string) error
 	AttachCommand(ctx context.Context, name string) (*exec.Cmd, error)
 	KillSession(name string) error
+	SessionPanesAllDead(name string) (bool, error)
 	SwitchClient(name string) error
 	EnsureControlMode(binaryPath string, palette Palette) error
 	ToggleMenu(binaryPath string) error

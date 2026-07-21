@@ -15,6 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/rapsnx/tflow/internal/diag"
+	"github.com/rapsnx/tflow/internal/store"
 	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
 
@@ -405,14 +406,62 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 	}
 	switch menu.exitAction {
 	case menuExitSwitchSession:
-		if strings.TrimSpace(menu.exitSessionName) == "" {
+		target := strings.TrimSpace(menu.exitSessionName)
+		if target == "" {
 			return nil
 		}
-		return manager.SwitchClient(menu.exitSessionName)
+		// Detect whether the outgoing session's panes have all exited before
+		// executing the switch, per the architecture. A check failure is
+		// reported as a diagnostic and treated as "not dead" -- it must never
+		// block the switch itself, which is the primary operation here.
+		outgoing := strings.TrimSpace(menu.currentSession)
+		removable := outgoing != "" && outgoing != target && outgoingSessionPanesAllDead(manager, outgoing)
+		if err := manager.SwitchClient(target); err != nil {
+			return err
+		}
+		if removable {
+			removeDeadOutgoingSession(manager, menu, outgoing)
+		}
+		return nil
 	case menuExitQuit:
 		return manager.QuitAll()
 	default:
 		return nil
+	}
+}
+
+func outgoingSessionPanesAllDead(manager tmuxController, outgoing string) bool {
+	allDead, err := manager.SessionPanesAllDead(outgoing)
+	if err != nil {
+		diag.Warnf("check dead panes for outgoing session %q: %v", outgoing, err)
+		return false
+	}
+	return allDead
+}
+
+// removeDeadOutgoingSession removes an outgoing session already confirmed,
+// before the switch, to have every pane exited (direct session selection
+// and project selection both resolve to the same exit action, so this
+// covers both). Every step here is best effort: a failure is reported as a
+// diagnostic and never replaces the fact that the switch itself already
+// succeeded, matching the architecture's "keep the selected target active
+// and report a diagnostic when post-switch cleanup ... fails."
+func removeDeadOutgoingSession(manager tmuxController, menu model, outgoing string) {
+	if err := manager.KillSession(outgoing); err != nil {
+		diag.Warnf("kill dead outgoing session %q: %v", outgoing, err)
+		return
+	}
+	info, found := menu.findSession(outgoing)
+	if !found || info.Temporary {
+		// Volatile sessions carry no persistent metadata to remove; an
+		// unrecognized session is left for the next startup reconciliation.
+		return
+	}
+	path := appStatePath()
+	if _, err := mutateAppState(path, func(state appState) (appState, error) {
+		return store.RemoveSession(state, outgoing), nil
+	}); err != nil {
+		diag.Warnf("remove persisted metadata for dead outgoing session %q: %v", outgoing, err)
 	}
 }
 

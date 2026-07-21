@@ -176,6 +176,51 @@ func TestKillSessionIgnoresMissingSessionAndServer(t *testing.T) {
 	}
 }
 
+func TestSessionPanesAllDeadReportsTrueWhenEveryPaneExited(t *testing.T) {
+	manager := Manager{Run: func(args ...string) (string, error) {
+		if args[0] == "list-panes" {
+			return "1\n1\n1\n", nil
+		}
+		return "", nil
+	}}
+	dead, err := manager.SessionPanesAllDead("otter-temp")
+	if err != nil {
+		t.Fatalf("SessionPanesAllDead returned error: %v", err)
+	}
+	if !dead {
+		t.Fatal("SessionPanesAllDead = false, want true when every pane is dead")
+	}
+}
+
+func TestSessionPanesAllDeadReportsFalseWhenAnyPaneLive(t *testing.T) {
+	manager := Manager{Run: func(args ...string) (string, error) {
+		if args[0] == "list-panes" {
+			return "1\n0\n1\n", nil
+		}
+		return "", nil
+	}}
+	dead, err := manager.SessionPanesAllDead("otter-temp")
+	if err != nil {
+		t.Fatalf("SessionPanesAllDead returned error: %v", err)
+	}
+	if dead {
+		t.Fatal("SessionPanesAllDead = true, want false when a pane is still live")
+	}
+}
+
+func TestSessionPanesAllDeadTreatsMissingSessionAsFalse(t *testing.T) {
+	for _, message := range []string{"can't find session: gone", "no server running on /tmp/tmux-1000/tflow"} {
+		manager := Manager{Run: func(args ...string) (string, error) { return "", fmt.Errorf("%s", message) }}
+		dead, err := manager.SessionPanesAllDead("gone")
+		if err != nil {
+			t.Fatalf("SessionPanesAllDead(%q) returned error: %v", message, err)
+		}
+		if dead {
+			t.Fatalf("SessionPanesAllDead(%q) = true, want false for a missing session/server", message)
+		}
+	}
+}
+
 func TestSetSessionTemporaryKeepsSessionAliveWhenUnattached(t *testing.T) {
 	var calls [][]string
 	manager := Manager{

@@ -21,6 +21,7 @@ type fakeTmuxController struct {
 	setSessionLabel     func(name, label string) error
 	attachCommand       func(ctx context.Context, name string) (*exec.Cmd, error)
 	killSession         func(name string) error
+	sessionPanesAllDead func(name string) (bool, error)
 	switchClient        func(name string) error
 	ensureControlMode   func(binaryPath string) error
 	toggleMenu          func(binaryPath string) error
@@ -101,6 +102,13 @@ func (f fakeTmuxController) KillSession(name string) error {
 		return f.killSession(name)
 	}
 	return nil
+}
+
+func (f fakeTmuxController) SessionPanesAllDead(name string) (bool, error) {
+	if f.sessionPanesAllDead != nil {
+		return f.sessionPanesAllDead(name)
+	}
+	return false, nil
 }
 
 func (f fakeTmuxController) SwitchClient(name string) error {
