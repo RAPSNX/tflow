@@ -59,9 +59,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Treat an absent dedicated tmux server as an empty session list.
 * [x] Do not remove metadata when tmux returns another operational error.
 * [x] Do not retain missing persistent-session metadata for lazy restoration.
-* [ ] Restore project and label markers for surviving persistent sessions and clear stale volatile ownership markers.
-* [ ] Keep marker repair limited to persistent sessions represented by state and avoid rewriting unrelated sessions.
-* [ ] Add startup marker-repair tests for partially completed creation, promotion, and move operations.
+* [x] Restore project and label markers for surviving persistent sessions and clear stale volatile ownership markers.
+* [x] Keep marker repair limited to persistent sessions represented by state and avoid rewriting unrelated sessions.
+* [x] Add startup marker-repair tests for partially completed creation, promotion, and move operations.
 * [x] Do not reconcile or write state during ordinary sidebar refreshes.
 * [x] Test missing-session cleanup without lazy restoration, empty-project cleanup, and tmux-error preservation.
 
