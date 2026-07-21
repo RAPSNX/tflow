@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"tflow/internal/diag"
 )
 
 var (
@@ -48,10 +50,14 @@ func SaveAppState(path string, state AppState) error {
 	written := false
 	defer func() {
 		if !closed {
-			_ = temporary.Close()
+			if err := temporary.Close(); err != nil {
+				diag.Warnf("close abandoned app-state temp file %q: %v", temporaryPath, err)
+			}
 		}
 		if !written {
-			_ = os.Remove(temporaryPath)
+			if err := os.Remove(temporaryPath); err != nil && !os.IsNotExist(err) {
+				diag.Warnf("remove abandoned app-state temp file %q: %v", temporaryPath, err)
+			}
 		}
 	}()
 	if err := temporary.Chmod(0o600); err != nil {

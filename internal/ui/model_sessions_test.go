@@ -154,7 +154,7 @@ func TestCreateSessionUsesExpandedHomeDirectoryWhenConfigured(t *testing.T) {
 }
 
 func TestSanitizeSessionName(t *testing.T) {
-	if got, want := sanitizeSessionName(" Prod/Main 01 "), "prod-main-01"; got != want {
+	if got, want := sanitizeSessionName(" Prod/Main 01 "), "Prod/Main 01"; got != want {
 		t.Fatalf("sanitizeSessionName = %q, want %q", got, want)
 	}
 }

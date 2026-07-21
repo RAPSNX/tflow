@@ -149,14 +149,14 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P1: Issue #55 consistency corrections
 
-* [ ] Preserve user-entered session-label casing and use exact displayed-label uniqueness within each scope.
-* [ ] Restore already-renamed volatile sessions and their ownership markers when promotion fails before state persistence; clean up an affected session only when restoration fails.
-* [ ] Emit a diagnostic for best-effort cleanup failures while returning the original operation error.
+* [x] Preserve user-entered session-label casing and use exact displayed-label uniqueness within each scope.
+* [x] Restore already-renamed volatile sessions and their ownership markers when promotion fails before state persistence; clean up an affected session only when restoration fails.
+* [x] Emit a diagnostic for best-effort cleanup failures while returning the original operation error.
 * [ ] Test non-active session and project deletion without client switching, active-project deletion switching, and no-project fallback creation.
-* [ ] Test a mid-promotion rename failure leaves no persistent-name orphan or stale ownership marker.
+* [x] Test a mid-promotion rename failure leaves no persistent-name orphan or stale ownership marker.
 * [x] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment.
 * [x] Test fallback working-directory selection uses the active pane rather than the popup or server working directory.
-* [ ] Test label case preservation and exact-scope duplicate handling.
+* [x] Test label case preservation and exact-scope duplicate handling.
 * [x] Add mutation command-count tests proving unrelated tmux session markers are not rewritten.
 
 ### P1: Installation and verification

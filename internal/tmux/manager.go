@@ -104,7 +104,7 @@ func (m Manager) SetSessionTemporary(name string, temporary bool, instanceID str
 
 func (m Manager) SetSessionLabel(name, label string) error {
 	name = strings.TrimSpace(name)
-	label = SanitizeSessionName(label)
+	label = NormalizeSessionLabel(label)
 	if name == "" || label == "" {
 		return fmt.Errorf("session label is empty")
 	}

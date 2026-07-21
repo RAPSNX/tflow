@@ -121,8 +121,11 @@ func (m sessionManager) CleanupVolatileSessions(instanceID string) error {
 	return m.inner.CleanupVolatileSessions(instanceID)
 }
 
+// sanitizeSessionName normalizes a user-entered session label. Labels
+// preserve their exact casing and characters; only surrounding whitespace is
+// trimmed. This is distinct from tmux's internal slug-shaped session names.
 func sanitizeSessionName(name string) string {
-	return runtmux.SanitizeSessionName(name)
+	return runtmux.NormalizeSessionLabel(name)
 }
 
 func shellQuote(value string) string {

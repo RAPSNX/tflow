@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"tflow/internal/diag"
 )
 
 func TestNewModelStartsWithoutProjectsWhenStateIsEmpty(t *testing.T) {
@@ -172,6 +175,37 @@ func TestPrepareStartupRollsBackCreatedSessionOnLaterFailure(t *testing.T) {
 	}
 }
 
+func TestPrepareStartupEmitsDiagnosticWhenCleanupKillFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) { return nil, nil },
+		createSession: func(name, cwd, command string) (session, error) {
+			return session{Name: name}, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			return fmt.Errorf("tag failed")
+		},
+		killSession: func(name string) error {
+			return fmt.Errorf("kill failed")
+		},
+	}
+	_, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1")
+	if err == nil || !strings.Contains(err.Error(), "tag failed") {
+		t.Fatalf("prepareStartup error = %v, want the original tag failure", err)
+	}
+	if strings.Contains(err.Error(), "kill failed") {
+		t.Fatalf("prepareStartup error = %v, want the kill failure not to replace the original error", err)
+	}
+	if !strings.Contains(buf.String(), "kill orphaned startup session") {
+		t.Fatalf("diagnostic output = %q, want a kill-failure diagnostic", buf.String())
+	}
+}
+
 func TestPrepareStartupReconcilesStateWithOneSessionList(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	path := appStatePath()
@@ -269,6 +303,36 @@ func TestStartWithManagerCleansUpWhenAttachCommandFails(t *testing.T) {
 	}
 	if got, want := fmt.Sprint(cleaned), "[instance-1]"; got != want {
 		t.Fatalf("cleanup calls = %s, want %s", got, want)
+	}
+}
+
+func TestStartWithManagerEmitsDiagnosticWhenCleanupFailsAfterClientError(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	manager := fakeTmuxController{
+		listSessions:        func() ([]session, error) { return nil, nil },
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error { return nil },
+		attachCommand: func(ctx context.Context, name string) (*exec.Cmd, error) {
+			return exec.CommandContext(ctx, "sh", "-c", "exit 1"), nil
+		},
+		cleanupVolatile: func(instanceID string) error {
+			return fmt.Errorf("cleanup failed")
+		},
+	}
+
+	err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-1", fixedAttachContext(context.Background()))
+	if err == nil {
+		t.Fatal("startWithManager returned nil error")
+	}
+	if strings.Contains(err.Error(), "cleanup failed") {
+		t.Fatalf("startWithManager error = %v, want the cleanup failure not to replace the client error", err)
+	}
+	if !strings.Contains(buf.String(), "clean up volatile sessions") {
+		t.Fatalf("diagnostic output = %q, want a cleanup-failure diagnostic", buf.String())
 	}
 }
 
