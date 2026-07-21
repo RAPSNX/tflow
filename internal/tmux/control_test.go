@@ -31,7 +31,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"set-option", "-g", "status", "on"},
 		{"set-option", "-g", "status-position", "top"},
 		{"set-option", "-g", "status-style", "bg=#181825,fg=#cdd6f4"},
-		{"set-option", "-g", "default-terminal", "tmux-256color"},
+		{"set-option", "-g", "default-terminal", "xterm-256color"},
 		{"set-option", "-g", "terminal-overrides", ",*:Tc"},
 		{"set-option", "-g", "terminal-features", "xterm-256color:RGB,screen-256color:RGB,tmux-256color:RGB"},
 		{"set-option", "-g", "status-left", "#[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] project #[fg=#89b4fa]#{@tflow-project} #[bg=#181825,fg=#313244,nobold]  #[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] session #[fg=#94e2d5]#{?@tflow-session-label,#{@tflow-session-label},#S} #[bg=#181825,fg=#313244,nobold]"},

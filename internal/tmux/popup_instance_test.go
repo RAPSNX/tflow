@@ -165,6 +165,7 @@ func TestToggleMenuUnmarksPopupIfOpenFails(t *testing.T) {
 }
 
 func TestQuitAllDetachesExplicitClientWhenAvailable(t *testing.T) {
+	t.Setenv("TMUX", "")
 	t.Setenv(CurrentSessionEnv, "otter-temp")
 	t.Setenv(CurrentClientEnv, "@2")
 
