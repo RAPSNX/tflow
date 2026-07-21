@@ -324,6 +324,49 @@ func TestLoadAppStateRejectsMalformedJSON(t *testing.T) {
 	}
 }
 
+func TestLoadAppStateRejectsSemanticallyInvalidState(t *testing.T) {
+	cases := []struct {
+		name string
+		data string
+	}{
+		{
+			name: "empty normalized project name",
+			data: `{"projects":[{"name":"!!!","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter"}]}]}`,
+		},
+		{
+			name: "duplicate normalized project name",
+			data: `{"projects":[{"name":"Small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter"}]},{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-2","label":"fox"}]}]}`,
+		},
+		{
+			name: "empty session id",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"  ","label":"otter"}]}]}`,
+		},
+		{
+			name: "duplicate session id",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter"},{"id":"tflow-p-1","label":"fox"}]}]}`,
+		},
+		{
+			name: "empty session label",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"  "}]}]}`,
+		},
+		{
+			name: "duplicate label within one project",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter"},{"id":"tflow-p-2","label":"otter"}]}]}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "store.json")
+			if err := os.WriteFile(path, []byte(tc.data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadAppState(path); err == nil || !strings.Contains(err.Error(), "invalid state") {
+				t.Fatalf("error = %v, want invalid state error", err)
+			}
+		})
+	}
+}
+
 func TestLoadAppStateDoesNotReadLegacyConfigState(t *testing.T) {
 	stateHome := t.TempDir()
 	configHome := t.TempDir()

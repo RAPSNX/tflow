@@ -44,5 +44,8 @@ func decodeAppState(data []byte) (AppState, error) {
 		}
 		state.Projects = append(state.Projects, loaded)
 	}
+	if err := ValidateAppState(state); err != nil {
+		return AppState{}, err
+	}
 	return NormalizeAppState(state), nil
 }
