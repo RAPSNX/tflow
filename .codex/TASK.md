@@ -93,12 +93,12 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 * [x] Cancel the runtime context on SIGHUP, SIGINT, and SIGTERM.
 * [x] Pass cancellation only to the attached tmux client and Bubble Tea popup program.
-* [ ] Ask the attached tmux client to terminate gracefully before forcefully killing it after a bounded wait.
+* [x] Ask the attached tmux client to terminate gracefully before forcefully killing it after a bounded wait.
 * [x] Clean the owning volatile instance once when the attached client is canceled or exits.
 * [x] Keep signal cleanup scoped to the owning instance and preserve persistent and foreign volatile sessions.
 * [x] Exit a canceled popup without dispatching the user-facing quit action.
 * [x] Test canceled attach cleanup and canceled-popup behavior.
-* [ ] Test signal cancellation gives the tmux client a graceful termination opportunity before force termination.
+* [x] Test signal cancellation gives the tmux client a graceful termination opportunity before force termination.
 
 ### P1: Popup lifecycle
 
@@ -193,15 +193,15 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 * [x] Use module path `github.com/rapsnx/tflow`.
 * [x] Move the executable entry point from `cmd/main.go` to `cmd/tflow/main.go`.
-* [ ] Verify `go install github.com/rapsnx/tflow/cmd/tflow@latest`.
+* [ ] Verify `go install github.com/rapsnx/tflow/cmd/tflow@latest`. Attempted for real against the live module proxy: fails today because the latest published tag (`v0.0.0-alpha-1`) predates the module/entry-point move and doesn't contain `cmd/tflow`. Fixing this needs a new release tag, a repo-visible decision left to the maintainer rather than made here.
 * [x] Verify `nix build --no-link .#tflow`.
 * [x] Ensure the Nix package installs `bin/tflow`.
 * [x] Add CI for formatting, `go vet`, and `go test ./...`.
-* [ ] Restrict push-triggered CI to `main` so pull-request branches do not run the same workflow twice.
+* [x] Restrict push-triggered CI to `main` so pull-request branches do not run the same workflow twice.
 * [x] Update README installation documentation after the module and entry-point work is complete.
-* [ ] Add the `m` session-move keybinding to README and align the Go version badge with `go.mod`.
+* [x] Add the `m` session-move keybinding to README and align the Go version badge with `go.mod`.
 * [x] Align README keybinding and persistence documentation with the implemented behavior.
-* [ ] Update `AGENTS.md` entry-point and local-run instructions to `cmd/tflow`.
+* [x] Update `AGENTS.md` entry-point and local-run instructions to `cmd/tflow`.
 
 ## Remove obsolete implementation
 
