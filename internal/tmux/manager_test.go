@@ -1,10 +1,13 @@
 package tmux
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 func TestAttachCommandUsesTflowSocket(t *testing.T) {
@@ -640,6 +643,78 @@ func TestCreateSessionReturnsDuplicateSessionError(t *testing.T) {
 	}
 	if !IsSessionExists(err) {
 		t.Fatalf("CreateSession error = %v, want duplicate session classification", err)
+	}
+}
+
+func TestCreateSessionToleratesMissingWindowOnRename(t *testing.T) {
+	var killed bool
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "rename-window":
+				return "", fmt.Errorf("can't find window: otter-temp:1")
+			case "kill-session":
+				killed = true
+			}
+			return "", nil
+		},
+	}
+	if _, err := manager.CreateSession("otter-temp", "/tmp", ""); err != nil {
+		t.Fatalf("CreateSession returned error: %v", err)
+	}
+	if killed {
+		t.Fatal("CreateSession killed the session for a tolerated missing-window rename failure")
+	}
+}
+
+func TestCreateSessionKillsOrphanedSessionWhenPostCreationSetupFails(t *testing.T) {
+	var killedName string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "rename-window":
+				return "", fmt.Errorf("tmux: rename failed")
+			case "kill-session":
+				killedName = args[2]
+			}
+			return "", nil
+		},
+	}
+	_, err := manager.CreateSession("otter-temp", "/tmp", "")
+	if err == nil || !strings.Contains(err.Error(), "rename failed") {
+		t.Fatalf("CreateSession error = %v, want the original rename failure", err)
+	}
+	if killedName != "otter-temp" {
+		t.Fatalf("killed session = %q, want otter-temp", killedName)
+	}
+}
+
+func TestCreateSessionPreservesSetupErrorWhenOrphanCleanupAlsoFails(t *testing.T) {
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "rename-window":
+				return "", fmt.Errorf("tmux: rename failed")
+			case "kill-session":
+				return "", fmt.Errorf("tmux: kill failed")
+			}
+			return "", nil
+		},
+	}
+	_, err := manager.CreateSession("otter-temp", "/tmp", "")
+	if err == nil || !strings.Contains(err.Error(), "rename failed") {
+		t.Fatalf("CreateSession error = %v, want the original rename failure preserved", err)
+	}
+	if strings.Contains(err.Error(), "kill failed") {
+		t.Fatalf("CreateSession error = %v, want the cleanup failure not to replace the original error", err)
+	}
+	if !strings.Contains(buf.String(), "kill orphaned session") {
+		t.Fatalf("diagnostic output = %q, want an orphan-cleanup failure diagnostic", buf.String())
 	}
 }
 

@@ -220,6 +220,7 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 	}); err != nil {
 		return "", fmt.Errorf("reconcile state %q: %w", path, err)
 	}
+	repairPersistentSessionMarkers(manager, path, existing)
 	label := nextTempSessionNameForInstance(existing, instanceID)
 	var name string
 	created := false
@@ -263,6 +264,63 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 		return "", fmt.Errorf("prepare tmux control mode: %w", err)
 	}
 	return name, nil
+}
+
+// repairPersistentSessionMarkers restores the project and label markers
+// persisted state expects for every persistent session that survived
+// reconciliation, and clears any stale volatile ownership markers an
+// interrupted creation, promotion, or move may have left behind. It is
+// strictly limited to sessions represented in state: it never touches a
+// session state does not know about. Repair failures are best effort and
+// left for the next startup reconciliation, matching the architecture's
+// error-handling rules for non-critical inconsistencies.
+//
+// The state read and the tmux marker writes it drives run under the same
+// state lock a concurrent mutation (rename, move, promotion) would hold.
+// Without that, a state snapshot read here could go stale between the read
+// and the writes below, and this repair pass could overwrite a concurrent
+// instance's fresher markers with the older values it just read -- the
+// exact inconsistency this repair exists to fix, reintroduced by reading
+// state without serializing against writers. ReconcileAppState already
+// calls a real tmux command (its snapshotSessions callback) while holding
+// this same lock, so holding it across the tmux writes here follows the
+// same established pattern.
+func repairPersistentSessionMarkers(manager tmuxController, path string, existing []session) {
+	unlock, err := lockAppState(path)
+	if err != nil {
+		diag.Warnf("lock state %q for startup marker repair: %v", path, err)
+		return
+	}
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release state lock %q after startup marker repair: %v", path, unlockErr)
+		}
+	}()
+	state, err := loadAppState(path)
+	if err != nil {
+		diag.Warnf("load state %q for startup marker repair: %v", path, err)
+		return
+	}
+	existingNames := make(map[string]struct{}, len(existing))
+	for _, s := range existing {
+		existingNames[s.Name] = struct{}{}
+	}
+	for _, project := range state.Projects {
+		for _, persistent := range project.Sessions {
+			if _, ok := existingNames[persistent.ID]; !ok {
+				continue
+			}
+			if err := manager.SetSessionProject(persistent.ID, project.Name); err != nil {
+				diag.Warnf("repair project marker for session %q: %v", persistent.ID, err)
+			}
+			if err := manager.SetSessionLabel(persistent.ID, persistent.Label); err != nil {
+				diag.Warnf("repair label marker for session %q: %v", persistent.ID, err)
+			}
+			if err := manager.SetSessionTemporary(persistent.ID, false, ""); err != nil {
+				diag.Warnf("clear stale volatile markers for session %q: %v", persistent.ID, err)
+			}
+		}
+	}
 }
 
 func defaultSessionDir() string {

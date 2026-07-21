@@ -624,4 +624,10 @@ func TestSuccessfulSessionMoveWritesReloadedLabelNotStaleModelLabel(t *testing.T
 	if !ok || len(garden.Sessions) != 2 || garden.Sessions[1].ID != "tflow-p-1" || garden.Sessions[1].Label != "raccoon" {
 		t.Fatalf("persisted target project = %#v, want tflow-p-1 to keep its concurrently renamed label", garden)
 	}
+	if got.sessionLabels["tflow-p-1"] != "raccoon" {
+		t.Fatalf("in-memory session label = %q, want the reloaded label raccoon, not the stale model label otter", got.sessionLabels["tflow-p-1"])
+	}
+	if got.status != "Moved raccoon to garden." {
+		t.Fatalf("status = %q, want the success message to reflect the reloaded label", got.status)
+	}
 }

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/rapsnx/tflow/internal/diag"
 	"github.com/rapsnx/tflow/internal/store"
 )
 
@@ -70,6 +71,10 @@ func (m Manager) CreateSession(name, cwd, command string) (Session, error) {
 	}
 	// This rename-window fallback string was captured against tmux 3.7b.
 	if _, err := m.runner()("rename-window", "-t", name+":1", name); err != nil && !strings.Contains(err.Error(), "can't find window") {
+		// Preserve the setup error; deleting the newly created session is best effort.
+		if killErr := m.KillSession(name); killErr != nil {
+			diag.Warnf("kill orphaned session %q after post-creation setup failure: %v", name, killErr)
+		}
 		return Session{}, err
 	}
 	return Session{Name: name, Windows: 1}, nil

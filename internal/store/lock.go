@@ -8,6 +8,13 @@ import (
 	"github.com/rapsnx/tflow/internal/diag"
 )
 
+// unlockFlock releases the advisory lock's flock(2) hold. It is a variable
+// so tests can force a release failure without relying on OS-specific
+// flock-failure conditions.
+var unlockFlock = func(file *os.File) error {
+	return syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+}
+
 // AcquireAppStateLock acquires the advisory lock shared by state mutations.
 // The caller must invoke the returned function to release it.
 func AcquireAppStateLock(statePath string) (func() error, error) {
@@ -32,7 +39,7 @@ func AcquireAppStateLock(statePath string) (func() error, error) {
 		return nil, err
 	}
 	return func() error {
-		unlockErr := syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		unlockErr := unlockFlock(file)
 		closeErr := file.Close()
 		if unlockErr != nil {
 			return unlockErr
