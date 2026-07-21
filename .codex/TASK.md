@@ -28,8 +28,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep volatile sessions and instance ownership out of the store.
 * [x] Ignore unknown JSON fields.
 * [x] Reject malformed JSON with a clear path-qualified error.
-* [ ] Reject semantically invalid state instead of silently dropping or synthesizing records during normalization.
-* [ ] Test empty and duplicate normalized project names, empty and duplicate session IDs, empty labels, and duplicate labels within one project.
+* [x] Reject semantically invalid state instead of silently dropping or synthesizing records during normalization.
+* [x] Test empty and duplicate normalized project names, empty and duplicate session IDs, empty labels, and duplicate labels within one project.
 * [x] Keep the state path at `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set and non-empty, falling back to `~/.local/state/tflow/store.json`.
 * [x] Set the state directory mode to `0700`.
 * [x] Set the state file mode to `0600`.
@@ -47,8 +47,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Remove the temporary file when writing or renaming fails.
 * [x] Test that failed writes leave the previous JSON file unchanged.
 * [x] Test that concurrent disjoint mutations do not overwrite each other.
-* [ ] Emit a diagnostic when releasing a state lock fails while preserving any primary operation error.
-* [ ] Test lock-release diagnostics in mutation, reconciliation, and background-worker paths.
+* [x] Emit a diagnostic when releasing a state lock fails while preserving any primary operation error.
+* [x] Test lock-release diagnostics in mutation, reconciliation, and background-worker paths.
 
 ### P0: Startup reconciliation
 
