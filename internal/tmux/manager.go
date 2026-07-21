@@ -135,6 +135,38 @@ func (m Manager) KillSession(name string) error {
 	return err
 }
 
+// SessionPanesAllDead reports whether every pane in the named session has
+// exited (tmux's remain-on-exit keeps the pane itself around after its
+// process exits). A missing session or server is reported as false, not an
+// error: there is nothing left to consider dead-but-present.
+func (m Manager) SessionPanesAllDead(name string) (bool, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false, nil
+	}
+	// -s scopes the listing to every window in the session; without it, tmux
+	// resolves -t <session> to just the session's active window, so a dead
+	// active-window pane would be reported as the whole session being dead
+	// even while another window in the same session still has a live pane.
+	out, err := m.runner()("list-panes", "-s", "-t", name, "-F", "#{pane_dead}")
+	if err != nil {
+		if IsNoSession(err) || IsNoServer(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
+		return false, nil
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "1" {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func (m Manager) SwitchClient(name string) error {
 	clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv))
 	if clientID == "" {

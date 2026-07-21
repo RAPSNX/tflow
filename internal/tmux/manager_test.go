@@ -343,6 +343,90 @@ func TestKillSessionIgnoresMissingSessionAndServer(t *testing.T) {
 	}
 }
 
+func TestSessionPanesAllDeadReportsTrueWhenEveryPaneExited(t *testing.T) {
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if args[0] == "list-panes" {
+			return "1\n1\n1\n", nil
+		}
+		return "", nil
+	}}
+	dead, err := manager.SessionPanesAllDead("otter-temp")
+	if err != nil {
+		t.Fatalf("SessionPanesAllDead returned error: %v", err)
+	}
+	if !dead {
+		t.Fatal("SessionPanesAllDead = false, want true when every pane is dead")
+	}
+	// -s scopes list-panes to every window in the session; without it, tmux
+	// resolves -t <session> to only the session's active window, silently
+	// ignoring dead-or-alive panes in every other window.
+	want := []string{"list-panes", "-s", "-t", "otter-temp", "-F", "#{pane_dead}"}
+	if len(calls) != 1 || strings.Join(calls[0], "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("calls = %#v, want %v", calls, want)
+	}
+}
+
+// TestSessionPanesAllDeadCoversEveryWindowInTheSession is a regression test
+// for a real, verified tmux behavior: `list-panes -t <session>` without -s
+// resolves to only the session's active window. A session whose active
+// window is dead but another window still has a live pane must not be
+// reported as fully dead -- confirmed empirically against a real tmux
+// server (3.7b) before this fix: the buggy query returned only the dead
+// active window's pane, omitting the live one entirely.
+func TestSessionPanesAllDeadCoversEveryWindowInTheSession(t *testing.T) {
+	manager := Manager{Run: func(args ...string) (string, error) {
+		if args[0] == "list-panes" {
+			if len(args) < 2 || args[1] != "-s" {
+				// Simulates the pre-fix bug: without -s, tmux would only
+				// resolve the active window's pane.
+				return "1\n", nil
+			}
+			// With -s, every window's pane is included: the active
+			// window's dead pane and a background window's live one.
+			return "1\n0\n", nil
+		}
+		return "", nil
+	}}
+	dead, err := manager.SessionPanesAllDead("multi-window")
+	if err != nil {
+		t.Fatalf("SessionPanesAllDead returned error: %v", err)
+	}
+	if dead {
+		t.Fatal("SessionPanesAllDead = true, want false: a background window still has a live pane")
+	}
+}
+
+func TestSessionPanesAllDeadReportsFalseWhenAnyPaneLive(t *testing.T) {
+	manager := Manager{Run: func(args ...string) (string, error) {
+		if args[0] == "list-panes" {
+			return "1\n0\n1\n", nil
+		}
+		return "", nil
+	}}
+	dead, err := manager.SessionPanesAllDead("otter-temp")
+	if err != nil {
+		t.Fatalf("SessionPanesAllDead returned error: %v", err)
+	}
+	if dead {
+		t.Fatal("SessionPanesAllDead = true, want false when a pane is still live")
+	}
+}
+
+func TestSessionPanesAllDeadTreatsMissingSessionAsFalse(t *testing.T) {
+	for _, message := range []string{"can't find session: gone", "no server running on /tmp/tmux-1000/tflow"} {
+		manager := Manager{Run: func(args ...string) (string, error) { return "", fmt.Errorf("%s", message) }}
+		dead, err := manager.SessionPanesAllDead("gone")
+		if err != nil {
+			t.Fatalf("SessionPanesAllDead(%q) returned error: %v", message, err)
+		}
+		if dead {
+			t.Fatalf("SessionPanesAllDead(%q) = true, want false for a missing session/server", message)
+		}
+	}
+}
+
 func TestSetSessionTemporaryKeepsSessionAliveWhenUnattached(t *testing.T) {
 	var calls [][]string
 	manager := Manager{
