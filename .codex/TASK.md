@@ -28,6 +28,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep volatile sessions and instance ownership out of the store.
 * [x] Ignore unknown JSON fields.
 * [x] Reject malformed JSON with a clear path-qualified error.
+* [ ] Reject semantically invalid state instead of silently dropping or synthesizing records during normalization.
+* [ ] Test empty and duplicate normalized project names, empty and duplicate session IDs, empty labels, and duplicate labels within one project.
 * [x] Keep the state path at `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set and non-empty, falling back to `~/.local/state/tflow/store.json`.
 * [x] Set the state directory mode to `0700`.
 * [x] Set the state file mode to `0600`.
@@ -45,6 +47,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Remove the temporary file when writing or renaming fails.
 * [x] Test that failed writes leave the previous JSON file unchanged.
 * [x] Test that concurrent disjoint mutations do not overwrite each other.
+* [ ] Emit a diagnostic when releasing a state lock fails while preserving any primary operation error.
+* [ ] Test lock-release diagnostics in mutation, reconciliation, and background-worker paths.
 
 ### P0: Startup reconciliation
 
@@ -55,12 +59,18 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Treat an absent dedicated tmux server as an empty session list.
 * [x] Do not remove metadata when tmux returns another operational error.
 * [x] Do not retain missing persistent-session metadata for lazy restoration.
+* [ ] Restore project and label markers for surviving persistent sessions and clear stale volatile ownership markers.
+* [ ] Keep marker repair limited to persistent sessions represented by state and avoid rewriting unrelated sessions.
+* [ ] Add startup marker-repair tests for partially completed creation, promotion, and move operations.
 * [x] Do not reconcile or write state during ordinary sidebar refreshes.
 * [x] Test missing-session cleanup without lazy restoration, empty-project cleanup, and tmux-error preservation.
 
 ### P0: Operation failure handling
 
 * [x] Kill a newly created tmux session when its metadata cannot be persisted.
+* [ ] Kill a newly created tmux session when post-creation setup such as window renaming fails.
+* [ ] Preserve the original setup error and emit a diagnostic when orphan cleanup also fails.
+* [ ] Test post-creation setup failure leaves no unmarked tmux session behind.
 * [x] Treat cleanup of an already missing session or popup as successful.
 * [x] Return the original operation error to the user.
 * [x] Remove project-wide rename rollback logic.
@@ -70,22 +80,25 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P1: Volatile instance lifecycle
 
-* [x] Keep one instance ID exclusively on the attached tmux client; never inherit or consult it through the tmux server environment.
-* [x] Preserve the instance ID when the client switches between sessions.
+* [ ] Keep one instance ID exclusively on the attached tmux client; never set, inherit, or consult it through the tmux server environment.
+* [ ] Preserve the owning instance when the client switches into a persistent session and pass it explicitly to popups opened there.
 * [x] Remove only the detached client's volatile sessions.
 * [x] Never remove persistent sessions during instance cleanup.
 * [x] Never remove volatile sessions belonging to another instance.
 * [x] Keep cleanup idempotent.
 * [x] Test multiple simultaneous tflow instances and repeated cleanup.
+* [ ] Test a popup opened from a persistent session retains the correct client-owned instance and can create a volatile fallback after deleting the final project.
 
 ### P1: Graceful signal shutdown
 
 * [x] Cancel the runtime context on SIGHUP, SIGINT, and SIGTERM.
 * [x] Pass cancellation only to the attached tmux client and Bubble Tea popup program.
+* [ ] Ask the attached tmux client to terminate gracefully before forcefully killing it after a bounded wait.
 * [x] Clean the owning volatile instance once when the attached client is canceled or exits.
 * [x] Keep signal cleanup scoped to the owning instance and preserve persistent and foreign volatile sessions.
 * [x] Exit a canceled popup without dispatching the user-facing quit action.
 * [x] Test canceled attach cleanup and canceled-popup behavior.
+* [ ] Test signal cancellation gives the tmux client a graceful termination opportunity before force termination.
 
 ### P1: Popup lifecycle
 
@@ -97,6 +110,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Do not store popup PIDs.
 * [x] Do not implement child-process reaping or a popup process registry.
 * [x] Test popup open, toggle, close, quit, and stale-marker cleanup.
+* [ ] Route tmux popup cleanup diagnostics through `internal/diag` instead of a separate stderr-only helper.
+* [ ] Emit a diagnostic when popup closing fails and marker cleanup also fails without replacing the close error.
+* [ ] Test popup cleanup diagnostics through the shared diagnostic output seam.
 
 ### P1: Sidebar performance
 
@@ -152,12 +168,20 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Preserve user-entered session-label casing and use exact displayed-label uniqueness within each scope.
 * [x] Restore already-renamed volatile sessions and their ownership markers when promotion fails before state persistence; clean up an affected session only when restoration fails.
 * [x] Emit a diagnostic for best-effort cleanup failures while returning the original operation error.
-* [ ] Test non-active session and project deletion without client switching, active-project deletion switching, and no-project fallback creation.
+* [x] Test non-active session and project deletion without client switching, active-project deletion switching, and no-project fallback creation.
 * [x] Test a mid-promotion rename failure leaves no persistent-name orphan or stale ownership marker.
-* [x] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment.
+* [ ] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment and retains the correct owning instance.
 * [x] Test fallback working-directory selection uses the active pane rather than the popup or server working directory.
 * [x] Test label case preservation and exact-scope duplicate handling.
 * [x] Add mutation command-count tests proving unrelated tmux session markers are not rewritten.
+
+### P1: Review #68 and #69 corrections
+
+* [ ] Retry a client-scoped tmux command only after positively identifying a missing-client error.
+* [ ] Resolve any replacement client within the same tflow instance; never retry against an arbitrary client.
+* [ ] Test `SwitchClient`, `DisplayMessage`, and `CurrentPaneDir` preserve client ownership on errors and in multi-client servers.
+* [ ] After a successful move, update the popup model's session label from the state observed by the locked mutation.
+* [ ] Test a concurrent rename followed by a move updates persisted state, tmux markers, in-memory labels, and the success message consistently.
 
 ### P1: Installation and verification
 
@@ -167,8 +191,11 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Verify `nix build --no-link .#tflow`.
 * [x] Ensure the Nix package installs `bin/tflow`.
 * [x] Add CI for formatting, `go vet`, and `go test ./...`.
+* [ ] Restrict push-triggered CI to `main` so pull-request branches do not run the same workflow twice.
 * [x] Update README installation documentation after the module and entry-point work is complete.
+* [ ] Add the `m` session-move keybinding to README and align the Go version badge with `go.mod`.
 * [x] Align README keybinding and persistence documentation with the implemented behavior.
+* [ ] Update `AGENTS.md` entry-point and local-run instructions to `cmd/tflow`.
 
 ## Remove obsolete implementation
 
@@ -182,8 +209,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Remove popup PID ownership requirements.
 * [x] Remove generalized rollback and compensation tests.
 * [ ] Remove obsolete architecture-specific helpers after their callers are migrated.
-* [ ] Remove the empty session-identity file, unreachable in-popup creation paths and messages, and unused startup/state helpers.
-* [ ] Remove unused helpers and exported test-only APIs, unreachable theme/key handling, deprecated Lip Gloss style copying, and local `min`/`max` helpers shadowing Go builtins.
+* [ ] Remove the empty session-identity file, unreachable in-popup creation modes and messages, unused startup/state helpers, and the dead in-popup `Ctrl+F` branch.
+* [ ] Remove unused helpers and exported test-only APIs, unreachable theme handling, deprecated Lip Gloss style copying, and local `min`/`max` helpers shadowing Go builtins.
 
 ## After alpha 0.0.1
 
