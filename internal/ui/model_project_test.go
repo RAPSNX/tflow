@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -34,10 +35,10 @@ func TestRStartsProjectRenameModeWithSelectedSession(t *testing.T) {
 
 func TestRenameProjectUpdatesAssignments(t *testing.T) {
 	tmp := t.TempDir()
-	var synced map[string]string
+	synced := map[string]string{}
 	m := newModel(fakeTmuxController{
-		syncSessionProjects: func(sessionProjects map[string]string) error {
-			synced = cloneStringMap(sessionProjects)
+		setSessionProject: func(name, project string) error {
+			synced[name] = project
 			return nil
 		},
 	}, "").(model)
@@ -70,6 +71,91 @@ func TestRenameProjectUpdatesAssignments(t *testing.T) {
 	}
 	if synced["tflow-p-8f42ac91"] != "garden" {
 		t.Fatalf("synced project = %#v, want small--dev->garden", synced)
+	}
+}
+
+// TestRenamingProjectWritesMarkersOnlyForItsOwnSessions proves that renaming
+// a project rewrites the tmux project marker only for sessions that belong
+// to the renamed project, leaving sessions in every other project
+// untouched.
+func TestRenamingProjectWritesMarkersOnlyForItsOwnSessions(t *testing.T) {
+	tmp := t.TempDir()
+	var projectWrites []string
+	m := newModel(fakeTmuxController{
+		setSessionProject: func(name, project string) error {
+			projectWrites = append(projectWrites, name+"="+project)
+			return nil
+		},
+	}, "").(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{"small", "garden"}
+	m.projectConfigs = map[string]projectConfig{
+		"small":  {Name: "small", Workdir: "/small"},
+		"garden": {Name: "garden", Workdir: "/garden"},
+	}
+	m.sessions = []session{{Name: "tflow-p-1"}, {Name: "tflow-p-2"}, {Name: "tflow-p-9"}}
+	m.sessionProjects = map[string]string{"tflow-p-1": "small", "tflow-p-2": "small", "tflow-p-9": "garden"}
+	m.sessionLabels = map[string]string{"tflow-p-1": "otter", "tflow-p-2": "fox", "tflow-p-9": "bee"}
+	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-1", "tflow-p-2"}, "garden": {"tflow-p-9"}}
+	m.selectedProject = "small"
+
+	updated, cmd := m.Update(projectRenamedMsg{oldName: "small", newName: "garage"})
+	if cmd == nil {
+		t.Fatal("expected close command")
+	}
+	got := updated.(model)
+	if got.err != nil {
+		t.Fatalf("project rename reported error: %v", got.err)
+	}
+
+	want := []string{"tflow-p-1=garage", "tflow-p-2=garage"}
+	if fmt.Sprint(projectWrites) != fmt.Sprint(want) {
+		t.Fatalf("project marker writes = %#v, want only the renamed project's sessions: %#v", projectWrites, want)
+	}
+}
+
+// TestRenamingProjectSkipsVanishedSessions proves that if a session from the
+// renamed project was killed in tmux outside tflow after the sidebar loaded,
+// the resulting "can't find session" error from SetSessionProject is
+// tolerated: the vanished session is skipped and the remaining sessions in
+// the same project still get their marker updated, instead of the loop
+// stopping early and surfacing a spurious failure.
+func TestRenamingProjectSkipsVanishedSessions(t *testing.T) {
+	tmp := t.TempDir()
+	var projectWrites []string
+	m := newModel(fakeTmuxController{
+		setSessionProject: func(name, project string) error {
+			if name == "tflow-p-1" {
+				return errors.New("can't find session: tflow-p-1")
+			}
+			projectWrites = append(projectWrites, name+"="+project)
+			return nil
+		},
+	}, "").(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{"small", "garden"}
+	m.projectConfigs = map[string]projectConfig{
+		"small":  {Name: "small", Workdir: "/small"},
+		"garden": {Name: "garden", Workdir: "/garden"},
+	}
+	m.sessions = []session{{Name: "tflow-p-1"}, {Name: "tflow-p-2"}, {Name: "tflow-p-9"}}
+	m.sessionProjects = map[string]string{"tflow-p-1": "small", "tflow-p-2": "small", "tflow-p-9": "garden"}
+	m.sessionLabels = map[string]string{"tflow-p-1": "otter", "tflow-p-2": "fox", "tflow-p-9": "bee"}
+	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-1", "tflow-p-2"}, "garden": {"tflow-p-9"}}
+	m.selectedProject = "small"
+
+	updated, cmd := m.Update(projectRenamedMsg{oldName: "small", newName: "garage"})
+	if cmd == nil {
+		t.Fatal("expected close command")
+	}
+	got := updated.(model)
+	if got.err != nil {
+		t.Fatalf("project rename reported error for an already-vanished session: %v", got.err)
+	}
+
+	want := []string{"tflow-p-2=garage"}
+	if fmt.Sprint(projectWrites) != fmt.Sprint(want) {
+		t.Fatalf("project marker writes = %#v, want the vanished session skipped and the rest written: %#v", projectWrites, want)
 	}
 }
 
@@ -163,10 +249,10 @@ func TestSessionLoadDoesNotMigrateLegacyNames(t *testing.T) {
 
 func TestRenameSessionUpdatesMetadataWithoutTmuxRename(t *testing.T) {
 	tmp := t.TempDir()
-	var syncedProjects map[string]string
+	var labelWrites []string
 	m := newModel(fakeTmuxController{
-		syncSessionProjects: func(projects map[string]string) error {
-			syncedProjects = cloneStringMap(projects)
+		setSessionLabel: func(name, label string) error {
+			labelWrites = append(labelWrites, name+"="+label)
 			return nil
 		},
 	}, "tflow-p-8f42ac92").(model)
@@ -214,10 +300,69 @@ func TestRenameSessionUpdatesMetadataWithoutTmuxRename(t *testing.T) {
 		t.Fatalf("renamed session missing from sessions: %#v", final.sessions)
 	}
 
-	if got := syncedProjects["tflow-p-8f42ac92"]; got != defaultProjectName {
-		t.Fatalf("synced project = %q, want %q", got, defaultProjectName)
+	if fmt.Sprint(labelWrites) != fmt.Sprint([]string{"tflow-p-8f42ac92=lala"}) {
+		t.Fatalf("label marker writes = %#v, want exactly one write for the renamed session", labelWrites)
+	}
+}
+
+// TestRenamingSessionWritesNoMarkersForUnrelatedSessions proves that
+// renaming a session's label never rewrites tmux markers for any other
+// session, even with a large fleet of unrelated sessions present: the
+// rename command writes only the target session's label marker directly,
+// and no full-fleet resync follows.
+func TestRenamingSessionWritesNoMarkersForUnrelatedSessions(t *testing.T) {
+	tmp := t.TempDir()
+	var projectWrites, labelWrites []string
+	m := newModel(fakeTmuxController{
+		setSessionProject: func(name, project string) error {
+			projectWrites = append(projectWrites, name+"="+project)
+			return nil
+		},
+		setSessionLabel: func(name, label string) error {
+			labelWrites = append(labelWrites, name+"="+label)
+			return nil
+		},
+	}, "tflow-p-target").(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{"small"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/small"}}
+	m.sessions = []session{{Name: "tflow-p-target"}}
+	m.sessionProjects = map[string]string{"tflow-p-target": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-target": "otter"}
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("tflow-p-existing-%02d", i)
+		m.sessions = append(m.sessions, session{Name: name})
+		m.sessionProjects[name] = "small"
+		m.sessionLabels[name] = fmt.Sprintf("animal-%02d", i)
+	}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-target"
+	m.mode = inputRename
+	m.renameTarget = renameTarget{session: "tflow-p-target"}
+	m.input.SetValue("newname")
+
+	updated, cmd := m.commitRename()
+	pending := *(updated.(*model))
+	if cmd == nil {
+		t.Fatal("expected rename command")
+	}
+	msg := cmd().(sessionRenamedMsg)
+	if msg.err != nil {
+		t.Fatalf("rename returned error: %v", msg.err)
 	}
 
+	updated2, _ := pending.Update(msg)
+	got := updated2.(model)
+	if got.err != nil {
+		t.Fatalf("rename ack reported error: %v", got.err)
+	}
+
+	if len(projectWrites) != 0 {
+		t.Fatalf("project marker writes = %#v, want none for a label-only rename", projectWrites)
+	}
+	if fmt.Sprint(labelWrites) != fmt.Sprint([]string{"tflow-p-target=newname"}) {
+		t.Fatalf("label marker writes = %#v, want exactly one write for the renamed session", labelWrites)
+	}
 }
 
 func TestProjectSwitchReturnsFocusToFirstProjectSession(t *testing.T) {
@@ -315,6 +460,146 @@ func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 	}
 	if got.selectedProject != "storage" {
 		t.Fatalf("selectedProject = %q, want storage", got.selectedProject)
+	}
+}
+
+func TestDeleteNonActiveProjectDoesNotSwitchClient(t *testing.T) {
+	tmp := t.TempDir()
+	var killed []string
+	var switched []string
+	var created []string
+	m := newModel(fakeTmuxController{
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+		switchClient: func(name string) error {
+			switched = append(switched, name)
+			return nil
+		},
+		createSession: func(name, cwd, command string) (session, error) {
+			created = append(created, name)
+			return session{Name: name}, nil
+		},
+	}, "keep").(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{"small", "storage"}
+	m.sessions = []session{{Name: "dev"}, {Name: "api"}, {Name: "keep"}}
+	m.sessionProjects = map[string]string{
+		"dev":  "small",
+		"api":  "small",
+		"keep": "storage",
+	}
+	m.selectedProject = "small"
+
+	updated, cmd := m.deleteProject("small")
+	pending := updated.(model)
+	if cmd == nil {
+		t.Fatal("expected delete command")
+	}
+	msg := cmd().(projectDeletedMsg)
+	if msg.err != nil {
+		t.Fatalf("delete returned error: %v", msg.err)
+	}
+	if fmt.Sprint(killed) != fmt.Sprint([]string{"dev", "api"}) {
+		t.Fatalf("killed = %#v", killed)
+	}
+
+	updated, followUp := pending.Update(msg)
+	got, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatalf("updated model = %T", updated)
+	}
+	if followUp != nil {
+		t.Fatal("expected no session switch command for non-active project deletion")
+	}
+	if got.currentSession != "keep" {
+		t.Fatalf("currentSession = %q, want keep (unchanged)", got.currentSession)
+	}
+	if len(switched) != 0 || len(created) != 0 {
+		t.Fatalf("unexpected tmux calls: switched=%#v created=%#v", switched, created)
+	}
+}
+
+func TestKillNonActiveSessionDoesNotSwitchClient(t *testing.T) {
+	tmp := t.TempDir()
+	var switched []string
+	var created []string
+	m := newModel(fakeTmuxController{
+		switchClient: func(name string) error {
+			switched = append(switched, name)
+			return nil
+		},
+		createSession: func(name, cwd, command string) (session, error) {
+			created = append(created, name)
+			return session{Name: name}, nil
+		},
+	}, "keep").(model)
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{"small", "storage"}
+	m.sessions = []session{{Name: "dev"}, {Name: "api"}, {Name: "keep"}}
+	m.sessionProjects = map[string]string{
+		"dev":  "small",
+		"api":  "small",
+		"keep": "storage",
+	}
+
+	updated, cmd := m.Update(sessionKilledMsg{name: "dev", project: "small"})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("expected no session switch command for non-active session deletion")
+	}
+	if got.currentSession != "keep" {
+		t.Fatalf("currentSession = %q, want keep (unchanged)", got.currentSession)
+	}
+	if len(switched) != 0 || len(created) != 0 {
+		t.Fatalf("unexpected tmux calls: switched=%#v created=%#v", switched, created)
+	}
+	if _, exists := got.findSession("dev"); exists {
+		t.Fatal("deleted session remains")
+	}
+}
+
+func TestDeletingActiveProjectFallbackUsesActivePaneWorkdir(t *testing.T) {
+	tmp := t.TempDir()
+	const distinctiveCwd = "/tmp/distinctive-active-pane-cwd"
+	var createdCwd string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			createdCwd = cwd
+			return session{Name: name}, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error { return nil },
+	}, "small--otter").(model)
+	m.instanceID = "instance-1"
+	m.cwd = distinctiveCwd
+	m.statePath = tmp + "/state.json"
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "small--otter"}}
+	m.sessionProjects = map[string]string{"small--otter": "small"}
+	m.sessionLabels = map[string]string{"small--otter": "otter"}
+	m.selectedProject = "small"
+
+	updated, cmd := m.deleteProject("small")
+	pending := updated.(model)
+	if cmd == nil {
+		t.Fatal("expected delete command")
+	}
+	msg := cmd().(projectDeletedMsg)
+	if msg.err != nil {
+		t.Fatalf("delete returned error: %v", msg.err)
+	}
+
+	_, followUp := pending.Update(msg)
+	if followUp == nil {
+		t.Fatal("expected volatile fallback command")
+	}
+	created := followUp().(sessionCreatedMsg)
+	if created.err != nil || !created.volatile {
+		t.Fatalf("fallback session = %#v", created)
+	}
+	if createdCwd != distinctiveCwd {
+		t.Fatalf("fallback cwd = %q, want %q", createdCwd, distinctiveCwd)
 	}
 }
 

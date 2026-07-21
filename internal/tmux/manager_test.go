@@ -1,13 +1,14 @@
 package tmux
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 )
 
 func TestAttachCommandUsesTflowSocket(t *testing.T) {
-	cmd, err := Manager{}.AttachCommand("dev")
+	cmd, err := Manager{}.AttachCommand(context.Background(), "dev")
 	if err != nil {
 		t.Fatalf("AttachCommand returned error: %v", err)
 	}
@@ -37,45 +38,42 @@ func TestSwitchClientUsesExplicitClientWhenAvailable(t *testing.T) {
 	}
 }
 
-func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
+func TestSwitchClientRetriesAfterStaleClientError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
 	var calls [][]string
-	manager := Manager{
-		Run: func(args ...string) (string, error) {
-			calls = append(calls, append([]string(nil), args...))
-			return "", nil
-		},
-	}
-
-	err := manager.SyncSessionProjects(map[string]string{
-		"dev":   "small",
-		"api":   "",
-		"blank": "  ",
-	}, map[string]string{
-		"dev": "development",
-	})
-	if err != nil {
-		t.Fatalf("SyncSessionProjects returned error: %v", err)
-	}
-
-	wants := [][]string{
-		{"set-option", "-t", "dev", "@tflow-project", "small"},
-		{"set-option", "-t", "api", "@tflow-project", ""},
-		{"set-option", "-t", "blank", "@tflow-project", ""},
-		{"set-option", "-t", "dev", "@tflow-session-label", "development"},
-		{"set-option", "-t", "api", "@tflow-session-label", "api"},
-		{"set-option", "-t", "blank", "@tflow-session-label", "blank"},
-	}
-	for _, want := range wants {
-		found := false
-		for _, call := range calls {
-			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-				found = true
-				break
-			}
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) > 1 && args[1] == "-c" {
+			return "", fmt.Errorf("can't find client /dev/pts/4")
 		}
-		if !found {
-			t.Fatalf("missing call %v in %#v", want, calls)
+		return "", nil
+	}}
+
+	if err := manager.SwitchClient("otter-temp"); err != nil {
+		t.Fatalf("SwitchClient returned error: %v", err)
+	}
+	wantCalls := [][]string{
+		{"switch-client", "-c", "/dev/pts/4", "-t", "otter-temp"},
+		{"switch-client", "-t", "otter-temp"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
+	}
+	for i, want := range wantCalls {
+		if strings.Join(calls[i], "\x00") != strings.Join(want, "\x00") {
+			t.Fatalf("calls[%d] = %#v, want %v", i, calls[i], want)
 		}
+	}
+}
+
+func TestSwitchClientReturnsErrorWhenRetryAlsoFails(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	manager := Manager{Run: func(args ...string) (string, error) {
+		return "", fmt.Errorf("no current client")
+	}}
+
+	if err := manager.SwitchClient("otter-temp"); err == nil {
+		t.Fatal("SwitchClient returned nil error, want stale client failure")
 	}
 }
 
@@ -104,6 +102,35 @@ func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	}
 	if sessions[1].Temporary {
 		t.Fatal("expected second session to be persistent")
+	}
+}
+
+func TestListSessionsTreatsAnyAttachedClientCountAsAttached(t *testing.T) {
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			return strings.Join([]string{
+				"none\t1\t0\t0\t\tnone",
+				"one\t1\t1\t0\t\tone",
+				"many\t1\t3\t0\t\tmany",
+			}, "\n") + "\n", nil
+		},
+	}
+
+	sessions, err := manager.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions returned error: %v", err)
+	}
+	if len(sessions) != 3 {
+		t.Fatalf("len(sessions) = %d", len(sessions))
+	}
+	if sessions[0].Attached {
+		t.Fatalf("session %q with count 0 should not be attached", sessions[0].Name)
+	}
+	if !sessions[1].Attached {
+		t.Fatalf("session %q with count 1 should be attached", sessions[1].Name)
+	}
+	if !sessions[2].Attached {
+		t.Fatalf("session %q with count 3 should be attached", sessions[2].Name)
 	}
 }
 
@@ -182,6 +209,50 @@ func TestSetSessionLabelUsesMetadata(t *testing.T) {
 	want := []string{"set-option", "-t", "tflow-v-instance-1-abc", sessionLabelMarker, "otter"}
 	if len(calls) != 1 || strings.Join(calls[0], "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("calls = %#v, want %v", calls, want)
+	}
+}
+
+// TestSetSessionLabelStripsDelimitersBeforeRoundTrip verifies that a label
+// containing a tab or newline is filtered before it reaches tmux metadata,
+// so a subsequent ListSessions call (which parses each row with
+// strings.Split(line, "\t")) sees exactly one session with the same label a
+// user would have seen displayed, instead of a truncated or split row.
+func TestSetSessionLabelStripsDelimitersBeforeRoundTrip(t *testing.T) {
+	var storedLabel string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		if len(args) == 5 && args[0] == "set-option" && args[3] == sessionLabelMarker {
+			storedLabel = args[4]
+		}
+		return "", nil
+	}}
+
+	pastedLabel := "Deploy\tTool\nExtra Row"
+	if err := manager.SetSessionLabel("tflow-v-instance-1-abc", pastedLabel); err != nil {
+		t.Fatalf("SetSessionLabel returned error: %v", err)
+	}
+	if strings.ContainsAny(storedLabel, "\t\n\r") {
+		t.Fatalf("stored label %q still contains a delimiter character", storedLabel)
+	}
+	want := "DeployToolExtra Row"
+	if storedLabel != want {
+		t.Fatalf("stored label = %q, want %q", storedLabel, want)
+	}
+
+	// Simulate tmux's list-sessions output using the label exactly as tmux
+	// would have stored it, to confirm ListSessions round-trips a single
+	// session row rather than splitting on the injected delimiters.
+	listManager := Manager{Run: func(args ...string) (string, error) {
+		return "tflow-v-instance-1-abc\t1\t0\t1\tinstance-1\t" + storedLabel + "\n", nil
+	}}
+	sessions, err := listManager.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions returned error: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("len(sessions) = %d, want 1 (label injection split the row)", len(sessions))
+	}
+	if sessions[0].Label != want {
+		t.Fatalf("round-tripped label = %q, want %q", sessions[0].Label, want)
 	}
 }
 
@@ -274,6 +345,34 @@ func TestDisplayMessageTargetsCurrentClient(t *testing.T) {
 	}
 }
 
+func TestDisplayMessageRetriesAfterStaleClientError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) > 1 && args[1] == "-c" {
+			return "", fmt.Errorf("can't find client /dev/pts/4")
+		}
+		return "", nil
+	}}
+
+	if err := manager.DisplayMessage("create failed"); err != nil {
+		t.Fatalf("DisplayMessage returned error: %v", err)
+	}
+	wantCalls := [][]string{
+		{"display-message", "-c", "/dev/pts/4", "create failed"},
+		{"display-message", "create failed"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
+	}
+	for i, want := range wantCalls {
+		if strings.Join(calls[i], "\x00") != strings.Join(want, "\x00") {
+			t.Fatalf("calls[%d] = %#v, want %v", i, calls[i], want)
+		}
+	}
+}
+
 func TestCurrentPaneDirTargetsCurrentClient(t *testing.T) {
 	t.Setenv(CurrentClientEnv, "/dev/pts/4")
 	var calls [][]string
@@ -292,6 +391,72 @@ func TestCurrentPaneDirTargetsCurrentClient(t *testing.T) {
 	want := []string{"display-message", "-p", "-c", "/dev/pts/4", "#{pane_current_path}"}
 	if len(calls) != 1 || strings.Join(calls[0], "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("calls = %#v, want %v", calls, want)
+	}
+}
+
+func TestCurrentPaneDirRetriesAfterStaleClientError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) > 2 && args[2] == "-c" {
+			return "", fmt.Errorf("can't find client /dev/pts/4")
+		}
+		return "/workspace/project\n", nil
+	}}
+
+	dir, err := manager.CurrentPaneDir()
+	if err != nil {
+		t.Fatalf("CurrentPaneDir returned error: %v", err)
+	}
+	if dir != "/workspace/project" {
+		t.Fatalf("directory = %q", dir)
+	}
+	wantCalls := [][]string{
+		{"display-message", "-p", "-c", "/dev/pts/4", "#{pane_current_path}"},
+		{"display-message", "-p", "#{pane_current_path}"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
+	}
+	for i, want := range wantCalls {
+		if strings.Join(calls[i], "\x00") != strings.Join(want, "\x00") {
+			t.Fatalf("calls[%d] = %#v, want %v", i, calls[i], want)
+		}
+	}
+}
+
+func TestCurrentPaneDirDoesNotRetryEmptyPathFromResolvedClient(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		// The client resolves successfully but its active pane path is empty.
+		return "", nil
+	}}
+
+	if _, err := manager.CurrentPaneDir(); err == nil {
+		t.Fatal("CurrentPaneDir returned nil error, want empty pane directory failure")
+	}
+	wantCalls := [][]string{
+		{"display-message", "-p", "-c", "/dev/pts/4", "#{pane_current_path}"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v (no fallback to a different client's pane)", calls, wantCalls)
+	}
+	if strings.Join(calls[0], "\x00") != strings.Join(wantCalls[0], "\x00") {
+		t.Fatalf("calls[0] = %#v, want %v", calls[0], wantCalls[0])
+	}
+}
+
+func TestCurrentPaneDirReturnsErrorWhenRetryAlsoFails(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	manager := Manager{Run: func(args ...string) (string, error) {
+		return "", fmt.Errorf("no current client")
+	}}
+
+	if _, err := manager.CurrentPaneDir(); err == nil {
+		t.Fatal("CurrentPaneDir returned nil error, want stale client failure")
 	}
 }
 
@@ -386,55 +551,21 @@ func TestNextTempSessionNameUsesPairsThenSuffixes(t *testing.T) {
 	}
 }
 
-func TestRememberCurrentClientStoresAttachedSessionInstance(t *testing.T) {
+func TestCleanupDetachedClientRemovesOwnedSessions(t *testing.T) {
 	t.Setenv(CurrentSessionEnv, VolatileSessionName("instance-1", "otter"))
-	t.Setenv(CurrentClientEnv, "/dev/pts/4")
 
 	var calls [][]string
-	manager := Manager{Run: func(args ...string) (string, error) {
-		calls = append(calls, append([]string(nil), args...))
-		if args[0] == "show-options" {
-			return "instance-1", nil
-		}
-		return "", nil
-	}}
-
-	if err := manager.RememberCurrentClient(); err != nil {
-		t.Fatalf("RememberCurrentClient returned error: %v", err)
-	}
-	want := []string{"set-environment", "-gh", instanceEnvKey("/dev/pts/4"), "instance-1"}
-	for _, call := range calls {
-		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-			return
-		}
-	}
-	t.Fatalf("calls = %#v, want %v", calls, want)
-}
-
-func TestCleanupDetachedClientRemovesOwnedSessionsAndMarker(t *testing.T) {
-	t.Setenv(CurrentClientEnv, "@2")
-
-	var calls [][]string
-	markerPresent := true
 	manager := Manager{Run: func(args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
 		switch args[0] {
-		case "show-environment":
-			if markerPresent {
-				return instanceEnvKey("@2") + "=instance-1\n", nil
-			}
-			return "", nil
+		case "show-options":
+			return "instance-1", nil
 		case "list-sessions":
 			return strings.Join([]string{
 				VolatileSessionName("instance-1", "otter") + "\t1\t0\t1\tinstance-1",
 				VolatileSessionName("instance-2", "fox") + "\t1\t0\t1\tinstance-2",
 				"project--dev\t1\t0\t0\t",
 			}, "\n"), nil
-		case "set-environment":
-			if len(args) == 3 && args[1] == "-gu" && args[2] == instanceEnvKey("@2") {
-				markerPresent = false
-			}
-			return "", nil
 		default:
 			return "", nil
 		}
@@ -443,32 +574,56 @@ func TestCleanupDetachedClientRemovesOwnedSessionsAndMarker(t *testing.T) {
 	if err := manager.CleanupDetachedClient(); err != nil {
 		t.Fatalf("CleanupDetachedClient returned error: %v", err)
 	}
-	if err := manager.CleanupDetachedClient(); err != nil {
-		t.Fatalf("second CleanupDetachedClient returned error: %v", err)
-	}
-	wants := [][]string{
-		{"kill-session", "-t", VolatileSessionName("instance-1", "otter")},
-		{"set-environment", "-gu", instanceEnvKey("@2")},
-	}
-	for _, want := range wants {
-		found := false
-		for _, call := range calls {
-			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-				found = true
-				break
-			}
+
+	want := []string{"kill-session", "-t", VolatileSessionName("instance-1", "otter")}
+	found := false
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+			found = true
+			break
 		}
-		if !found {
-			t.Fatalf("calls = %#v, want %v", calls, want)
-		}
+	}
+	if !found {
+		t.Fatalf("calls = %#v, want %v", calls, want)
 	}
 	kills := 0
 	for _, call := range calls {
 		if len(call) == 3 && call[0] == "kill-session" {
 			kills++
 		}
+		if call[0] == "set-environment" || call[0] == "show-environment" {
+			t.Fatalf("calls = %#v, should never touch the tmux global environment", calls)
+		}
 	}
 	if kills != 1 {
 		t.Fatalf("kill count = %d, want 1", kills)
+	}
+}
+
+func TestCleanupDetachedClientResolvesInstancePurelyFromSessionContext(t *testing.T) {
+	// A client that detaches from a persistent session (no @tflow-instance marker)
+	// must resolve an empty instance ID and never consult the tmux server
+	// environment for a stale value from an earlier session.
+	t.Setenv(CurrentSessionEnv, "dev")
+
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		switch args[0] {
+		case "show-options":
+			return "", nil
+		case "list-sessions":
+			t.Fatalf("list-sessions should not be called when the session has no instance marker")
+		}
+		return "", nil
+	}}
+
+	if err := manager.CleanupDetachedClient(); err != nil {
+		t.Fatalf("CleanupDetachedClient returned error: %v", err)
+	}
+	for _, call := range calls {
+		if call[0] == "set-environment" || call[0] == "show-environment" {
+			t.Fatalf("calls = %#v, should never touch the tmux global environment", calls)
+		}
 	}
 }

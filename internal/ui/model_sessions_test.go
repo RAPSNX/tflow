@@ -12,6 +12,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+func TestSessionStartDirFallsBackWhenDirectoryDoesNotExist(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	missingDir := filepath.Join(t.TempDir(), "missing")
+	if got := sessionStartDir(missingDir); got != home {
+		t.Fatalf("sessionStartDir(%q) = %q, want %q", missingDir, got, home)
+	}
+}
+
 func TestDefaultSessionDirUsesCurrentDirectory(t *testing.T) {
 	original, err := os.Getwd()
 	if err != nil {
@@ -144,7 +154,7 @@ func TestCreateSessionUsesExpandedHomeDirectoryWhenConfigured(t *testing.T) {
 }
 
 func TestSanitizeSessionName(t *testing.T) {
-	if got, want := sanitizeSessionName(" Prod/Main 01 "), "prod-main-01"; got != want {
+	if got, want := sanitizeSessionName(" Prod/Main 01 "), "Prod/Main 01"; got != want {
 		t.Fatalf("sanitizeSessionName = %q, want %q", got, want)
 	}
 }
@@ -285,6 +295,96 @@ func TestCreateProjectSessionPersistsMetadata(t *testing.T) {
 		t.Fatalf("saved state = %#v", state)
 	}
 	_ = project
+}
+
+// TestCreatingSessionWritesMarkersOnlyForTheNewSession proves that
+// completing session creation writes tmux markers only for the newly
+// created session, not a full resync of every session in the fleet
+// (previously 2xN set-option calls for N total sessions).
+func TestCreatingSessionWritesMarkersOnlyForTheNewSession(t *testing.T) {
+	var projectWrites, labelWrites []string
+	m := newModel(fakeTmuxController{
+		setSessionProject: func(name, project string) error {
+			projectWrites = append(projectWrites, name+"="+project)
+			return nil
+		},
+		setSessionLabel: func(name, label string) error {
+			labelWrites = append(labelWrites, name+"="+label)
+			return nil
+		},
+	}, "").(model)
+	m.statePath = filepath.Join(t.TempDir(), "store.json")
+	m.projects = []string{"small"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/tmp/small"}}
+	m.sessions = make([]session, 0, 50)
+	m.sessionProjects = map[string]string{}
+	m.sessionLabels = map[string]string{}
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("small--existing-%02d", i)
+		m.sessions = append(m.sessions, session{Name: name})
+		m.sessionProjects[name] = "small"
+		m.sessionLabels[name] = fmt.Sprintf("animal-%02d", i)
+	}
+
+	updated, _ := m.Update(sessionCreatedMsg{
+		session: session{Name: "small--otter"},
+		project: "small",
+		label:   "otter",
+	})
+	got := updated.(model)
+	if got.err != nil {
+		t.Fatalf("session creation reported error: %v", got.err)
+	}
+
+	if fmt.Sprint(projectWrites) != fmt.Sprint([]string{"small--otter=small"}) {
+		t.Fatalf("project marker writes = %#v, want only the new session", projectWrites)
+	}
+	if fmt.Sprint(labelWrites) != fmt.Sprint([]string{"small--otter=otter"}) {
+		t.Fatalf("label marker writes = %#v, want only the new session", labelWrites)
+	}
+}
+
+// TestKillingSessionWritesNoMarkersForUnrelatedSessions proves that killing
+// one session never rewrites tmux markers for any other session: the killed
+// session no longer exists in tmux, and no other session's project or label
+// marker is affected by removing it.
+func TestKillingSessionWritesNoMarkersForUnrelatedSessions(t *testing.T) {
+	var projectWrites, labelWrites []string
+	m := newModel(fakeTmuxController{
+		setSessionProject: func(name, project string) error {
+			projectWrites = append(projectWrites, name+"="+project)
+			return nil
+		},
+		setSessionLabel: func(name, label string) error {
+			labelWrites = append(labelWrites, name+"="+label)
+			return nil
+		},
+	}, "").(model)
+	m.statePath = filepath.Join(t.TempDir(), "store.json")
+	m.projects = []string{"small"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/tmp/small"}}
+	m.sessions = make([]session, 0, 50)
+	m.sessionProjects = map[string]string{}
+	m.sessionLabels = map[string]string{}
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("small--existing-%02d", i)
+		m.sessions = append(m.sessions, session{Name: name})
+		m.sessionProjects[name] = "small"
+		m.sessionLabels[name] = fmt.Sprintf("animal-%02d", i)
+	}
+	if err := m.saveState(); err != nil {
+		t.Fatal(err)
+	}
+
+	updated, _ := m.Update(sessionKilledMsg{name: "small--existing-00", project: "small"})
+	got := updated.(model)
+	if got.err != nil {
+		t.Fatalf("kill reported error: %v", got.err)
+	}
+
+	if len(projectWrites) != 0 || len(labelWrites) != 0 {
+		t.Fatalf("marker writes = project:%#v label:%#v, want none", projectWrites, labelWrites)
+	}
 }
 
 func TestCreateVolatileSessionClearsStaleMetadata(t *testing.T) {

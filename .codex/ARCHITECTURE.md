@@ -24,6 +24,16 @@ An instance ID is scoped to its attached tmux client and passed explicitly to th
 
 Managed panes use tmux `remain-on-exit`. tflow does not automatically respawn exited shells or switch the client to another session.
 
+### Graceful signal shutdown
+
+The tflow executable creates one runtime context that is canceled by SIGHUP, SIGINT, or SIGTERM. Cancellation is passed only to long-running runtime boundaries: the attached tmux client and the Bubble Tea popup program.
+
+After startup has created and tagged a volatile session, the owning tflow process always performs one best-effort cleanup of that instance before it exits. Signal cancellation stops the attached client, then follows that same cleanup path. Cleanup remains strictly ownership-scoped: it never removes persistent sessions or volatile sessions owned by another instance.
+
+A canceled popup exits its Bubble Tea program without invoking the user-facing quit action. Its existing shell wrapper then clears the client-scoped popup marker. tflow continues to let tmux own popup process lifetime and does not add popup PID tracking or a process supervisor.
+
+Signal-driven cleanup does not replace another operation error. If cleanup is the only failure, tflow reports it. Crash recovery, forced termination such as SIGKILL, machine crashes, and power loss remain outside the design.
+
 ## Session identity
 
 Tmux session names are internal identifiers and are not used as user-facing project or session names.

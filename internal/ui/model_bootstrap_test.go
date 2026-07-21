@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -108,8 +109,8 @@ func TestStartWithManagerCleansUpInstanceVolatileSessionsAfterAttach(t *testing.
 		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
 			return nil
 		},
-		attachCommand: func(name string) (*exec.Cmd, error) {
-			return exec.Command("sh", "-c", ":"), nil
+		attachCommand: func(ctx context.Context, name string) (*exec.Cmd, error) {
+			return exec.CommandContext(ctx, "sh", "-c", ":"), nil
 		},
 		cleanupVolatile: func(instanceID string) error {
 			cleaned = append(cleaned, instanceID)
@@ -117,7 +118,7 @@ func TestStartWithManagerCleansUpInstanceVolatileSessionsAfterAttach(t *testing.
 		},
 	}
 
-	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-2"); err != nil {
+	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-2", fixedAttachContext(context.Background())); err != nil {
 		t.Fatalf("startWithManager returned error: %v", err)
 	}
 	if got, want := fmt.Sprint(cleaned), fmt.Sprint([]string{"instance-2"}); got != want {
@@ -150,5 +151,21 @@ func TestNewInstanceIDWithEntropyDiffersWithinSameTick(t *testing.T) {
 	second := newInstanceIDWithEntropy(now, bytes.NewReader([]byte{6, 7, 8, 9, 10, 11}), 99)
 	if first == second {
 		t.Fatalf("same-tick instance ids matched: %q", first)
+	}
+}
+
+func TestSessionsLoadedRecoversAttachedVolatileSessionWhenCurrentContextIsStale(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "stale-session").(model)
+	m.instanceID = "instance-1"
+	m.projects = []string{"old-project"}
+	m.sessions = []session{{Name: "stale-session", Temporary: true, Instance: "instance-1"}}
+
+	updated, _ := m.Update(sessionsLoadedMsg{sessions: []session{{Name: "tflow-v-instance-1-live", Temporary: true, Instance: "instance-1", Attached: true}}})
+	got := updated.(model)
+	if got.currentSession != "tflow-v-instance-1-live" {
+		t.Fatalf("currentSession = %q, want attached volatile session", got.currentSession)
+	}
+	if sessions := got.contextSessions(); len(sessions) != 1 || sessions[0].Name != got.currentSession {
+		t.Fatalf("context sessions = %#v, want recovered live session", sessions)
 	}
 }

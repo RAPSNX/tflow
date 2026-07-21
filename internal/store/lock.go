@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 // AcquireAppStateLock acquires the advisory lock shared by state mutations.
@@ -18,11 +20,15 @@ func AcquireAppStateLock(statePath string) (func() error, error) {
 		return nil, err
 	}
 	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
+		if closeErr := file.Close(); closeErr != nil {
+			diag.Warnf("close app-state lock file %q after chmod failure: %v", lockPath, closeErr)
+		}
 		return nil, err
 	}
 	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
-		_ = file.Close()
+		if closeErr := file.Close(); closeErr != nil {
+			diag.Warnf("close app-state lock file %q after flock failure: %v", lockPath, closeErr)
+		}
 		return nil, err
 	}
 	return func() error {

@@ -70,13 +70,22 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P1: Volatile instance lifecycle
 
-* [ ] Keep one instance ID exclusively on the attached tmux client; never inherit or consult it through the tmux server environment.
+* [x] Keep one instance ID exclusively on the attached tmux client; never inherit or consult it through the tmux server environment.
 * [x] Preserve the instance ID when the client switches between sessions.
-* [ ] Remove only the detached client's volatile sessions.
+* [x] Remove only the detached client's volatile sessions.
 * [x] Never remove persistent sessions during instance cleanup.
-* [ ] Never remove volatile sessions belonging to another instance.
+* [x] Never remove volatile sessions belonging to another instance.
 * [x] Keep cleanup idempotent.
 * [x] Test multiple simultaneous tflow instances and repeated cleanup.
+
+### P1: Graceful signal shutdown
+
+* [x] Cancel the runtime context on SIGHUP, SIGINT, and SIGTERM.
+* [x] Pass cancellation only to the attached tmux client and Bubble Tea popup program.
+* [x] Clean the owning volatile instance once when the attached client is canceled or exits.
+* [x] Keep signal cleanup scoped to the owning instance and preserve persistent and foreign volatile sessions.
+* [x] Exit a canceled popup without dispatching the user-facing quit action.
+* [x] Test canceled attach cleanup and canceled-popup behavior.
 
 ### P1: Popup lifecycle
 
@@ -103,7 +112,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 ### P1: Project and session behavior
 
 * [x] Close the sidebar immediately after tmux accepts valid session or project creation work, while the short-lived worker completes creation and switching.
-* [ ] Update tmux markers only for sessions directly affected by a mutation; do not rewrite unrelated sessions.
+* [x] Update tmux markers only for sessions directly affected by a mutation; do not rewrite unrelated sessions.
 * [x] Report background creation failures through the tmux status message.
 * [x] Create new project sessions in the project's configured workdir.
 * [x] Create volatile sessions in the active pane's working directory.
@@ -118,13 +127,13 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep volatile labels unique inside their owning instance.
 * [x] Allow different projects to reuse the same session label.
 * [x] Allow different tflow instances to reuse the same volatile label.
-* [ ] Move persistent sessions between projects without changing their tmux session IDs.
-* [ ] Reject moves whose labels already exist in the target project.
-* [ ] Delete a project when its final session is moved out.
+* [x] Move persistent sessions between projects without changing their tmux session IDs.
+* [x] Reject moves whose labels already exist in the target project.
+* [x] Delete a project when its final session is moved out.
 * [x] Delete a project when its final session is deleted.
 * [x] Delete all persistent sessions and metadata when a project is deleted.
-* [ ] Switch only when the active project is deleted, selecting the first session in the next project.
-* [ ] Create a volatile fallback in the active pane's working directory when no project session remains.
+* [x] Switch only when the active project is deleted, selecting the first session in the next project.
+* [x] Create a volatile fallback in the active pane's working directory when no project session remains.
 * [x] Keep project and session order stable.
 * [x] Test volatile-session project promotion, foreign-instance preservation, persistent ID replacement, volatile-marker clearing, active-session switching, sidebar closure, status refresh, and failure handling.
 * [ ] Test creation, rename, moves, deletion, switching, active-project deletion, and fallback behavior.
@@ -140,15 +149,15 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P1: Issue #55 consistency corrections
 
-* [ ] Preserve user-entered session-label casing and use exact displayed-label uniqueness within each scope.
-* [ ] Restore already-renamed volatile sessions and their ownership markers when promotion fails before state persistence; clean up an affected session only when restoration fails.
-* [ ] Emit a diagnostic for best-effort cleanup failures while returning the original operation error.
+* [x] Preserve user-entered session-label casing and use exact displayed-label uniqueness within each scope.
+* [x] Restore already-renamed volatile sessions and their ownership markers when promotion fails before state persistence; clean up an affected session only when restoration fails.
+* [x] Emit a diagnostic for best-effort cleanup failures while returning the original operation error.
 * [ ] Test non-active session and project deletion without client switching, active-project deletion switching, and no-project fallback creation.
-* [ ] Test a mid-promotion rename failure leaves no persistent-name orphan or stale ownership marker.
-* [ ] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment.
-* [ ] Test fallback working-directory selection uses the active pane rather than the popup or server working directory.
-* [ ] Test label case preservation and exact-scope duplicate handling.
-* [ ] Add mutation command-count tests proving unrelated tmux session markers are not rewritten.
+* [x] Test a mid-promotion rename failure leaves no persistent-name orphan or stale ownership marker.
+* [x] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment.
+* [x] Test fallback working-directory selection uses the active pane rather than the popup or server working directory.
+* [x] Test label case preservation and exact-scope duplicate handling.
+* [x] Add mutation command-count tests proving unrelated tmux session markers are not rewritten.
 
 ### P1: Installation and verification
 

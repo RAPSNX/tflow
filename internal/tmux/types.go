@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,7 +10,6 @@ import (
 const (
 	socketName         = "tflow"
 	menuPopupEnvPrefix = "TFLOW_MENU_POPUP_"
-	menuInstancePrefix = "TFLOW_MENU_INSTANCE_"
 	projectMarker      = "@tflow-project"
 	sessionLabelMarker = "@tflow-session-label"
 	tempMarker         = "@tflow-temp"
@@ -44,17 +44,15 @@ type Controller interface {
 	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
-	AttachCommand(name string) (*exec.Cmd, error)
+	AttachCommand(ctx context.Context, name string) (*exec.Cmd, error)
 	KillSession(name string) error
 	SwitchClient(name string) error
 	EnsureControlMode(binaryPath string, palette Palette) error
-	SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error
 	ToggleMenu(binaryPath string) error
 	OpenQuit(binaryPath string) error
 	CloseMenu() error
 	QuitAll() error
 	CleanupVolatileSessions(instanceID string) error
-	RememberCurrentClient() error
 	CleanupDetachedClient() error
 }
 

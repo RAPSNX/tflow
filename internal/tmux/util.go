@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"unicode"
 
 	"github.com/rapsnx/tflow/internal/store"
 )
@@ -44,6 +45,23 @@ func NormalizeCWD(cwd string) string {
 
 func SanitizeSessionName(name string) string {
 	return store.NormalizeProjectName(name)
+}
+
+// NormalizeSessionLabel trims a user-entered session label and strips control
+// characters (including the tab and newline bytes ListSessions uses to
+// delimit fields and rows) without altering casing or any other printable
+// character. This keeps tmux's tab/newline-delimited session metadata safe
+// to parse while leaving user-entered labels preserving their exact
+// displayed value; only slug-shaped internal tmux identifiers go through
+// SanitizeSessionName.
+func NormalizeSessionLabel(label string) string {
+	filtered := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, label)
+	return strings.TrimSpace(filtered)
 }
 
 func PersistentSessionName(id string) string {
@@ -158,7 +176,7 @@ func IsSessionExists(err error) bool {
 		strings.Contains(msg, "session already exists")
 }
 
-func isNoSession(err error) bool {
+func IsNoSession(err error) bool {
 	// These tmux stderr fragments were captured against tmux 3.7b.
 	return err != nil && strings.Contains(err.Error(), "can't find session")
 }
