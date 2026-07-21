@@ -395,7 +395,11 @@ func TestSidebarRefreshUsesOneListQueryAndNoWrites(t *testing.T) {
 			listCalls++
 			return []session{{Name: sessionID, Label: "code"}}, nil
 		},
-		syncSessionProjects: func(map[string]string) error {
+		setSessionProject: func(name, project string) error {
+			markerWrites++
+			return nil
+		},
+		setSessionLabel: func(name, label string) error {
 			markerWrites++
 			return nil
 		},

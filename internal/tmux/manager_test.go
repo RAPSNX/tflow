@@ -37,48 +37,6 @@ func TestSwitchClientUsesExplicitClientWhenAvailable(t *testing.T) {
 	}
 }
 
-func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
-	var calls [][]string
-	manager := Manager{
-		Run: func(args ...string) (string, error) {
-			calls = append(calls, append([]string(nil), args...))
-			return "", nil
-		},
-	}
-
-	err := manager.SyncSessionProjects(map[string]string{
-		"dev":   "small",
-		"api":   "",
-		"blank": "  ",
-	}, map[string]string{
-		"dev": "development",
-	})
-	if err != nil {
-		t.Fatalf("SyncSessionProjects returned error: %v", err)
-	}
-
-	wants := [][]string{
-		{"set-option", "-t", "dev", "@tflow-project", "small"},
-		{"set-option", "-t", "api", "@tflow-project", ""},
-		{"set-option", "-t", "blank", "@tflow-project", ""},
-		{"set-option", "-t", "dev", "@tflow-session-label", "development"},
-		{"set-option", "-t", "api", "@tflow-session-label", "api"},
-		{"set-option", "-t", "blank", "@tflow-session-label", "blank"},
-	}
-	for _, want := range wants {
-		found := false
-		for _, call := range calls {
-			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("missing call %v in %#v", want, calls)
-		}
-	}
-}
-
 func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {

@@ -62,7 +62,7 @@ func (m Manager) sessionInstanceID(sessionName string) (string, error) {
 	}
 	out, err := m.runner()("show-options", "-qv", "-t", sessionName, instanceMarker)
 	if err != nil {
-		if isNoSession(err) || IsNoServer(err) {
+		if IsNoSession(err) || IsNoServer(err) {
 			return "", nil
 		}
 		return "", err
