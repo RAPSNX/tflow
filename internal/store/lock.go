@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"tflow/internal/diag"
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 // AcquireAppStateLock acquires the advisory lock shared by state mutations.

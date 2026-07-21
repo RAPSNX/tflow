@@ -1,6 +1,6 @@
 package ui
 
-import "tflow/internal/store"
+import "github.com/rapsnx/tflow/internal/store"
 
 type appState = store.AppState
 type storedProject = store.Project

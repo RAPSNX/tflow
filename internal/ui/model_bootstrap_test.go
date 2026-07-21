@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	runtmux "tflow/internal/tmux"
+	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
 
 func TestMenuStartsWithCurrentSessionSelected(t *testing.T) {

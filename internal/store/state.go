@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"tflow/internal/diag"
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 var (

@@ -13,8 +13,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"tflow/internal/diag"
-	runtmux "tflow/internal/tmux"
+	"github.com/rapsnx/tflow/internal/diag"
+	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
 
 func Start() error {

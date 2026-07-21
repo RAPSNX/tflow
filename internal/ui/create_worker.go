@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"tflow/internal/diag"
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 type createRequest struct{ Kind, Project, Label, Workdir, Current, Instance string }

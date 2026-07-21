@@ -12,7 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"tflow/internal/diag"
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 func TestRunCreateWorkerCreatesAndSwitchesPersistentSession(t *testing.T) {

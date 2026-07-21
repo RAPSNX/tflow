@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	runtmux "tflow/internal/tmux"
-	"tflow/internal/ui"
+	runtmux "github.com/rapsnx/tflow/internal/tmux"
+	"github.com/rapsnx/tflow/internal/ui"
 )
 
 func main() {

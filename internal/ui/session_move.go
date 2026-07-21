@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"tflow/internal/store"
+	"github.com/rapsnx/tflow/internal/store"
 )
 
 // beginSessionMove starts the target-project picker for moving the selected

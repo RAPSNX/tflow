@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	runtmux "tflow/internal/tmux"
+	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
 
 func (m model) finishSessionCreationFollowUpError(err error) (tea.Model, tea.Cmd) {

@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"tflow/internal/diag"
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 type inputMode int

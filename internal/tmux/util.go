@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"tflow/internal/store"
+	"github.com/rapsnx/tflow/internal/store"
 )
 
 var tempSessionAnimals = []string{
