@@ -110,9 +110,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Do not store popup PIDs.
 * [x] Do not implement child-process reaping or a popup process registry.
 * [x] Test popup open, toggle, close, quit, and stale-marker cleanup.
-* [ ] Route tmux popup cleanup diagnostics through `internal/diag` instead of a separate stderr-only helper.
-* [ ] Emit a diagnostic when popup closing fails and marker cleanup also fails without replacing the close error.
-* [ ] Test popup cleanup diagnostics through the shared diagnostic output seam.
+* [x] Route tmux popup cleanup diagnostics through `internal/diag` instead of a separate stderr-only helper.
+* [x] Emit a diagnostic when popup closing fails and marker cleanup also fails without replacing the close error.
+* [x] Test popup cleanup diagnostics through the shared diagnostic output seam.
 
 ### P1: Sidebar performance
 

@@ -1,9 +1,12 @@
 package tmux
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 func TestQuitAllResolvesInstanceFromSessionOnlyIgnoringServerEnv(t *testing.T) {
@@ -161,6 +164,80 @@ func TestToggleMenuUnmarksPopupIfOpenFails(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("missing cleanup call %v in %#v", wantUnset, calls)
+	}
+}
+
+func TestToggleMenuEmitsDiagnosticWhenPopupMarkerCleanupAlsoFailsAfterOpenFailure(t *testing.T) {
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "display-message":
+				switch args[2] {
+				case "#{session_name}":
+					return "otter-temp", nil
+				case "#{client_name}":
+					return "@2", nil
+				default:
+					return "", fmt.Errorf("unexpected display-message format: %v", args)
+				}
+			case "show-options":
+				return "instance-1", nil
+			case "show-environment":
+				return "", nil
+			case "set-environment":
+				if len(args) > 1 && args[1] == "-gu" {
+					return "", fmt.Errorf("tmux: unmark failed")
+				}
+				return "", nil
+			case "display-popup":
+				return "", fmt.Errorf("popup failed")
+			default:
+				return "", fmt.Errorf("unexpected command: %v", args)
+			}
+		},
+	}
+
+	if err := manager.ToggleMenu("/tmp/tflow"); err == nil || !strings.Contains(err.Error(), "popup failed") {
+		t.Fatalf("ToggleMenu error = %v, want the original popup failure", err)
+	}
+	if !strings.Contains(buf.String(), "unmark failed") {
+		t.Fatalf("diagnostic output = %q, want a popup-marker cleanup failure diagnostic", buf.String())
+	}
+}
+
+func TestCloseMenuPopupEmitsDiagnosticWhenMarkerCleanupAlsoFailsAfterCloseFailure(t *testing.T) {
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "display-popup":
+				return "", fmt.Errorf("tmux: close failed")
+			case "set-environment":
+				return "", fmt.Errorf("tmux: unmark failed")
+			default:
+				return "", fmt.Errorf("unexpected command: %v", args)
+			}
+		},
+	}
+
+	err := manager.closeMenuPopup("@2")
+	if err == nil || !strings.Contains(err.Error(), "close failed") {
+		t.Fatalf("closeMenuPopup error = %v, want the original close failure preserved", err)
+	}
+	if strings.Contains(err.Error(), "unmark failed") {
+		t.Fatalf("closeMenuPopup error = %v, want the marker-cleanup failure not to replace the close failure", err)
+	}
+	if !strings.Contains(buf.String(), "unmark failed") {
+		t.Fatalf("diagnostic output = %q, want a popup-marker cleanup failure diagnostic", buf.String())
 	}
 }
 
