@@ -147,9 +147,9 @@ func (m Manager) SwitchClient(name string) error {
 		}
 		// TFLOW_CURRENT_CLIENT can outlive the tmux client it named, e.g. a create-worker inherits it from a
 		// popup whose client was already recreated. Retry only once a missing-client error is positively
-		// identified, and only against a replacement client resolved from the current session -- never an
-		// arbitrary client tmux itself might pick without -c.
-		replacement, resolveErr := m.resolveReplacementClient(name)
+		// identified, and only against a replacement client proven to belong to the same instance -- never
+		// an arbitrary client tmux itself might pick without -c.
+		replacement, resolveErr := m.resolveReplacementClient(clientID, name)
 		if resolveErr != nil {
 			return err
 		}
@@ -207,8 +207,8 @@ func (m Manager) DisplayMessage(message string) error {
 			return err
 		}
 		// Same stale-client fallback as SwitchClient: don't let a gone client swallow the error report, but
-		// only retry against a same-session replacement client, never an arbitrary one.
-		replacement, resolveErr := m.resolveReplacementClient("")
+		// only retry against a replacement client proven to belong to the same instance, never an arbitrary one.
+		replacement, resolveErr := m.resolveReplacementClient(clientID, "")
 		if resolveErr != nil {
 			return err
 		}
@@ -234,9 +234,9 @@ func (m Manager) CurrentPaneDir() (string, error) {
 		}
 		// A popup can retain a stale client identifier after the tmux client that opened it has been recreated.
 		// Retry only once a missing-client error is positively identified, and only against a replacement
-		// client resolved from the current session. A resolved client whose active pane path is legitimately
-		// empty must not fall back to a different client's active pane.
-		replacement, resolveErr := m.resolveReplacementClient("")
+		// client proven to belong to the same instance. A resolved client whose active pane path is
+		// legitimately empty must not fall back to a different client's active pane.
+		replacement, resolveErr := m.resolveReplacementClient(clientID, "")
 		if resolveErr != nil {
 			return "", err
 		}
@@ -263,15 +263,24 @@ func isMissingClientError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "can't find client")
 }
 
-// resolveReplacementClient finds the client currently attached to the
-// session recorded in CurrentSessionEnv or, failing that, to target (when
-// non-empty). That session -- not the possibly gone client name a caller
-// already has -- is the reliable anchor for "the same tflow instance": a
-// client that was recreated (for example after a popup respawned) is still
-// attached to the same session, so resolving by session finds its live
-// successor instead of falling back to whatever client tmux itself would
-// pick without -c, which could belong to a different instance entirely on a
-// multi-client server.
+// resolveReplacementClient finds a live client to retry against once
+// staleClientID has gone missing, but only one it can prove belongs to the
+// same tflow instance staleClientID did -- being attached to a session this
+// operation is interested in is necessary but not sufficient proof by
+// itself: a persistent session can have more than one client attached
+// (another user's terminal, or a different tflow instance's client that
+// happens to be sitting on the same session), and matching by session alone
+// would let a retry switch or display messages on a client that isn't ours.
+//
+// Proof comes from the same client-scoped instance slot popups already
+// maintain (rememberClientInstance / clientInstanceID in instance.go):
+// staleClientID's own last-known instance is looked up first, and a
+// candidate client is only accepted once its own slot resolves to that same
+// instance. If staleClientID has no remembered instance, there is no way to
+// prove any replacement belongs to the same instance, so this returns an
+// error rather than falling back to an arbitrary client -- matching the
+// architecture's "may select a replacement only when it can prove that the
+// replacement belongs to the same tflow instance."
 //
 // target exists for SwitchClient's own retry: volatile-to-persistent
 // promotion renames the active session and then switches to its new name in
@@ -281,7 +290,15 @@ func isMissingClientError(err error) bool {
 // underlying session object, just under a new #{client_session} name, so
 // checking the switch target too finds that same live client without
 // needing CurrentSessionEnv to track the rename.
-func (m Manager) resolveReplacementClient(target string) (string, error) {
+func (m Manager) resolveReplacementClient(staleClientID, target string) (string, error) {
+	instanceID, err := m.clientInstanceID(staleClientID)
+	if err != nil {
+		return "", err
+	}
+	if instanceID == "" {
+		return "", fmt.Errorf("no remembered instance for client %q to prove replacement ownership", staleClientID)
+	}
+
 	candidates := make([]string, 0, 2)
 	if sessionName := strings.TrimSpace(os.Getenv(CurrentSessionEnv)); sessionName != "" {
 		candidates = append(candidates, sessionName)
@@ -296,20 +313,27 @@ func (m Manager) resolveReplacementClient(target string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	bySession := map[string]string{}
+	bySession := map[string][]string{}
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		parts := strings.SplitN(line, "\t", 2)
 		if len(parts) != 2 {
 			continue
 		}
 		if client := strings.TrimSpace(parts[0]); client != "" {
-			bySession[strings.TrimSpace(parts[1])] = client
+			session := strings.TrimSpace(parts[1])
+			bySession[session] = append(bySession[session], client)
 		}
 	}
 	for _, candidate := range candidates {
-		if client, ok := bySession[candidate]; ok {
-			return client, nil
+		for _, client := range bySession[candidate] {
+			clientOwner, err := m.clientInstanceID(client)
+			if err != nil {
+				return "", err
+			}
+			if clientOwner == instanceID {
+				return client, nil
+			}
 		}
 	}
-	return "", fmt.Errorf("no client attached to session %q", candidates[0])
+	return "", fmt.Errorf("no client attached to session %q proven to belong to instance %q", candidates[0], instanceID)
 }
