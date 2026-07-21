@@ -58,43 +58,24 @@ var (
 )
 
 func init() {
-	applyTheme(themePaletteForName("catppuccin"))
+	applyTheme(catppuccinPalette())
 }
 
-func themePaletteForName(name string) themePalette {
-	switch name {
-	case "forest":
-		return themePalette{
-			BaseBG:       "#18251a",
-			Surface0:     "#35523a",
-			Surface1:     "#466b4b",
-			Text:         "#edf6ee",
-			Subtext:      "#b7cbb9",
-			Blue:         "#8fc2a0",
-			Teal:         "#7fd1bf",
-			Yellow:       "#f0d37a",
-			Red:          "#e59c8e",
-			Mantle:       "#132016",
-			Crust:        "#0d170f",
-			BadgeText:    "#132016",
-			SelectedText: "#0d170f",
-		}
-	default:
-		return themePalette{
-			BaseBG:       "#1e1e2e",
-			Surface0:     "#313244",
-			Surface1:     "#45475a",
-			Text:         "#cdd6f4",
-			Subtext:      "#a6adc8",
-			Blue:         "#89b4fa",
-			Teal:         "#94e2d5",
-			Yellow:       "#f9e2af",
-			Red:          "#f38ba8",
-			Mantle:       "#181825",
-			Crust:        "#11111b",
-			BadgeText:    "#1e1e2e",
-			SelectedText: "#11111b",
-		}
+func catppuccinPalette() themePalette {
+	return themePalette{
+		BaseBG:       "#1e1e2e",
+		Surface0:     "#313244",
+		Surface1:     "#45475a",
+		Text:         "#cdd6f4",
+		Subtext:      "#a6adc8",
+		Blue:         "#89b4fa",
+		Teal:         "#94e2d5",
+		Yellow:       "#f9e2af",
+		Red:          "#f38ba8",
+		Mantle:       "#181825",
+		Crust:        "#11111b",
+		BadgeText:    "#1e1e2e",
+		SelectedText: "#11111b",
 	}
 }
 

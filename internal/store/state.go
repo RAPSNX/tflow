@@ -77,14 +77,6 @@ func SaveAppState(path string, state AppState) error {
 	return nil
 }
 
-func EnsureStartupState() error {
-	path := AppStatePath()
-	_, err := MutateAppState(path, func(state AppState) (AppState, error) {
-		return state, nil
-	})
-	return err
-}
-
 func stateHomeDir() string {
 	if dir := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); dir != "" {
 		return dir

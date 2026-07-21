@@ -214,9 +214,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Remove file and directory sync requirements.
 * [x] Remove popup PID ownership requirements.
 * [x] Remove generalized rollback and compensation tests.
-* [ ] Remove obsolete architecture-specific helpers after their callers are migrated.
-* [ ] Remove the empty session-identity file, unreachable in-popup creation modes and messages, unused startup/state helpers, and the dead in-popup `Ctrl+F` branch.
-* [ ] Remove unused helpers and exported test-only APIs, unreachable theme handling, deprecated Lip Gloss style copying, and local `min`/`max` helpers shadowing Go builtins.
+* [x] Remove obsolete architecture-specific helpers after their callers are migrated.
+* [x] Remove the empty session-identity file, unreachable in-popup creation modes and messages, unused startup/state helpers, and the dead in-popup `Ctrl+F` branch.
+* [x] Remove unused helpers and exported test-only APIs, unreachable theme handling, deprecated Lip Gloss style copying, and local `min`/`max` helpers shadowing Go builtins.
 
 ## After alpha 0.0.1
 

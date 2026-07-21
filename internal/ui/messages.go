@@ -42,10 +42,6 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case sessionCreatedMsg:
 		if msg.err != nil {
-			if m.mode == inputCreatingSession {
-				m.mode = inputCreateSession
-				m.input.Focus()
-			}
 			m.err = msg.err
 			m.status = msg.err.Error()
 			return m, nil

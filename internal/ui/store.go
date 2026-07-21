@@ -37,10 +37,6 @@ func normalizeAppState(state appState) appState {
 	return store.NormalizeAppState(state)
 }
 
-func ensureStartupState() error {
-	return store.EnsureStartupState()
-}
-
 func appStatePath() string {
 	return store.AppStatePath()
 }

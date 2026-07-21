@@ -20,7 +20,6 @@ type inputMode int
 const (
 	inputNone inputMode = iota
 	inputCreateSession
-	inputCreatingSession
 	inputCreateProject
 	inputSwitchProject
 	inputConfirmDelete
