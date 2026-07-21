@@ -70,6 +70,23 @@ func clientInstanceEnvKey(clientID string) string {
 	return clientScopedEnvKey(menuInstanceEnvPrefix, clientID)
 }
 
+// forgetClientInstance clears the client-scoped instance slot once its
+// client has detached, so it does not accumulate indefinitely across future
+// clients that may reuse the same #{client_name}. Failure is best effort:
+// CleanupDetachedClient's primary work (removing the instance's volatile
+// sessions) has already completed by the time this runs.
+func (m Manager) forgetClientInstance(clientID string) error {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return nil
+	}
+	_, err := m.runner()("set-environment", "-gu", clientInstanceEnvKey(clientID))
+	if isBenignEnvCleanupError(err) {
+		return nil
+	}
+	return err
+}
+
 func (m Manager) currentValue(format string) (string, error) {
 	out, err := m.runner()("display-message", "-p", format)
 	if err != nil {
@@ -117,19 +134,35 @@ func (m Manager) sessionInstanceID(sessionName string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// CleanupDetachedClient runs from the client-detached hook (control.go) to
+// remove the detaching client's own volatile sessions. It resolves the
+// owning instance the same way a popup would: the session's own marker
+// first, falling back to the client-scoped slot when the client had
+// switched into a persistent session before detaching -- without that
+// fallback, a client that switched into a persistent session and then
+// detached would resolve an empty instance and leak its volatile sessions
+// until a manual cleanup. Once cleanup runs, the now-stale client slot is
+// cleared so it does not accumulate across future clients.
 func (m Manager) CleanupDetachedClient() error {
 	session, err := m.contextValue(CurrentSessionEnv, "#{session_name}")
 	if err != nil {
 		return err
 	}
-	instanceID, err := m.sessionInstanceID(session)
+	clientID, err := m.contextValue(CurrentClientEnv, "#{client_name}")
+	if err != nil {
+		return err
+	}
+	instanceID, err := m.resolveInstanceID(session, clientID)
 	if err != nil {
 		return err
 	}
 	if instanceID == "" {
 		return nil
 	}
-	return m.CleanupVolatileSessions(instanceID)
+	if err := m.CleanupVolatileSessions(instanceID); err != nil {
+		return err
+	}
+	return m.forgetClientInstance(clientID)
 }
 
 func CleanupDetachedClient() error {

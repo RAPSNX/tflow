@@ -111,7 +111,7 @@ func (m Manager) unmarkMenuPopup(clientID string) error {
 		return nil
 	}
 	_, err := m.runner()("set-environment", "-gu", popupEnvKey(clientID))
-	if isBenignPopupCleanupError(err) {
+	if isBenignEnvCleanupError(err) {
 		return nil
 	}
 	return err
@@ -203,7 +203,7 @@ func isBenignPopupCloseError(err error) bool {
 		strings.Contains(msg, "can't find client")
 }
 
-func isBenignPopupCleanupError(err error) bool {
+func isBenignEnvCleanupError(err error) bool {
 	if err == nil {
 		return false
 	}
