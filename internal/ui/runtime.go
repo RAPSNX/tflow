@@ -30,7 +30,6 @@ type tmuxController interface {
 	KillSession(name string) error
 	SwitchClient(name string) error
 	EnsureControlMode(binaryPath string) error
-	SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error
 	ToggleMenu(binaryPath string) error
 	CloseMenu() error
 	QuitAll() error
@@ -104,10 +103,6 @@ func (m sessionManager) EnsureControlMode(binaryPath string) error {
 		Mantle:   palette.Mantle,
 		Teal:     palette.Teal,
 	})
-}
-
-func (m sessionManager) SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error {
-	return m.inner.SyncSessionProjects(sessionProjects, sessionLabels)
 }
 
 func (m sessionManager) ToggleMenu(binaryPath string) error {

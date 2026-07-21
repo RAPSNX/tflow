@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -40,11 +41,8 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 		}
 	}
 
-	instanceID, err := m.resolveInstanceID(currentSession, currentClient)
+	instanceID, err := m.resolveInstanceID(currentSession)
 	if err != nil {
-		return err
-	}
-	if err := m.rememberClientInstance(currentClient, instanceID); err != nil {
 		return err
 	}
 	if err := m.markMenuPopup(currentClient); err != nil {
@@ -69,10 +67,16 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 	args = append(args, popupShellCommand(binaryPath, currentClient))
 	_, err = m.runner()(args...)
 	if err != nil {
-		_ = m.unmarkMenuPopup(currentClient)
+		if unmarkErr := m.unmarkMenuPopup(currentClient); unmarkErr != nil {
+			warnf("cleanup popup marker after failed display-popup: %v", unmarkErr)
+		}
 		return err
 	}
 	return nil
+}
+
+func warnf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "tflow: "+format+"\n", args...)
 }
 
 func (m Manager) CloseMenu() error {
@@ -141,10 +145,6 @@ func popupInstanceEnvArgs(instanceID string) []string {
 	return []string{"-e", fmt.Sprintf("%s=%s", CurrentInstanceEnv, instanceID)}
 }
 
-func instanceUnsetScript(clientID string) string {
-	return shellTmuxCommand("set-environment", "-gu", instanceEnvKey(clientID)) + " >/dev/null 2>&1"
-}
-
 func popupUnsetScript(clientID string) string {
 	return shellTmuxCommand("set-environment", "-gu", popupEnvKey(clientID)) + " >/dev/null 2>&1"
 }
@@ -155,10 +155,6 @@ func popupCloseScript(clientID string) string {
 
 func popupEnvKey(clientID string) string {
 	return clientScopedEnvKey(menuPopupEnvPrefix, clientID)
-}
-
-func instanceEnvKey(clientID string) string {
-	return clientScopedEnvKey(menuInstancePrefix, clientID)
 }
 
 func clientScopedEnvKey(prefix, clientID string) string {

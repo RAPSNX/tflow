@@ -27,7 +27,6 @@ type fakeTmuxController struct {
 	closeMenu           func() error
 	quitAll             func() error
 	cleanupVolatile     func(instanceID string) error
-	syncSessionProjects func(sessionProjects map[string]string) error
 }
 
 func (f fakeTmuxController) ListSessions() ([]session, error) {
@@ -144,21 +143,6 @@ func (f fakeTmuxController) CleanupVolatileSessions(instanceID string) error {
 		return f.cleanupVolatile(instanceID)
 	}
 	return nil
-}
-
-func (f fakeTmuxController) SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error {
-	if f.syncSessionProjects != nil {
-		return f.syncSessionProjects(sessionProjects)
-	}
-	return nil
-}
-
-func cloneStringMap(src map[string]string) map[string]string {
-	dst := make(map[string]string, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
 }
 
 func TestMain(m *testing.M) {

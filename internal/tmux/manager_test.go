@@ -38,48 +38,6 @@ func TestSwitchClientUsesExplicitClientWhenAvailable(t *testing.T) {
 	}
 }
 
-func TestSyncSessionProjectsSetsProjectMarker(t *testing.T) {
-	var calls [][]string
-	manager := Manager{
-		Run: func(args ...string) (string, error) {
-			calls = append(calls, append([]string(nil), args...))
-			return "", nil
-		},
-	}
-
-	err := manager.SyncSessionProjects(map[string]string{
-		"dev":   "small",
-		"api":   "",
-		"blank": "  ",
-	}, map[string]string{
-		"dev": "development",
-	})
-	if err != nil {
-		t.Fatalf("SyncSessionProjects returned error: %v", err)
-	}
-
-	wants := [][]string{
-		{"set-option", "-t", "dev", "@tflow-project", "small"},
-		{"set-option", "-t", "api", "@tflow-project", ""},
-		{"set-option", "-t", "blank", "@tflow-project", ""},
-		{"set-option", "-t", "dev", "@tflow-session-label", "development"},
-		{"set-option", "-t", "api", "@tflow-session-label", "api"},
-		{"set-option", "-t", "blank", "@tflow-session-label", "blank"},
-	}
-	for _, want := range wants {
-		found := false
-		for _, call := range calls {
-			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("missing call %v in %#v", want, calls)
-		}
-	}
-}
-
 func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
@@ -387,55 +345,21 @@ func TestNextTempSessionNameUsesPairsThenSuffixes(t *testing.T) {
 	}
 }
 
-func TestRememberCurrentClientStoresAttachedSessionInstance(t *testing.T) {
+func TestCleanupDetachedClientRemovesOwnedSessions(t *testing.T) {
 	t.Setenv(CurrentSessionEnv, VolatileSessionName("instance-1", "otter"))
-	t.Setenv(CurrentClientEnv, "/dev/pts/4")
 
 	var calls [][]string
-	manager := Manager{Run: func(args ...string) (string, error) {
-		calls = append(calls, append([]string(nil), args...))
-		if args[0] == "show-options" {
-			return "instance-1", nil
-		}
-		return "", nil
-	}}
-
-	if err := manager.RememberCurrentClient(); err != nil {
-		t.Fatalf("RememberCurrentClient returned error: %v", err)
-	}
-	want := []string{"set-environment", "-gh", instanceEnvKey("/dev/pts/4"), "instance-1"}
-	for _, call := range calls {
-		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-			return
-		}
-	}
-	t.Fatalf("calls = %#v, want %v", calls, want)
-}
-
-func TestCleanupDetachedClientRemovesOwnedSessionsAndMarker(t *testing.T) {
-	t.Setenv(CurrentClientEnv, "@2")
-
-	var calls [][]string
-	markerPresent := true
 	manager := Manager{Run: func(args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
 		switch args[0] {
-		case "show-environment":
-			if markerPresent {
-				return instanceEnvKey("@2") + "=instance-1\n", nil
-			}
-			return "", nil
+		case "show-options":
+			return "instance-1", nil
 		case "list-sessions":
 			return strings.Join([]string{
 				VolatileSessionName("instance-1", "otter") + "\t1\t0\t1\tinstance-1",
 				VolatileSessionName("instance-2", "fox") + "\t1\t0\t1\tinstance-2",
 				"project--dev\t1\t0\t0\t",
 			}, "\n"), nil
-		case "set-environment":
-			if len(args) == 3 && args[1] == "-gu" && args[2] == instanceEnvKey("@2") {
-				markerPresent = false
-			}
-			return "", nil
 		default:
 			return "", nil
 		}
@@ -444,32 +368,56 @@ func TestCleanupDetachedClientRemovesOwnedSessionsAndMarker(t *testing.T) {
 	if err := manager.CleanupDetachedClient(); err != nil {
 		t.Fatalf("CleanupDetachedClient returned error: %v", err)
 	}
-	if err := manager.CleanupDetachedClient(); err != nil {
-		t.Fatalf("second CleanupDetachedClient returned error: %v", err)
-	}
-	wants := [][]string{
-		{"kill-session", "-t", VolatileSessionName("instance-1", "otter")},
-		{"set-environment", "-gu", instanceEnvKey("@2")},
-	}
-	for _, want := range wants {
-		found := false
-		for _, call := range calls {
-			if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
-				found = true
-				break
-			}
+
+	want := []string{"kill-session", "-t", VolatileSessionName("instance-1", "otter")}
+	found := false
+	for _, call := range calls {
+		if strings.Join(call, "\x00") == strings.Join(want, "\x00") {
+			found = true
+			break
 		}
-		if !found {
-			t.Fatalf("calls = %#v, want %v", calls, want)
-		}
+	}
+	if !found {
+		t.Fatalf("calls = %#v, want %v", calls, want)
 	}
 	kills := 0
 	for _, call := range calls {
 		if len(call) == 3 && call[0] == "kill-session" {
 			kills++
 		}
+		if call[0] == "set-environment" || call[0] == "show-environment" {
+			t.Fatalf("calls = %#v, should never touch the tmux global environment", calls)
+		}
 	}
 	if kills != 1 {
 		t.Fatalf("kill count = %d, want 1", kills)
+	}
+}
+
+func TestCleanupDetachedClientResolvesInstancePurelyFromSessionContext(t *testing.T) {
+	// A client that detaches from a persistent session (no @tflow-instance marker)
+	// must resolve an empty instance ID and never consult the tmux server
+	// environment for a stale value from an earlier session.
+	t.Setenv(CurrentSessionEnv, "dev")
+
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		switch args[0] {
+		case "show-options":
+			return "", nil
+		case "list-sessions":
+			t.Fatalf("list-sessions should not be called when the session has no instance marker")
+		}
+		return "", nil
+	}}
+
+	if err := manager.CleanupDetachedClient(); err != nil {
+		t.Fatalf("CleanupDetachedClient returned error: %v", err)
+	}
+	for _, call := range calls {
+		if call[0] == "set-environment" || call[0] == "show-environment" {
+			t.Fatalf("calls = %#v, should never touch the tmux global environment", calls)
+		}
 	}
 }

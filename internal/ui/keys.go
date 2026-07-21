@@ -47,6 +47,8 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.beginProjectRename()
 	case "e":
 		return m.editProject()
+	case "m":
+		return m.beginSessionMove()
 	}
 
 	return m, nil

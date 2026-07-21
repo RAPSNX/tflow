@@ -87,6 +87,30 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.input = next
 		m.projectSwitchIndex = 0
 		return m, cmd
+	case inputMoveSession:
+		switch msg.Type {
+		case tea.KeyDown:
+			m.shiftMoveProjectSwitch(1)
+			return m, nil
+		case tea.KeyUp:
+			m.shiftMoveProjectSwitch(-1)
+			return m, nil
+		case tea.KeyEsc:
+			m.mode = inputNone
+			m.moveTarget = moveTarget{}
+			m.moveProjectIndex = 0
+			m.input.Blur()
+			m.input.Prompt = ""
+			m.input.SetValue("")
+			m.status = "Move cancelled."
+			return m, nil
+		case tea.KeyEnter:
+			return m.commitSessionMove()
+		}
+		next, cmd := m.input.Update(msg)
+		m.input = next
+		m.moveProjectIndex = 0
+		return m, cmd
 	case inputConfirmDelete:
 		switch msg.Type {
 		case tea.KeyEsc:

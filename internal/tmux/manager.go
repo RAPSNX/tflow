@@ -121,7 +121,7 @@ func (Manager) AttachCommand(ctx context.Context, name string) (*exec.Cmd, error
 
 func (m Manager) KillSession(name string) error {
 	_, err := m.runner()("kill-session", "-t", name)
-	if err != nil && (isNoSession(err) || IsNoServer(err)) {
+	if err != nil && (IsNoSession(err) || IsNoServer(err)) {
 		return nil
 	}
 	return err
@@ -135,33 +135,6 @@ func (m Manager) SwitchClient(name string) error {
 	args = append(args, "-t", name)
 	_, err := m.runner()(args...)
 	return err
-}
-
-func (m Manager) SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error {
-	for name, project := range sessionProjects {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		project = store.NormalizeProjectName(project)
-		if _, err := m.runner()("set-option", "-t", name, projectMarker, project); err != nil {
-			if isNoSession(err) || IsNoServer(err) {
-				continue
-			}
-			return err
-		}
-		label := strings.TrimSpace(sessionLabels[name])
-		if label == "" {
-			label = name
-		}
-		if _, err := m.runner()("set-option", "-t", name, sessionLabelMarker, label); err != nil {
-			if isNoSession(err) || IsNoServer(err) {
-				continue
-			}
-			return err
-		}
-	}
-	return nil
 }
 
 func (m Manager) CleanupVolatileSessions(instanceID string) error {

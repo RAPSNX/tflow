@@ -10,7 +10,6 @@ import (
 const (
 	socketName         = "tflow"
 	menuPopupEnvPrefix = "TFLOW_MENU_POPUP_"
-	menuInstancePrefix = "TFLOW_MENU_INSTANCE_"
 	projectMarker      = "@tflow-project"
 	sessionLabelMarker = "@tflow-session-label"
 	tempMarker         = "@tflow-temp"
@@ -49,13 +48,11 @@ type Controller interface {
 	KillSession(name string) error
 	SwitchClient(name string) error
 	EnsureControlMode(binaryPath string, palette Palette) error
-	SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error
 	ToggleMenu(binaryPath string) error
 	OpenQuit(binaryPath string) error
 	CloseMenu() error
 	QuitAll() error
 	CleanupVolatileSessions(instanceID string) error
-	RememberCurrentClient() error
 	CleanupDetachedClient() error
 }
 

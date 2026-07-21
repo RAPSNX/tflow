@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -243,10 +244,33 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 }
 
 func defaultSessionDir() string {
-	if cwd, err := os.Getwd(); err == nil && strings.TrimSpace(cwd) != "" {
-		return cwd
+	cwd, _ := os.Getwd()
+	return sessionStartDir(cwd)
+}
+
+func sessionStartDir(cwd string) string {
+	cwd = strings.TrimSpace(cwd)
+	if cwd != "" {
+		if abs, err := filepath.Abs(cwd); err == nil {
+			if info, err := os.Stat(abs); err == nil && info.IsDir() {
+				return abs
+			}
+		}
+	}
+	for _, path := range []string{userHomeDir(), os.TempDir(), string(os.PathSeparator)} {
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return filepath.Clean(path)
+		}
 	}
 	return runtmux.NormalizeCWD("")
+}
+
+func userHomeDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }
 
 func runMenuExitAction(manager tmuxController, final tea.Model) error {

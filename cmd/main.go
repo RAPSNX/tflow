@@ -35,8 +35,6 @@ func run() error {
 				return fmt.Errorf("create-worker requires one payload")
 			}
 			return ui.RunCreateWorker(args[1])
-		case "remember-client":
-			return runtmux.RememberCurrentClient()
 		case "cleanup-client":
 			return runtmux.CleanupDetachedClient()
 		default:
