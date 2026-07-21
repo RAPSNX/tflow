@@ -11,7 +11,7 @@ func (m Manager) QuitAll() error {
 	if err != nil {
 		return err
 	}
-	instanceID, err := m.resolveInstanceID(currentSession)
+	instanceID, err := m.resolveInstanceID(currentSession, clientID)
 	if err != nil {
 		return err
 	}

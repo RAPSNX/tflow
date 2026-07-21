@@ -716,3 +716,52 @@ func TestCleanupDetachedClientResolvesInstancePurelyFromSessionContext(t *testin
 		}
 	}
 }
+
+// TestCleanupDetachedClientRemovesOwnedSessionsFromPersistentSessionViaClientSlot
+// covers a client that switched into a persistent session (no
+// @tflow-instance marker) before detaching. Session-only resolution alone
+// would resolve an empty instance and leak that instance's volatile
+// sessions; CleanupDetachedClient must fall back to the client-scoped
+// instance slot, same as resolveInstanceID does for popups, and clear that
+// slot once cleanup has run.
+func TestCleanupDetachedClientRemovesOwnedSessionsFromPersistentSessionViaClientSlot(t *testing.T) {
+	t.Setenv(CurrentSessionEnv, "dev")
+	t.Setenv(CurrentClientEnv, "@2")
+
+	var killed []string
+	var forgotten bool
+	manager := Manager{Run: func(args ...string) (string, error) {
+		switch args[0] {
+		case "show-options":
+			// The detached-from session is persistent: no instance marker.
+			return "", nil
+		case "show-environment":
+			return "TFLOW_MENU_INSTANCE__2=instance-1\n", nil
+		case "set-environment":
+			if len(args) > 1 && args[1] == "-gu" && args[2] == clientInstanceEnvKey("@2") {
+				forgotten = true
+			}
+			return "", nil
+		case "list-sessions":
+			return strings.Join([]string{
+				VolatileSessionName("instance-1", "otter") + "\t1\t0\t1\tinstance-1",
+				VolatileSessionName("instance-2", "fox") + "\t1\t0\t1\tinstance-2",
+			}, "\n"), nil
+		case "kill-session":
+			killed = append(killed, args[2])
+			return "", nil
+		default:
+			return "", nil
+		}
+	}}
+
+	if err := manager.CleanupDetachedClient(); err != nil {
+		t.Fatalf("CleanupDetachedClient returned error: %v", err)
+	}
+	if got, want := strings.Join(killed, ","), VolatileSessionName("instance-1", "otter"); got != want {
+		t.Fatalf("killed = %q, want %q (instance-1's own volatile session, resolved via the client-scoped slot)", got, want)
+	}
+	if !forgotten {
+		t.Fatal("client-scoped instance slot was not cleared after cleanup")
+	}
+}

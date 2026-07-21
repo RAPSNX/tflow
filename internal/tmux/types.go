@@ -8,21 +8,22 @@ import (
 )
 
 const (
-	socketName         = "tflow"
-	menuPopupEnvPrefix = "TFLOW_MENU_POPUP_"
-	projectMarker      = "@tflow-project"
-	sessionLabelMarker = "@tflow-session-label"
-	tempMarker         = "@tflow-temp"
-	instanceMarker     = "@tflow-instance"
-	menuWidth          = "36"
-	menuHeight         = "100%"
-	menuToggleKey      = "C-f"
-	quitKey            = "C-q"
-	CurrentSessionEnv  = "TFLOW_CURRENT_SESSION"
-	CurrentClientEnv   = "TFLOW_CURRENT_CLIENT"
-	CurrentInstanceEnv = "TFLOW_INSTANCE_ID"
-	MenuModeEnv        = "TFLOW_MENU_MODE"
-	MenuModeQuit       = "quit"
+	socketName            = "tflow"
+	menuPopupEnvPrefix    = "TFLOW_MENU_POPUP_"
+	menuInstanceEnvPrefix = "TFLOW_MENU_INSTANCE_"
+	projectMarker         = "@tflow-project"
+	sessionLabelMarker    = "@tflow-session-label"
+	tempMarker            = "@tflow-temp"
+	instanceMarker        = "@tflow-instance"
+	menuWidth             = "36"
+	menuHeight            = "100%"
+	menuToggleKey         = "C-f"
+	quitKey               = "C-q"
+	CurrentSessionEnv     = "TFLOW_CURRENT_SESSION"
+	CurrentClientEnv      = "TFLOW_CURRENT_CLIENT"
+	CurrentInstanceEnv    = "TFLOW_INSTANCE_ID"
+	MenuModeEnv           = "TFLOW_MENU_MODE"
+	MenuModeQuit          = "quit"
 )
 
 type Session struct {

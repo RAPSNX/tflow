@@ -42,8 +42,16 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 		}
 	}
 
-	instanceID, err := m.resolveInstanceID(currentSession)
+	instanceID, err := m.resolveInstanceID(currentSession, currentClient)
 	if err != nil {
+		return err
+	}
+	// Remember the instance before marking the popup visible: a failure here
+	// must return before the popup marker is set, so there is nothing to
+	// unmark on this path -- markMenuPopup's own failure needs no cleanup
+	// either, and the later display-popup failure path already unmarks on
+	// its own.
+	if err := m.rememberClientInstance(currentClient, instanceID); err != nil {
 		return err
 	}
 	if err := m.markMenuPopup(currentClient); err != nil {
@@ -103,7 +111,7 @@ func (m Manager) unmarkMenuPopup(clientID string) error {
 		return nil
 	}
 	_, err := m.runner()("set-environment", "-gu", popupEnvKey(clientID))
-	if isBenignPopupCleanupError(err) {
+	if isBenignEnvCleanupError(err) {
 		return nil
 	}
 	return err
@@ -195,7 +203,7 @@ func isBenignPopupCloseError(err error) bool {
 		strings.Contains(msg, "can't find client")
 }
 
-func isBenignPopupCleanupError(err error) bool {
+func isBenignEnvCleanupError(err error) bool {
 	if err == nil {
 		return false
 	}
