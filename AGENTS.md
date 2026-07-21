@@ -10,7 +10,7 @@ This is a small Go module with its current entry point in `cmd/tflow/main.go`.
 
 ## Development Commands
 
-- `go run ./cmd`: run the application locally.
+- `go run ./cmd/tflow`: run the application locally.
 - `go test ./...`: run all tests.
 - `go build ./...`: compile all packages.
 - `gofmt -w <files>`: format changed Go files.
