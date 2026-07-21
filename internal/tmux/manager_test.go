@@ -38,6 +38,45 @@ func TestSwitchClientUsesExplicitClientWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestSwitchClientRetriesAfterStaleClientError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) > 1 && args[1] == "-c" {
+			return "", fmt.Errorf("can't find client /dev/pts/4")
+		}
+		return "", nil
+	}}
+
+	if err := manager.SwitchClient("otter-temp"); err != nil {
+		t.Fatalf("SwitchClient returned error: %v", err)
+	}
+	wantCalls := [][]string{
+		{"switch-client", "-c", "/dev/pts/4", "-t", "otter-temp"},
+		{"switch-client", "-t", "otter-temp"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
+	}
+	for i, want := range wantCalls {
+		if strings.Join(calls[i], "\x00") != strings.Join(want, "\x00") {
+			t.Fatalf("calls[%d] = %#v, want %v", i, calls[i], want)
+		}
+	}
+}
+
+func TestSwitchClientReturnsErrorWhenRetryAlsoFails(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	manager := Manager{Run: func(args ...string) (string, error) {
+		return "", fmt.Errorf("no current client")
+	}}
+
+	if err := manager.SwitchClient("otter-temp"); err == nil {
+		t.Fatal("SwitchClient returned nil error, want stale client failure")
+	}
+}
+
 func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
@@ -63,6 +102,35 @@ func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	}
 	if sessions[1].Temporary {
 		t.Fatal("expected second session to be persistent")
+	}
+}
+
+func TestListSessionsTreatsAnyAttachedClientCountAsAttached(t *testing.T) {
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			return strings.Join([]string{
+				"none\t1\t0\t0\t\tnone",
+				"one\t1\t1\t0\t\tone",
+				"many\t1\t3\t0\t\tmany",
+			}, "\n") + "\n", nil
+		},
+	}
+
+	sessions, err := manager.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions returned error: %v", err)
+	}
+	if len(sessions) != 3 {
+		t.Fatalf("len(sessions) = %d", len(sessions))
+	}
+	if sessions[0].Attached {
+		t.Fatalf("session %q with count 0 should not be attached", sessions[0].Name)
+	}
+	if !sessions[1].Attached {
+		t.Fatalf("session %q with count 1 should be attached", sessions[1].Name)
+	}
+	if !sessions[2].Attached {
+		t.Fatalf("session %q with count 3 should be attached", sessions[2].Name)
 	}
 }
 
@@ -277,6 +345,34 @@ func TestDisplayMessageTargetsCurrentClient(t *testing.T) {
 	}
 }
 
+func TestDisplayMessageRetriesAfterStaleClientError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) > 1 && args[1] == "-c" {
+			return "", fmt.Errorf("can't find client /dev/pts/4")
+		}
+		return "", nil
+	}}
+
+	if err := manager.DisplayMessage("create failed"); err != nil {
+		t.Fatalf("DisplayMessage returned error: %v", err)
+	}
+	wantCalls := [][]string{
+		{"display-message", "-c", "/dev/pts/4", "create failed"},
+		{"display-message", "create failed"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
+	}
+	for i, want := range wantCalls {
+		if strings.Join(calls[i], "\x00") != strings.Join(want, "\x00") {
+			t.Fatalf("calls[%d] = %#v, want %v", i, calls[i], want)
+		}
+	}
+}
+
 func TestCurrentPaneDirTargetsCurrentClient(t *testing.T) {
 	t.Setenv(CurrentClientEnv, "/dev/pts/4")
 	var calls [][]string
@@ -295,6 +391,72 @@ func TestCurrentPaneDirTargetsCurrentClient(t *testing.T) {
 	want := []string{"display-message", "-p", "-c", "/dev/pts/4", "#{pane_current_path}"}
 	if len(calls) != 1 || strings.Join(calls[0], "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("calls = %#v, want %v", calls, want)
+	}
+}
+
+func TestCurrentPaneDirRetriesAfterStaleClientError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) > 2 && args[2] == "-c" {
+			return "", fmt.Errorf("can't find client /dev/pts/4")
+		}
+		return "/workspace/project\n", nil
+	}}
+
+	dir, err := manager.CurrentPaneDir()
+	if err != nil {
+		t.Fatalf("CurrentPaneDir returned error: %v", err)
+	}
+	if dir != "/workspace/project" {
+		t.Fatalf("directory = %q", dir)
+	}
+	wantCalls := [][]string{
+		{"display-message", "-p", "-c", "/dev/pts/4", "#{pane_current_path}"},
+		{"display-message", "-p", "#{pane_current_path}"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
+	}
+	for i, want := range wantCalls {
+		if strings.Join(calls[i], "\x00") != strings.Join(want, "\x00") {
+			t.Fatalf("calls[%d] = %#v, want %v", i, calls[i], want)
+		}
+	}
+}
+
+func TestCurrentPaneDirDoesNotRetryEmptyPathFromResolvedClient(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		// The client resolves successfully but its active pane path is empty.
+		return "", nil
+	}}
+
+	if _, err := manager.CurrentPaneDir(); err == nil {
+		t.Fatal("CurrentPaneDir returned nil error, want empty pane directory failure")
+	}
+	wantCalls := [][]string{
+		{"display-message", "-p", "-c", "/dev/pts/4", "#{pane_current_path}"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %#v, want %v (no fallback to a different client's pane)", calls, wantCalls)
+	}
+	if strings.Join(calls[0], "\x00") != strings.Join(wantCalls[0], "\x00") {
+		t.Fatalf("calls[0] = %#v, want %v", calls[0], wantCalls[0])
+	}
+}
+
+func TestCurrentPaneDirReturnsErrorWhenRetryAlsoFails(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	manager := Manager{Run: func(args ...string) (string, error) {
+		return "", fmt.Errorf("no current client")
+	}}
+
+	if _, err := manager.CurrentPaneDir(); err == nil {
+		t.Fatal("CurrentPaneDir returned nil error, want stale client failure")
 	}
 }
 

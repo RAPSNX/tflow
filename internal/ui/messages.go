@@ -30,6 +30,14 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.instanceID = current.Instance
 			}
 		}
+		if _, ok := m.currentSessionInfo(); !ok {
+			for _, session := range m.sessions {
+				if session.Temporary && session.Attached && session.Instance == m.instanceID {
+					m.currentSession = session.Name
+					break
+				}
+			}
+		}
 		m.syncSelection()
 		return m, nil
 	case sessionCreatedMsg:

@@ -35,7 +35,9 @@ func (m Manager) ListSessions() ([]Session, error) {
 			fmt.Sscanf(parts[1], "%d", &session.Windows)
 		}
 		if len(parts) > 2 {
-			session.Attached = strings.TrimSpace(parts[2]) == "1"
+			var attachedCount int
+			fmt.Sscanf(parts[2], "%d", &attachedCount)
+			session.Attached = attachedCount > 0
 		}
 		if len(parts) > 3 {
 			session.Temporary = strings.TrimSpace(parts[3]) == "1"
@@ -129,12 +131,23 @@ func (m Manager) KillSession(name string) error {
 
 func (m Manager) SwitchClient(name string) error {
 	args := []string{"switch-client"}
-	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
+	clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv))
+	hasClient := clientID != ""
+	if hasClient {
 		args = append(args, "-c", clientID)
 	}
 	args = append(args, "-t", name)
-	_, err := m.runner()(args...)
-	return err
+	if _, err := m.runner()(args...); err != nil {
+		if !hasClient {
+			return err
+		}
+		// TFLOW_CURRENT_CLIENT can outlive the tmux client it named, e.g. a create-worker inherits it from a
+		// popup whose client was already recreated. Retry without the stale target so tmux resolves the live
+		// client itself instead of leaving the newly created session un-focused.
+		_, err = m.runner()("switch-client", "-t", name)
+		return err
+	}
+	return nil
 }
 
 func (m Manager) CleanupVolatileSessions(instanceID string) error {
@@ -176,23 +189,43 @@ func (m Manager) RunBackground(command string) error {
 }
 func (m Manager) DisplayMessage(message string) error {
 	args := []string{"display-message"}
-	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
+	clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv))
+	hasClient := clientID != ""
+	if hasClient {
 		args = append(args, "-c", clientID)
 	}
 	args = append(args, message)
-	_, err := m.runner()(args...)
-	return err
+	if _, err := m.runner()(args...); err != nil {
+		if !hasClient {
+			return err
+		}
+		// Same stale-client fallback as SwitchClient: don't let a gone client swallow the error report.
+		_, err = m.runner()("display-message", message)
+		return err
+	}
+	return nil
 }
 
 func (m Manager) CurrentPaneDir() (string, error) {
 	args := []string{"display-message", "-p"}
-	if clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv)); clientID != "" {
+	clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv))
+	hasClient := clientID != ""
+	if hasClient {
 		args = append(args, "-c", clientID)
 	}
 	args = append(args, "#{pane_current_path}")
 	out, err := m.runner()(args...)
 	if err != nil {
-		return "", err
+		if !hasClient {
+			return "", err
+		}
+		// A popup can retain a stale client identifier after the tmux client that opened it has been recreated.
+		// Retry without the stale target only when tmux fails to resolve that client. A resolved client whose
+		// active pane path is legitimately empty must not fall back to a different client's active pane.
+		out, err = m.runner()("display-message", "-p", "#{pane_current_path}")
+		if err != nil {
+			return "", err
+		}
 	}
 	if dir := strings.TrimSpace(out); dir != "" {
 		return dir, nil
