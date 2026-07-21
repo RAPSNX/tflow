@@ -1,6 +1,10 @@
 package store
 
-import "reflect"
+import (
+	"reflect"
+
+	"github.com/rapsnx/tflow/internal/diag"
+)
 
 // ReconcileAppState removes persistent-session metadata that no longer has a
 // matching tmux session and drops projects left without sessions. It writes
@@ -14,7 +18,11 @@ func ReconcileAppState(path string, snapshotSessions func() (map[string]struct{}
 	if err != nil {
 		return false, err
 	}
-	defer func() { _ = unlock() }()
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release app-state lock %q after reconciliation: %v", path, unlockErr)
+		}
+	}()
 
 	state, err := LoadAppState(path)
 	if err != nil {

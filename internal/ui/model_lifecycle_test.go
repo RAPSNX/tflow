@@ -237,6 +237,236 @@ func TestPrepareStartupReconcilesStateWithOneSessionList(t *testing.T) {
 	}
 }
 
+// TestPrepareStartupRepairsMarkersAfterInterruptedCreation covers a session
+// persisted to state (creation reached the point of writing metadata) but
+// whose tmux markers were never written because the process died between
+// the two steps -- startup must repair the project and label markers from
+// state rather than leaving the tmux session unmarked.
+func TestPrepareStartupRepairsMarkersAfterInterruptedCreation(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/small", Sessions: []persistentSession{{ID: "tflow-p-new", Label: "otter"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	var projectCalls, labelCalls, temporaryCalls [][3]string
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) { return []session{{Name: "tflow-p-new"}}, nil },
+		setSessionProject: func(name, project string) error {
+			projectCalls = append(projectCalls, [3]string{name, project, ""})
+			return nil
+		},
+		setSessionLabel: func(name, label string) error {
+			labelCalls = append(labelCalls, [3]string{name, label, ""})
+			return nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			temporaryCalls = append(temporaryCalls, [3]string{name, fmt.Sprint(temporary), instanceID})
+			return nil
+		},
+	}
+	if _, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err != nil {
+		t.Fatal(err)
+	}
+	// prepareStartup also creates and tags a fresh volatile startup session
+	// of its own, which independently calls setSessionLabel/setSessionTemporary
+	// with a different, generated name -- so these assertions look for the
+	// repaired persistent session's own call rather than assuming it is the
+	// only one recorded.
+	if !containsCall3(projectCalls, [3]string{"tflow-p-new", "small", ""}) {
+		t.Fatalf("project repair calls = %#v, want a call for tflow-p-new", projectCalls)
+	}
+	if !containsCall3(labelCalls, [3]string{"tflow-p-new", "otter", ""}) {
+		t.Fatalf("label repair calls = %#v, want a call for tflow-p-new", labelCalls)
+	}
+	if !containsCall3(temporaryCalls, [3]string{"tflow-p-new", "false", ""}) {
+		t.Fatalf("temporary-clear repair calls = %#v, want a call for tflow-p-new", temporaryCalls)
+	}
+}
+
+func containsCall3(calls [][3]string, want [3]string) bool {
+	for _, call := range calls {
+		if call == want {
+			return true
+		}
+	}
+	return false
+}
+
+// TestPrepareStartupRepairClearsStaleMarkersAfterInterruptedPromotion covers
+// a session that was promoted from volatile to persistent (its metadata now
+// lives under a project in state) but whose stale @tflow-temp/@tflow-instance
+// markers were never cleared because the process died mid-promotion.
+func TestPrepareStartupRepairClearsStaleMarkersAfterInterruptedPromotion(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "garden", Workdir: "/garden", Sessions: []persistentSession{{ID: "tflow-p-promoted", Label: "fox"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	cleared := false
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "tflow-p-promoted", Temporary: true, Instance: "instance-1"}}, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			if name == "tflow-p-promoted" && !temporary && instanceID == "" {
+				cleared = true
+			}
+			return nil
+		},
+	}
+	if _, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err != nil {
+		t.Fatal(err)
+	}
+	if !cleared {
+		t.Fatal("startup did not clear stale volatile markers left by an interrupted promotion")
+	}
+}
+
+// TestPrepareStartupRepairAppliesTargetProjectAfterInterruptedMove covers a
+// session moved to a new project in state, whose tmux @tflow-project marker
+// still reflects the old project because the process died before the
+// marker write that follows the state mutation.
+func TestPrepareStartupRepairAppliesTargetProjectAfterInterruptedMove(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "target", Workdir: "/target", Sessions: []persistentSession{{ID: "tflow-p-moved", Label: "lynx"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	var appliedProject string
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) { return []session{{Name: "tflow-p-moved"}}, nil },
+		setSessionProject: func(name, project string) error {
+			if name == "tflow-p-moved" {
+				appliedProject = project
+			}
+			return nil
+		},
+	}
+	if _, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err != nil {
+		t.Fatal(err)
+	}
+	if appliedProject != "target" {
+		t.Fatalf("applied project = %q, want %q", appliedProject, "target")
+	}
+}
+
+func TestPrepareStartupRepairSkipsSessionsNotRepresentedInState(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{}); err != nil {
+		t.Fatal(err)
+	}
+	const unrelated = "tflow-v-instance-1-abc"
+	touched := false
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: unrelated, Temporary: true, Instance: "instance-1"}}, nil
+		},
+		setSessionProject: func(name, project string) error {
+			if name == unrelated {
+				touched = true
+			}
+			return nil
+		},
+		setSessionLabel: func(name, label string) error {
+			// prepareStartup also tags its own freshly created volatile
+			// startup session via setSessionLabel; only flag the
+			// pre-existing unrelated session repair must never touch.
+			if name == unrelated {
+				touched = true
+			}
+			return nil
+		},
+	}
+	if _, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err != nil {
+		t.Fatal(err)
+	}
+	if touched {
+		t.Fatal("startup repair rewrote markers for a session not represented in state")
+	}
+}
+
+func TestPrepareStartupRepairEmitsDiagnosticWithoutFailingStartup(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/small", Sessions: []persistentSession{{ID: "tflow-p-keep", Label: "otter"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	manager := fakeTmuxController{
+		listSessions:      func() ([]session, error) { return []session{{Name: "tflow-p-keep"}}, nil },
+		setSessionProject: func(name, project string) error { return fmt.Errorf("tmux: repair failed") },
+	}
+	if _, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err != nil {
+		t.Fatalf("prepareStartup returned error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "repair") {
+		t.Fatalf("diagnostic output = %q, want a marker-repair failure diagnostic", buf.String())
+	}
+}
+
+// TestPrepareStartupRepairSerializesWithConcurrentMutation guards against a
+// state snapshot read during marker repair going stale before the tmux
+// writes it drives complete: without holding the state lock across the
+// whole repair pass, a concurrent instance's rename/move landing in that
+// window would have its fresher tmux markers overwritten by the older
+// values repair read moments earlier -- the exact inconsistency repair
+// exists to fix.
+func TestPrepareStartupRepairSerializesWithConcurrentMutation(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/small", Sessions: []persistentSession{{ID: "tflow-p-keep", Label: "otter"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	mutationDone := make(chan error, 1)
+	started := false
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) { return []session{{Name: "tflow-p-keep"}}, nil },
+		setSessionProject: func(name, project string) error {
+			if name != "tflow-p-keep" || started {
+				return nil
+			}
+			started = true
+			go func() {
+				_, err := mutateAppState(path, func(state appState) (appState, error) { return state, nil })
+				mutationDone <- err
+			}()
+			select {
+			case err := <-mutationDone:
+				t.Fatalf("concurrent mutation completed while marker repair held the state lock: %v", err)
+			case <-time.After(50 * time.Millisecond):
+			}
+			return nil
+		},
+	}
+	if _, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-mutationDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("concurrent mutation did not complete after marker repair released the state lock")
+	}
+}
+
 func TestPrepareStartupPreservesStateWhenSessionListFails(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	path := appStatePath()
