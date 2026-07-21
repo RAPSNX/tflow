@@ -1,13 +1,14 @@
 package tmux
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 )
 
 func TestAttachCommandUsesTflowSocket(t *testing.T) {
-	cmd, err := Manager{}.AttachCommand("dev")
+	cmd, err := Manager{}.AttachCommand(context.Background(), "dev")
 	if err != nil {
 		t.Fatalf("AttachCommand returned error: %v", err)
 	}

@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -111,11 +112,11 @@ func (m Manager) SetSessionLabel(name, label string) error {
 	return err
 }
 
-func (Manager) AttachCommand(name string) (*exec.Cmd, error) {
+func (Manager) AttachCommand(ctx context.Context, name string) (*exec.Cmd, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, fmt.Errorf("session name is empty")
 	}
-	return exec.Command("tmux", "-L", socketName, "attach-session", "-t", name), nil
+	return exec.CommandContext(ctx, "tmux", "-L", socketName, "attach-session", "-t", name), nil
 }
 
 func (m Manager) KillSession(name string) error {

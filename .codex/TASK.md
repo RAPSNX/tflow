@@ -78,6 +78,15 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep cleanup idempotent.
 * [x] Test multiple simultaneous tflow instances and repeated cleanup.
 
+### P1: Graceful signal shutdown
+
+* [x] Cancel the runtime context on SIGHUP, SIGINT, and SIGTERM.
+* [x] Pass cancellation only to the attached tmux client and Bubble Tea popup program.
+* [x] Clean the owning volatile instance once when the attached client is canceled or exits.
+* [x] Keep signal cleanup scoped to the owning instance and preserve persistent and foreign volatile sessions.
+* [x] Exit a canceled popup without dispatching the user-facing quit action.
+* [x] Test canceled attach cleanup and canceled-popup behavior.
+
 ### P1: Popup lifecycle
 
 * [x] Let tmux own popup process lifetime.

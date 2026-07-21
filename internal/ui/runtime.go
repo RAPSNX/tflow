@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"os"
 	"os/exec"
 
@@ -25,7 +26,7 @@ type tmuxController interface {
 	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
-	AttachCommand(name string) (*exec.Cmd, error)
+	AttachCommand(ctx context.Context, name string) (*exec.Cmd, error)
 	KillSession(name string) error
 	SwitchClient(name string) error
 	EnsureControlMode(binaryPath string) error
@@ -80,8 +81,8 @@ func (m sessionManager) SetSessionLabel(name, label string) error {
 	return m.inner.SetSessionLabel(name, label)
 }
 
-func (m sessionManager) AttachCommand(name string) (*exec.Cmd, error) {
-	return m.inner.AttachCommand(name)
+func (m sessionManager) AttachCommand(ctx context.Context, name string) (*exec.Cmd, error) {
+	return m.inner.AttachCommand(ctx, name)
 }
 
 func (m sessionManager) KillSession(name string) error {
