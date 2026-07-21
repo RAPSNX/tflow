@@ -10,6 +10,14 @@ import (
 	"github.com/rapsnx/tflow/internal/diag"
 )
 
+// fakeInstanceEnvLine builds a show-environment -gh line for the
+// client-scoped instance slot resolveReplacementClient's tests use to prove
+// ownership of a candidate client, matching the exact key format
+// clientInstanceEnvKey produces.
+func fakeInstanceEnvLine(clientID, instanceID string) string {
+	return clientInstanceEnvKey(clientID) + "=" + instanceID
+}
+
 func TestAttachCommandUsesTflowSocket(t *testing.T) {
 	t.Setenv("TMUX", "")
 
@@ -57,11 +65,25 @@ func TestSwitchClientUsesExplicitClientWhenAvailable(t *testing.T) {
 
 func TestSwitchClientRetriesAfterStaleClientError(t *testing.T) {
 	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "otter-temp")
 	var calls [][]string
 	manager := Manager{Run: func(args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
-		if len(args) > 1 && args[1] == "-c" {
-			return "", fmt.Errorf("can't find client /dev/pts/4")
+		switch args[0] {
+		case "switch-client":
+			if len(args) > 1 && args[1] == "-c" && args[2] == "/dev/pts/4" {
+				return "", fmt.Errorf("can't find client /dev/pts/4")
+			}
+			return "", nil
+		case "list-clients":
+			return "@3\totter-temp\n", nil
+		case "show-environment":
+			// Both the stale client and its live successor are remembered as
+			// belonging to instance-1, proving the replacement's ownership.
+			return strings.Join([]string{
+				fakeInstanceEnvLine("/dev/pts/4", "instance-1"),
+				fakeInstanceEnvLine("@3", "instance-1"),
+			}, "\n"), nil
 		}
 		return "", nil
 	}}
@@ -71,7 +93,10 @@ func TestSwitchClientRetriesAfterStaleClientError(t *testing.T) {
 	}
 	wantCalls := [][]string{
 		{"switch-client", "-c", "/dev/pts/4", "-t", "otter-temp"},
-		{"switch-client", "-t", "otter-temp"},
+		{"show-environment", "-gh"},
+		{"list-clients", "-F", "#{client_name}\t#{client_session}"},
+		{"show-environment", "-gh"},
+		{"switch-client", "-c", "@3", "-t", "otter-temp"},
 	}
 	if len(calls) != len(wantCalls) {
 		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
@@ -83,14 +108,156 @@ func TestSwitchClientRetriesAfterStaleClientError(t *testing.T) {
 	}
 }
 
-func TestSwitchClientReturnsErrorWhenRetryAlsoFails(t *testing.T) {
+func TestSwitchClientRetriesAgainstCorrectClientInMultiClientServer(t *testing.T) {
 	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	var calls [][]string
 	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		switch args[0] {
+		case "switch-client":
+			if len(args) > 1 && args[1] == "-c" && args[2] == "/dev/pts/4" {
+				return "", fmt.Errorf("can't find client /dev/pts/4")
+			}
+			return "", nil
+		case "list-clients":
+			// Multiple clients attached to sessions other tflow instances
+			// own, plus the correct one for this session and instance.
+			return "@1\tfox-temp\n@3\totter-temp\n@9\tsmall\n", nil
+		case "show-environment":
+			return strings.Join([]string{
+				fakeInstanceEnvLine("/dev/pts/4", "instance-1"),
+				fakeInstanceEnvLine("@1", "instance-2"),
+				fakeInstanceEnvLine("@3", "instance-1"),
+				fakeInstanceEnvLine("@9", "instance-3"),
+			}, "\n"), nil
+		}
+		return "", nil
+	}}
+
+	if err := manager.SwitchClient("otter-temp"); err != nil {
+		t.Fatalf("SwitchClient returned error: %v", err)
+	}
+	want := []string{"switch-client", "-c", "@3", "-t", "otter-temp"}
+	last := calls[len(calls)-1]
+	if strings.Join(last, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("final call = %#v, want %v (the client proven to belong to the same instance, not an arbitrary one on the right session)", last, want)
+	}
+}
+
+// TestSwitchClientNeverRetriesAgainstAClientOnTheRightSessionButWrongInstance
+// covers the P1 finding that being attached to the right session is not, by
+// itself, proof of instance ownership: another tflow instance's client (or
+// another user's terminal) could legitimately be attached to the same
+// session. Only a candidate whose own remembered instance matches the stale
+// client's may be used.
+func TestSwitchClientNeverRetriesAgainstAClientOnTheRightSessionButWrongInstance(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	// switch-client against @3 would succeed if attempted -- the test must
+	// fail with the original error only because the ownership check
+	// correctly never attempts it, not because @3 also happens to fail.
+	manager := Manager{Run: func(args ...string) (string, error) {
+		switch args[0] {
+		case "switch-client":
+			if len(args) > 1 && args[1] == "-c" && args[2] == "/dev/pts/4" {
+				return "", fmt.Errorf("can't find client /dev/pts/4")
+			}
+			return "", nil
+		case "list-clients":
+			// @3 is attached to the right session but belongs to a
+			// different instance -- not proof of ownership by itself.
+			return "@3\totter-temp\n", nil
+		case "show-environment":
+			return strings.Join([]string{
+				fakeInstanceEnvLine("/dev/pts/4", "instance-1"),
+				fakeInstanceEnvLine("@3", "instance-2"),
+			}, "\n"), nil
+		}
+		return "", nil
+	}}
+
+	err := manager.SwitchClient("otter-temp")
+	if err == nil || !strings.Contains(err.Error(), "can't find client") {
+		t.Fatalf("SwitchClient error = %v, want the original missing-client failure preserved, never a retry against @3", err)
+	}
+}
+
+// TestSwitchClientRetriesUsingSwitchTargetAfterSessionRename covers
+// volatile-to-persistent promotion: the active session is renamed and then
+// SwitchClient is called with its new name, but CurrentSessionEnv (captured
+// once at process launch) still holds the pre-rename name. A tmux rename
+// keeps the client attached to the same underlying session object under
+// its new #{client_session} name, so the retry must also try the switch
+// target itself, not just the now-stale CurrentSessionEnv anchor.
+func TestSwitchClientRetriesUsingSwitchTargetAfterSessionRename(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "tflow-v-instance-1-old")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		switch args[0] {
+		case "switch-client":
+			if len(args) > 1 && args[1] == "-c" && args[2] == "/dev/pts/4" {
+				return "", fmt.Errorf("can't find client /dev/pts/4")
+			}
+			return "", nil
+		case "list-clients":
+			// The client is attached to the renamed (promoted) session, not
+			// the pre-rename name CurrentSessionEnv still holds.
+			return "@3\ttflow-p-new\n", nil
+		case "show-environment":
+			return strings.Join([]string{
+				fakeInstanceEnvLine("/dev/pts/4", "instance-1"),
+				fakeInstanceEnvLine("@3", "instance-1"),
+			}, "\n"), nil
+		}
+		return "", nil
+	}}
+
+	if err := manager.SwitchClient("tflow-p-new"); err != nil {
+		t.Fatalf("SwitchClient returned error: %v", err)
+	}
+	want2 := []string{"switch-client", "-c", "@3", "-t", "tflow-p-new"}
+	last := calls[len(calls)-1]
+	if strings.Join(last, "\x00") != strings.Join(want2, "\x00") {
+		t.Fatalf("final call = %#v, want %v (resolved via the switch target after a stale CurrentSessionEnv)", last, want2)
+	}
+}
+
+func TestSwitchClientDoesNotRetryUnrelatedError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
 		return "", fmt.Errorf("no current client")
 	}}
 
-	if err := manager.SwitchClient("otter-temp"); err == nil {
-		t.Fatal("SwitchClient returned nil error, want stale client failure")
+	if err := manager.SwitchClient("otter-temp"); err == nil || !strings.Contains(err.Error(), "no current client") {
+		t.Fatalf("SwitchClient error = %v, want the original unrelated failure", err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("calls = %#v, want exactly one attempt (no retry for a non-missing-client error)", calls)
+	}
+}
+
+func TestSwitchClientPreservesOriginalErrorWhenReplacementResolutionFails(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	manager := Manager{Run: func(args ...string) (string, error) {
+		switch args[0] {
+		case "switch-client":
+			return "", fmt.Errorf("can't find client /dev/pts/4")
+		case "list-clients":
+			return "", nil
+		}
+		return "", nil
+	}}
+
+	err := manager.SwitchClient("otter-temp")
+	if err == nil || !strings.Contains(err.Error(), "can't find client") {
+		t.Fatalf("SwitchClient error = %v, want the original missing-client failure preserved", err)
 	}
 }
 
@@ -448,11 +615,23 @@ func TestDisplayMessageTargetsCurrentClient(t *testing.T) {
 
 func TestDisplayMessageRetriesAfterStaleClientError(t *testing.T) {
 	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "otter-temp")
 	var calls [][]string
 	manager := Manager{Run: func(args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
-		if len(args) > 1 && args[1] == "-c" {
-			return "", fmt.Errorf("can't find client /dev/pts/4")
+		switch args[0] {
+		case "display-message":
+			if len(args) > 1 && args[1] == "-c" && args[2] == "/dev/pts/4" {
+				return "", fmt.Errorf("can't find client /dev/pts/4")
+			}
+			return "", nil
+		case "list-clients":
+			return "@3\totter-temp\n", nil
+		case "show-environment":
+			return strings.Join([]string{
+				fakeInstanceEnvLine("/dev/pts/4", "instance-1"),
+				fakeInstanceEnvLine("@3", "instance-1"),
+			}, "\n"), nil
 		}
 		return "", nil
 	}}
@@ -462,7 +641,10 @@ func TestDisplayMessageRetriesAfterStaleClientError(t *testing.T) {
 	}
 	wantCalls := [][]string{
 		{"display-message", "-c", "/dev/pts/4", "create failed"},
-		{"display-message", "create failed"},
+		{"show-environment", "-gh"},
+		{"list-clients", "-F", "#{client_name}\t#{client_session}"},
+		{"show-environment", "-gh"},
+		{"display-message", "-c", "@3", "create failed"},
 	}
 	if len(calls) != len(wantCalls) {
 		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
@@ -471,6 +653,23 @@ func TestDisplayMessageRetriesAfterStaleClientError(t *testing.T) {
 		if strings.Join(calls[i], "\x00") != strings.Join(want, "\x00") {
 			t.Fatalf("calls[%d] = %#v, want %v", i, calls[i], want)
 		}
+	}
+}
+
+func TestDisplayMessageDoesNotRetryUnrelatedError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "", fmt.Errorf("no current client")
+	}}
+
+	if err := manager.DisplayMessage("create failed"); err == nil || !strings.Contains(err.Error(), "no current client") {
+		t.Fatalf("DisplayMessage error = %v, want the original unrelated failure", err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("calls = %#v, want exactly one attempt (no retry for a non-missing-client error)", calls)
 	}
 }
 
@@ -497,13 +696,25 @@ func TestCurrentPaneDirTargetsCurrentClient(t *testing.T) {
 
 func TestCurrentPaneDirRetriesAfterStaleClientError(t *testing.T) {
 	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "otter-temp")
 	var calls [][]string
 	manager := Manager{Run: func(args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
-		if len(args) > 2 && args[2] == "-c" {
-			return "", fmt.Errorf("can't find client /dev/pts/4")
+		switch args[0] {
+		case "display-message":
+			if len(args) > 2 && args[2] == "-c" && args[3] == "/dev/pts/4" {
+				return "", fmt.Errorf("can't find client /dev/pts/4")
+			}
+			return "/workspace/project\n", nil
+		case "list-clients":
+			return "@3\totter-temp\n", nil
+		case "show-environment":
+			return strings.Join([]string{
+				fakeInstanceEnvLine("/dev/pts/4", "instance-1"),
+				fakeInstanceEnvLine("@3", "instance-1"),
+			}, "\n"), nil
 		}
-		return "/workspace/project\n", nil
+		return "", nil
 	}}
 
 	dir, err := manager.CurrentPaneDir()
@@ -515,7 +726,10 @@ func TestCurrentPaneDirRetriesAfterStaleClientError(t *testing.T) {
 	}
 	wantCalls := [][]string{
 		{"display-message", "-p", "-c", "/dev/pts/4", "#{pane_current_path}"},
-		{"display-message", "-p", "#{pane_current_path}"},
+		{"show-environment", "-gh"},
+		{"list-clients", "-F", "#{client_name}\t#{client_session}"},
+		{"show-environment", "-gh"},
+		{"display-message", "-p", "-c", "@3", "#{pane_current_path}"},
 	}
 	if len(calls) != len(wantCalls) {
 		t.Fatalf("calls = %#v, want %v", calls, wantCalls)
@@ -524,6 +738,62 @@ func TestCurrentPaneDirRetriesAfterStaleClientError(t *testing.T) {
 		if strings.Join(calls[i], "\x00") != strings.Join(want, "\x00") {
 			t.Fatalf("calls[%d] = %#v, want %v", i, calls[i], want)
 		}
+	}
+}
+
+func TestCurrentPaneDirRetriesAgainstCorrectClientInMultiClientServer(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		switch args[0] {
+		case "display-message":
+			if len(args) > 2 && args[2] == "-c" && args[3] == "/dev/pts/4" {
+				return "", fmt.Errorf("can't find client /dev/pts/4")
+			}
+			return "/workspace/project\n", nil
+		case "list-clients":
+			return "@1\tfox-temp\n@3\totter-temp\n@9\tsmall\n", nil
+		case "show-environment":
+			return strings.Join([]string{
+				fakeInstanceEnvLine("/dev/pts/4", "instance-1"),
+				fakeInstanceEnvLine("@1", "instance-2"),
+				fakeInstanceEnvLine("@3", "instance-1"),
+				fakeInstanceEnvLine("@9", "instance-3"),
+			}, "\n"), nil
+		}
+		return "", nil
+	}}
+
+	dir, err := manager.CurrentPaneDir()
+	if err != nil {
+		t.Fatalf("CurrentPaneDir returned error: %v", err)
+	}
+	if dir != "/workspace/project" {
+		t.Fatalf("directory = %q", dir)
+	}
+	want := []string{"display-message", "-p", "-c", "@3", "#{pane_current_path}"}
+	last := calls[len(calls)-1]
+	if strings.Join(last, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("final call = %#v, want %v (the client proven to belong to the same instance, not an arbitrary one on the right session)", last, want)
+	}
+}
+
+func TestCurrentPaneDirDoesNotRetryUnrelatedError(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "", fmt.Errorf("no current client")
+	}}
+
+	if _, err := manager.CurrentPaneDir(); err == nil || !strings.Contains(err.Error(), "no current client") {
+		t.Fatalf("CurrentPaneDir error = %v, want the original unrelated failure", err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("calls = %#v, want exactly one attempt (no retry for a non-missing-client error)", calls)
 	}
 }
 
@@ -550,14 +820,21 @@ func TestCurrentPaneDirDoesNotRetryEmptyPathFromResolvedClient(t *testing.T) {
 	}
 }
 
-func TestCurrentPaneDirReturnsErrorWhenRetryAlsoFails(t *testing.T) {
+func TestCurrentPaneDirPreservesOriginalErrorWhenReplacementResolutionFails(t *testing.T) {
 	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "otter-temp")
 	manager := Manager{Run: func(args ...string) (string, error) {
-		return "", fmt.Errorf("no current client")
+		switch args[0] {
+		case "display-message":
+			return "", fmt.Errorf("can't find client /dev/pts/4")
+		case "list-clients":
+			return "", nil
+		}
+		return "", nil
 	}}
 
-	if _, err := manager.CurrentPaneDir(); err == nil {
-		t.Fatal("CurrentPaneDir returned nil error, want stale client failure")
+	if _, err := manager.CurrentPaneDir(); err == nil || !strings.Contains(err.Error(), "can't find client") {
+		t.Fatalf("CurrentPaneDir error = %v, want the original missing-client failure preserved", err)
 	}
 }
 
