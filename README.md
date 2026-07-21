@@ -8,7 +8,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-experimental-f5c2e7?style=for-the-badge" alt="status">
-  <img src="https://img.shields.io/badge/go-1.24+-89b4fa?style=for-the-badge&logo=go&logoColor=white" alt="go">
+  <img src="https://img.shields.io/badge/go-1.25+-89b4fa?style=for-the-badge&logo=go&logoColor=white" alt="go">
   <img src="https://img.shields.io/badge/tmux-powered-a6e3a1?style=for-the-badge" alt="tmux">
 </p>
 
@@ -59,6 +59,7 @@ Persistent sessions belong to a project and survive terminal exit.
 | `e` | Edit project workdir |
 | `r` | Rename session |
 | `R` | Rename project |
+| `m` | Move session to another project |
 | `d` | Delete session |
 | `D` | Delete project |
 
