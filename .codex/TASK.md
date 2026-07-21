@@ -28,8 +28,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep volatile sessions and instance ownership out of the store.
 * [x] Ignore unknown JSON fields.
 * [x] Reject malformed JSON with a clear path-qualified error.
-* [ ] Reject semantically invalid state instead of silently dropping or synthesizing records during normalization.
-* [ ] Test empty and duplicate normalized project names, empty and duplicate session IDs, empty labels, and duplicate labels within one project.
+* [x] Reject semantically invalid state instead of silently dropping or synthesizing records during normalization.
+* [x] Test empty and duplicate normalized project names, empty and duplicate session IDs, empty labels, and duplicate labels within one project.
 * [x] Keep the state path at `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set and non-empty, falling back to `~/.local/state/tflow/store.json`.
 * [x] Set the state directory mode to `0700`.
 * [x] Set the state file mode to `0600`.
@@ -47,8 +47,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Remove the temporary file when writing or renaming fails.
 * [x] Test that failed writes leave the previous JSON file unchanged.
 * [x] Test that concurrent disjoint mutations do not overwrite each other.
-* [ ] Emit a diagnostic when releasing a state lock fails while preserving any primary operation error.
-* [ ] Test lock-release diagnostics in mutation, reconciliation, and background-worker paths.
+* [x] Emit a diagnostic when releasing a state lock fails while preserving any primary operation error.
+* [x] Test lock-release diagnostics in mutation, reconciliation, and background-worker paths.
 
 ### P0: Startup reconciliation
 
@@ -59,18 +59,18 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Treat an absent dedicated tmux server as an empty session list.
 * [x] Do not remove metadata when tmux returns another operational error.
 * [x] Do not retain missing persistent-session metadata for lazy restoration.
-* [ ] Restore project and label markers for surviving persistent sessions and clear stale volatile ownership markers.
-* [ ] Keep marker repair limited to persistent sessions represented by state and avoid rewriting unrelated sessions.
-* [ ] Add startup marker-repair tests for partially completed creation, promotion, and move operations.
+* [x] Restore project and label markers for surviving persistent sessions and clear stale volatile ownership markers.
+* [x] Keep marker repair limited to persistent sessions represented by state and avoid rewriting unrelated sessions.
+* [x] Add startup marker-repair tests for partially completed creation, promotion, and move operations.
 * [x] Do not reconcile or write state during ordinary sidebar refreshes.
 * [x] Test missing-session cleanup without lazy restoration, empty-project cleanup, and tmux-error preservation.
 
 ### P0: Operation failure handling
 
 * [x] Kill a newly created tmux session when its metadata cannot be persisted.
-* [ ] Kill a newly created tmux session when post-creation setup such as window renaming fails.
-* [ ] Preserve the original setup error and emit a diagnostic when orphan cleanup also fails.
-* [ ] Test post-creation setup failure leaves no unmarked tmux session behind.
+* [x] Kill a newly created tmux session when post-creation setup such as window renaming fails.
+* [x] Preserve the original setup error and emit a diagnostic when orphan cleanup also fails.
+* [x] Test post-creation setup failure leaves no unmarked tmux session behind.
 * [x] Treat cleanup of an already missing session or popup as successful.
 * [x] Return the original operation error to the user.
 * [x] Remove project-wide rename rollback logic.
@@ -110,9 +110,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Do not store popup PIDs.
 * [x] Do not implement child-process reaping or a popup process registry.
 * [x] Test popup open, toggle, close, quit, and stale-marker cleanup.
-* [ ] Route tmux popup cleanup diagnostics through `internal/diag` instead of a separate stderr-only helper.
-* [ ] Emit a diagnostic when popup closing fails and marker cleanup also fails without replacing the close error.
-* [ ] Test popup cleanup diagnostics through the shared diagnostic output seam.
+* [x] Route tmux popup cleanup diagnostics through `internal/diag` instead of a separate stderr-only helper.
+* [x] Emit a diagnostic when popup closing fails and marker cleanup also fails without replacing the close error.
+* [x] Test popup cleanup diagnostics through the shared diagnostic output seam.
 
 ### P1: Sidebar performance
 
@@ -186,8 +186,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Retry a client-scoped tmux command only after positively identifying a missing-client error.
 * [ ] Resolve any replacement client within the same tflow instance; never retry against an arbitrary client.
 * [ ] Test `SwitchClient`, `DisplayMessage`, and `CurrentPaneDir` preserve client ownership on errors and in multi-client servers.
-* [ ] After a successful move, update the popup model's session label from the state observed by the locked mutation.
-* [ ] Test a concurrent rename followed by a move updates persisted state, tmux markers, in-memory labels, and the success message consistently.
+* [x] After a successful move, update the popup model's session label from the state observed by the locked mutation.
+* [x] Test a concurrent rename followed by a move updates persisted state, tmux markers, in-memory labels, and the success message consistently.
 
 ### P1: Installation and verification
 

@@ -27,7 +27,9 @@ func reconcileAppState(path string, snapshotSessions func() (map[string]struct{}
 	return store.ReconcileAppState(path, snapshotSessions)
 }
 
-func lockAppState(path string) (func() error, error) {
+// lockAppState is a variable so tests can force a lock-release failure
+// without reaching into the store package's internal flock seam.
+var lockAppState = func(path string) (func() error, error) {
 	return store.AcquireAppStateLock(path)
 }
 

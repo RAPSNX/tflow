@@ -1,5 +1,7 @@
 package store
 
+import "github.com/rapsnx/tflow/internal/diag"
+
 // MutateAppState serializes a state mutation, reloads the latest state, and
 // atomically persists the returned state.
 func MutateAppState(path string, mutate func(AppState) (AppState, error)) (AppState, error) {
@@ -7,7 +9,11 @@ func MutateAppState(path string, mutate func(AppState) (AppState, error)) (AppSt
 	if err != nil {
 		return AppState{}, err
 	}
-	defer func() { _ = unlock() }()
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release app-state lock %q after mutation: %v", path, unlockErr)
+		}
+	}()
 	return MutateAppStateLocked(path, mutate)
 }
 

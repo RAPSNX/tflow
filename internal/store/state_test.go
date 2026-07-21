@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 func TestLoadAppStateDefaultsToEmptyStoreWhenFileMissing(t *testing.T) {
@@ -275,6 +278,46 @@ func TestReconcileAppStateSnapshotsSessionsWhileHoldingStateLock(t *testing.T) {
 	}
 }
 
+func TestMutateAppStateEmitsDiagnosticWhenLockReleaseFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	originalUnlock := unlockFlock
+	unlockFlock = func(*os.File) error { return errors.New("flock release boom") }
+	t.Cleanup(func() { unlockFlock = originalUnlock })
+
+	var buf bytes.Buffer
+	originalOutput := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = originalOutput })
+
+	if _, err := MutateAppState(path, func(state AppState) (AppState, error) { return state, nil }); err != nil {
+		t.Fatalf("MutateAppState returned error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "flock release boom") {
+		t.Fatalf("diagnostic output = %q, want lock-release failure reported", buf.String())
+	}
+}
+
+func TestReconcileAppStateEmitsDiagnosticWhenLockReleaseFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	originalUnlock := unlockFlock
+	unlockFlock = func(*os.File) error { return errors.New("flock release boom") }
+	t.Cleanup(func() { unlockFlock = originalUnlock })
+
+	var buf bytes.Buffer
+	originalOutput := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = originalOutput })
+
+	if _, err := ReconcileAppState(path, func() (map[string]struct{}, error) {
+		return map[string]struct{}{}, nil
+	}); err != nil {
+		t.Fatalf("ReconcileAppState returned error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "flock release boom") {
+		t.Fatalf("diagnostic output = %q, want lock-release failure reported", buf.String())
+	}
+}
+
 func TestReconcileAppStateDoesNotWriteUnchangedState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "store.json")
 	state := AppState{Projects: []Project{{Name: "small", Workdir: "/small", Sessions: []PersistentSession{{ID: "tflow-p-keep", Label: "keep"}}}}}
@@ -321,6 +364,49 @@ func TestLoadAppStateRejectsMalformedJSON(t *testing.T) {
 	}
 	if _, err := LoadAppState(path); err == nil || !strings.Contains(err.Error(), "invalid state") {
 		t.Fatalf("error = %v, want malformed state error", err)
+	}
+}
+
+func TestLoadAppStateRejectsSemanticallyInvalidState(t *testing.T) {
+	cases := []struct {
+		name string
+		data string
+	}{
+		{
+			name: "empty normalized project name",
+			data: `{"projects":[{"name":"!!!","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter"}]}]}`,
+		},
+		{
+			name: "duplicate normalized project name",
+			data: `{"projects":[{"name":"Small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter"}]},{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-2","label":"fox"}]}]}`,
+		},
+		{
+			name: "empty session id",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"  ","label":"otter"}]}]}`,
+		},
+		{
+			name: "duplicate session id",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter"},{"id":"tflow-p-1","label":"fox"}]}]}`,
+		},
+		{
+			name: "empty session label",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"  "}]}]}`,
+		},
+		{
+			name: "duplicate label within one project",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter"},{"id":"tflow-p-2","label":"otter"}]}]}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "store.json")
+			if err := os.WriteFile(path, []byte(tc.data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadAppState(path); err == nil || !strings.Contains(err.Error(), "invalid state") {
+				t.Fatalf("error = %v, want invalid state error", err)
+			}
+		})
 	}
 }
 

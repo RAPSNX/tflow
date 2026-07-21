@@ -146,8 +146,11 @@ func (m model) applySessionMove(sessionName, targetProject string) (tea.Model, t
 	}
 
 	// Reflect the persisted result into in-memory bookkeeping only now that
-	// the store mutation has succeeded.
+	// the store mutation has succeeded. Use the same reloaded label the
+	// tmux write below uses, not the pre-mutation model's label, so this
+	// popup's own view doesn't stay stale after a concurrent rename.
 	m.assignSessionProject(sessionName, targetProject)
+	m.setSessionLabel(sessionName, label)
 	sourceRemains := false
 	for _, project := range state.Projects {
 		if project.Name == sourceProject {

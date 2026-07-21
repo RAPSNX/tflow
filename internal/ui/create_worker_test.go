@@ -63,6 +63,37 @@ func TestRunCreateWorkerWaitsForStateLock(t *testing.T) {
 	}
 }
 
+func TestRunCreateWorkerEmitsDiagnosticWhenLockReleaseFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	originalLock := lockAppState
+	lockAppState = func(path string) (func() error, error) {
+		unlock, err := originalLock(path)
+		if err != nil {
+			return nil, err
+		}
+		return func() error {
+			_ = unlock()
+			return fmt.Errorf("lock release boom")
+		}, nil
+	}
+	t.Cleanup(func() { lockAppState = originalLock })
+
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	manager := fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) { return session{Name: name}, nil },
+	}
+	if err := runCreateWorker(manager, createRequest{Kind: "session", Project: "small", Label: "code", Workdir: "/tmp"}); err != nil {
+		t.Fatalf("runCreateWorker returned error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "lock release boom") {
+		t.Fatalf("diagnostic output = %q, want lock-release failure reported", buf.String())
+	}
+}
+
 func TestRunCreateWorkerRejectsDuplicateProject(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	created := 0
