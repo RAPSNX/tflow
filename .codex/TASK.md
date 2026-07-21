@@ -186,8 +186,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Retry a client-scoped tmux command only after positively identifying a missing-client error.
 * [ ] Resolve any replacement client within the same tflow instance; never retry against an arbitrary client.
 * [ ] Test `SwitchClient`, `DisplayMessage`, and `CurrentPaneDir` preserve client ownership on errors and in multi-client servers.
-* [ ] After a successful move, update the popup model's session label from the state observed by the locked mutation.
-* [ ] Test a concurrent rename followed by a move updates persisted state, tmux markers, in-memory labels, and the success message consistently.
+* [x] After a successful move, update the popup model's session label from the state observed by the locked mutation.
+* [x] Test a concurrent rename followed by a move updates persisted state, tmux markers, in-memory labels, and the success message consistently.
 
 ### P1: Installation and verification
 
