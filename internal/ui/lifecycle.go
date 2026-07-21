@@ -10,12 +10,19 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/rapsnx/tflow/internal/diag"
 	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
+
+// attachTerminationWaitDelay bounds how long a canceled attach client gets
+// to exit on its own after being asked to terminate gracefully before it is
+// force-killed. It is a variable so tests can shrink it instead of waiting
+// out a production-sized grace period.
+var attachTerminationWaitDelay = 3 * time.Second
 
 func Start() error {
 	cwd := defaultSessionDir()
@@ -72,11 +79,49 @@ func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string
 		cleanupFailureContext = "attach failure"
 		return err
 	}
+	// Ask the attached client to terminate gracefully on cancellation instead
+	// of the exec package's default of an immediate Process.Kill(), so it
+	// gets a chance to restore terminal state (raw mode, alternate screen)
+	// before exiting. WaitDelay bounds how long that grace period lasts; if
+	// the client hasn't exited by then, Wait force-kills it, matching the
+	// architecture's "bounded wait before forcefully terminating it."
+	//
+	// canceled records whether the exec package actually invoked Cancel for
+	// this process and the SIGTERM it sent was actually delivered to a
+	// still-running process, independent of how the process then exited. A
+	// client that traps SIGTERM and exits cleanly-but-nonzero would
+	// otherwise be indistinguishable from a genuine operational failure:
+	// isCancellationInducedAttachFailure alone only recognizes the
+	// signal-terminated shape a bare Process.Kill() always produced; a
+	// graceful SIGTERM handler can legitimately produce any exit shape.
+	// canceled is authoritative for that case because Cancel only runs when
+	// this cmd's own context (ctx, passed to AttachCommand) is done, so it
+	// can't be true for a failure the test suite deliberately ties to an
+	// unrelated, never-canceled context.
+	//
+	// Cancel can still fire after the process has already exited on its own
+	// for an unrelated, genuine reason (e.g. the attach client failed at
+	// roughly the same moment a signal arrived) -- ctx cancellation and the
+	// process's own exit are observed through independent paths, so there is
+	// no ordering guarantee between them. Signal then returns
+	// os.ErrProcessDone rather than delivering anything. Only set canceled
+	// when the signal actually reached a live process; otherwise the
+	// process's own exit error must still be reported, not swallowed as if
+	// our signal had caused it.
+	canceled := false
+	cmd.Cancel = func() error {
+		err := cmd.Process.Signal(syscall.SIGTERM)
+		if err == nil {
+			canceled = true
+		}
+		return err
+	}
+	cmd.WaitDelay = attachTerminationWaitDelay
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil && isCancellationInducedAttachFailure(err) {
+		if ctx.Err() != nil && (canceled || isCancellationInducedAttachFailure(err)) {
 			return nil
 		}
 		cleanupFailureContext = "client error"

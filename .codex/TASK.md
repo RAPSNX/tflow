@@ -93,12 +93,12 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 * [x] Cancel the runtime context on SIGHUP, SIGINT, and SIGTERM.
 * [x] Pass cancellation only to the attached tmux client and Bubble Tea popup program.
-* [ ] Ask the attached tmux client to terminate gracefully before forcefully killing it after a bounded wait.
+* [x] Ask the attached tmux client to terminate gracefully before forcefully killing it after a bounded wait.
 * [x] Clean the owning volatile instance once when the attached client is canceled or exits.
 * [x] Keep signal cleanup scoped to the owning instance and preserve persistent and foreign volatile sessions.
 * [x] Exit a canceled popup without dispatching the user-facing quit action.
 * [x] Test canceled attach cleanup and canceled-popup behavior.
-* [ ] Test signal cancellation gives the tmux client a graceful termination opportunity before force termination.
+* [x] Test signal cancellation gives the tmux client a graceful termination opportunity before force termination.
 
 ### P1: Popup lifecycle
 
