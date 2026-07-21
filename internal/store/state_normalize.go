@@ -1,9 +1,49 @@
 package store
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 )
+
+// ValidateAppState rejects semantically invalid state instead of letting
+// NormalizeAppState silently drop or synthesize records for it: empty or
+// duplicate normalized project names, empty or duplicate session IDs, empty
+// session labels, and duplicate labels within one project.
+func ValidateAppState(state AppState) error {
+	seenProjects := map[string]struct{}{}
+	seenSessions := map[string]struct{}{}
+	for pi, project := range state.Projects {
+		name := NormalizeProjectName(project.Name)
+		if name == "" {
+			return fmt.Errorf("invalid state: projects[%d]: project name is empty after normalization", pi)
+		}
+		if _, exists := seenProjects[name]; exists {
+			return fmt.Errorf("invalid state: projects[%d]: duplicate project name %q", pi, name)
+		}
+		seenProjects[name] = struct{}{}
+		seenLabels := map[string]struct{}{}
+		for si, session := range project.Sessions {
+			id := strings.TrimSpace(session.ID)
+			if id == "" {
+				return fmt.Errorf("invalid state: projects[%d] (%q).sessions[%d]: session id is empty", pi, name, si)
+			}
+			if _, exists := seenSessions[id]; exists {
+				return fmt.Errorf("invalid state: projects[%d] (%q).sessions[%d]: duplicate session id %q", pi, name, si, id)
+			}
+			seenSessions[id] = struct{}{}
+			label := strings.TrimSpace(session.Label)
+			if label == "" {
+				return fmt.Errorf("invalid state: projects[%d] (%q).sessions[%d] (%q): session label is empty", pi, name, si, id)
+			}
+			if _, exists := seenLabels[label]; exists {
+				return fmt.Errorf("invalid state: projects[%d] (%q).sessions[%d] (%q): duplicate label %q", pi, name, si, id, label)
+			}
+			seenLabels[label] = struct{}{}
+		}
+	}
+	return nil
+}
 
 func NormalizeAppState(state AppState) AppState {
 	normalized := AppState{Projects: make([]Project, 0, len(state.Projects))}
