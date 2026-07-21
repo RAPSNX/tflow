@@ -8,12 +8,26 @@ import (
 )
 
 func TestAttachCommandUsesTflowSocket(t *testing.T) {
+	t.Setenv("TMUX", "")
+
 	cmd, err := Manager{}.AttachCommand(context.Background(), "dev")
 	if err != nil {
 		t.Fatalf("AttachCommand returned error: %v", err)
 	}
 	if got := strings.Join(cmd.Args, " "); !strings.Contains(got, "-L tflow") {
 		t.Fatalf("attach command = %q, want tflow socket", got)
+	}
+}
+
+func TestAttachCommandUsesRunningTflowSocketPath(t *testing.T) {
+	t.Setenv("TMUX", "/run/user/1000/tmux-1000/tflow,49726,0")
+
+	cmd, err := Manager{}.AttachCommand(context.Background(), "dev")
+	if err != nil {
+		t.Fatalf("AttachCommand returned error: %v", err)
+	}
+	if got := strings.Join(cmd.Args, " "); !strings.Contains(got, "-S /run/user/1000/tmux-1000/tflow") {
+		t.Fatalf("attach command = %q, want -S with the running socket path", got)
 	}
 }
 

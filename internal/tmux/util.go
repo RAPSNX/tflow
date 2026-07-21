@@ -143,7 +143,7 @@ func NextTempSessionNameForInstance(existing []Session, instanceID string) strin
 }
 
 func Run(args ...string) (string, error) {
-	cmd := exec.Command("tmux", append([]string{"-L", socketName}, args...)...)
+	cmd := exec.Command("tmux", append(socketArgs(), args...)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
