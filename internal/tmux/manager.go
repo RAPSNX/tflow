@@ -118,7 +118,8 @@ func (Manager) AttachCommand(ctx context.Context, name string) (*exec.Cmd, error
 	if strings.TrimSpace(name) == "" {
 		return nil, fmt.Errorf("session name is empty")
 	}
-	return exec.CommandContext(ctx, "tmux", "-L", socketName, "attach-session", "-t", name), nil
+	args := append(socketArgs(), "attach-session", "-t", name)
+	return exec.CommandContext(ctx, "tmux", args...), nil
 }
 
 func (m Manager) KillSession(name string) error {
