@@ -99,6 +99,221 @@ func TestRunMenuExitActionQuitsCurrentInstance(t *testing.T) {
 	}
 }
 
+func TestRunMenuExitActionRemovesDeadVolatileOutgoingSession(t *testing.T) {
+	var killed []string
+	menu := model{
+		exitAction:      menuExitSwitchSession,
+		exitSessionName: "dev",
+		currentSession:  "otter-temp",
+		sessions:        []session{{Name: "otter-temp", Temporary: true}, {Name: "dev"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		sessionPanesAllDead: func(name string) (bool, error) {
+			if name != "otter-temp" {
+				t.Fatalf("SessionPanesAllDead called for %q, want otter-temp", name)
+			}
+			return true, nil
+		},
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if got, want := fmt.Sprint(killed), fmt.Sprint([]string{"otter-temp"}); got != want {
+		t.Fatalf("killed = %s, want %s", got, want)
+	}
+}
+
+func TestRunMenuExitActionRemovesDeadPersistentOutgoingSessionAndItsMetadata(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/small", Sessions: []persistentSession{{ID: "tflow-p-old", Label: "otter"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	var killed []string
+	menu := model{
+		exitAction:      menuExitSwitchSession,
+		exitSessionName: "tflow-p-new",
+		currentSession:  "tflow-p-old",
+		sessions:        []session{{Name: "tflow-p-old"}, {Name: "tflow-p-new"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		sessionPanesAllDead: func(name string) (bool, error) { return true, nil },
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if got, want := fmt.Sprint(killed), fmt.Sprint([]string{"tflow-p-old"}); got != want {
+		t.Fatalf("killed = %s, want %s", got, want)
+	}
+	got, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Projects) != 0 {
+		t.Fatalf("state = %#v, want the dead outgoing session's metadata (and its now-empty project) removed", got)
+	}
+}
+
+func TestRunMenuExitActionPreservesOutgoingSessionWithLivePanes(t *testing.T) {
+	var killed []string
+	menu := model{
+		exitAction:      menuExitSwitchSession,
+		exitSessionName: "dev",
+		currentSession:  "otter-temp",
+		sessions:        []session{{Name: "otter-temp", Temporary: true}, {Name: "dev"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		sessionPanesAllDead: func(name string) (bool, error) { return false, nil },
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if len(killed) != 0 {
+		t.Fatalf("killed = %#v, want no cleanup for a session with at least one live pane", killed)
+	}
+}
+
+func TestRunMenuExitActionPreservesOutgoingSessionWithMixedPanes(t *testing.T) {
+	// SessionPanesAllDead itself is responsible for reporting false when only
+	// some panes are dead (covered directly in internal/tmux); this exercises
+	// that runMenuExitAction correctly treats a false result -- whether from
+	// all-live or mixed panes -- as "do not clean up."
+	var killed []string
+	menu := model{
+		exitAction:      menuExitSwitchSession,
+		exitSessionName: "dev",
+		currentSession:  "otter-temp",
+		sessions:        []session{{Name: "otter-temp", Temporary: true}, {Name: "dev"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		sessionPanesAllDead: func(name string) (bool, error) { return false, nil }, // mixed dead/live panes
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if len(killed) != 0 {
+		t.Fatalf("killed = %#v, want no cleanup for a session with mixed dead and live panes", killed)
+	}
+}
+
+func TestRunMenuExitActionNeverCleansUpWhenSwitchFails(t *testing.T) {
+	// The dead-pane check runs before the switch (per the architecture), so
+	// it legitimately still fires here -- what must never happen is the
+	// actual removal (kill / metadata update), since the switch itself
+	// failed.
+	var killed []string
+	menu := model{
+		exitAction:      menuExitSwitchSession,
+		exitSessionName: "dev",
+		currentSession:  "otter-temp",
+		sessions:        []session{{Name: "otter-temp", Temporary: true}, {Name: "dev"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient:        func(name string) error { return fmt.Errorf("tmux: switch failed") },
+		sessionPanesAllDead: func(name string) (bool, error) { return true, nil },
+		killSession:         func(name string) error { killed = append(killed, name); return nil },
+	}, menu)
+	if err == nil || !strings.Contains(err.Error(), "switch failed") {
+		t.Fatalf("runMenuExitAction error = %v, want the original switch failure", err)
+	}
+	if len(killed) != 0 {
+		t.Fatalf("killed = %#v, want no cleanup when the switch failed", killed)
+	}
+}
+
+func TestRunMenuExitActionReportsDiagnosticWhenTmuxCleanupFails(t *testing.T) {
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	menu := model{
+		exitAction:      menuExitSwitchSession,
+		exitSessionName: "dev",
+		currentSession:  "otter-temp",
+		sessions:        []session{{Name: "otter-temp", Temporary: true}, {Name: "dev"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		sessionPanesAllDead: func(name string) (bool, error) { return true, nil },
+		killSession:         func(name string) error { return fmt.Errorf("tmux: kill failed") },
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v, want the successful switch preserved despite cleanup failing", err)
+	}
+	if !strings.Contains(buf.String(), "kill failed") {
+		t.Fatalf("diagnostic output = %q, want a kill-failure diagnostic", buf.String())
+	}
+}
+
+func TestRunMenuExitActionReportsDiagnosticWhenMetadataPersistenceFails(t *testing.T) {
+	// XDG_STATE_HOME points at a regular file instead of a directory, so
+	// SaveAppState's os.MkdirAll fails for any write attempt.
+	blocked := filepath.Join(t.TempDir(), "blocked")
+	if err := os.WriteFile(blocked, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_STATE_HOME", blocked)
+
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	menu := model{
+		exitAction:      menuExitSwitchSession,
+		exitSessionName: "tflow-p-new",
+		currentSession:  "tflow-p-old",
+		sessions:        []session{{Name: "tflow-p-old"}, {Name: "tflow-p-new"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		sessionPanesAllDead: func(name string) (bool, error) { return true, nil },
+		killSession:         func(name string) error { return nil },
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v, want the successful switch preserved despite metadata persistence failing", err)
+	}
+	if !strings.Contains(buf.String(), "remove persisted metadata") {
+		t.Fatalf("diagnostic output = %q, want a metadata-persistence failure diagnostic", buf.String())
+	}
+}
+
+func TestRunMenuExitActionNeverCleansUpNoOpReselectionOfCurrentSession(t *testing.T) {
+	checked := false
+	menu := model{
+		exitAction:      menuExitSwitchSession,
+		exitSessionName: "otter-temp",
+		currentSession:  "otter-temp",
+		sessions:        []session{{Name: "otter-temp", Temporary: true}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		sessionPanesAllDead: func(name string) (bool, error) { checked = true; return true, nil },
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if checked {
+		t.Fatal("dead-pane cleanup ran for a no-op reselection of the already-current session")
+	}
+}
+
 func TestPrepareStartupValidatesStateBeforeTmuxWork(t *testing.T) {
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
