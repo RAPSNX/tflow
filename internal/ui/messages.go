@@ -86,6 +86,15 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		deleted, found := m.findSession(msg.name)
 		deletingProject := found && !deleted.Temporary && project != "" && m.isLastProjectSession(project, msg.name)
+		// A blank m.currentSession means the client's active session is
+		// unknown to this model instance; treat that as if the deleted
+		// session were active so a valid attachment still gets
+		// established, matching prior behavior for that (test-only)
+		// case. Otherwise, when deletingProject is true, msg.name is
+		// guaranteed to be the sole session left in that project, so
+		// comparing against msg.name also covers "the active session
+		// belonged to the deleted project".
+		activeSessionDeleted := m.currentSession == "" || m.currentSession == msg.name
 		m.sessions = filterSessions(m.sessions, func(s session) bool { return s.Name != msg.name })
 		delete(m.sessionProjects, msg.name)
 		delete(m.sessionLabels, msg.name)
@@ -119,6 +128,9 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.closeMenuCmd()
 			}
 			return m.createVolatileFallback()
+		}
+		if !activeSessionDeleted {
+			return m, nil
 		}
 		nextProject := m.nextProjectAfter(project, deletingProject)
 		if nextProject != "" {

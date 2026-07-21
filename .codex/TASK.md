@@ -123,8 +123,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Delete a project when its final session is moved out.
 * [x] Delete a project when its final session is deleted.
 * [x] Delete all persistent sessions and metadata when a project is deleted.
-* [ ] Switch only when the active project is deleted, selecting the first session in the next project.
-* [ ] Create a volatile fallback in the active pane's working directory when no project session remains.
+* [x] Switch only when the active project is deleted, selecting the first session in the next project.
+* [x] Create a volatile fallback in the active pane's working directory when no project session remains.
 * [x] Keep project and session order stable.
 * [x] Test volatile-session project promotion, foreign-instance preservation, persistent ID replacement, volatile-marker clearing, active-session switching, sidebar closure, status refresh, and failure handling.
 * [ ] Test creation, rename, moves, deletion, switching, active-project deletion, and fallback behavior.
@@ -146,7 +146,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Test non-active session and project deletion without client switching, active-project deletion switching, and no-project fallback creation.
 * [ ] Test a mid-promotion rename failure leaves no persistent-name orphan or stale ownership marker.
 * [ ] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment.
-* [ ] Test fallback working-directory selection uses the active pane rather than the popup or server working directory.
+* [x] Test fallback working-directory selection uses the active pane rather than the popup or server working directory.
 * [ ] Test label case preservation and exact-scope duplicate handling.
 * [ ] Add mutation command-count tests proving unrelated tmux session markers are not rewritten.
 

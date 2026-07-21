@@ -61,6 +61,16 @@ func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
 
 	nextProject := m.nextProjectAfter(project, true)
 	deletedSessions := m.projectSessions(project)
+	// A blank m.currentSession means the client's active session is unknown
+	// to this model instance; treat that as if the active session belonged
+	// to the deleted project so a valid attachment still gets established,
+	// matching prior behavior for that (test-only) case.
+	activeProjectDeleted := m.currentSession == ""
+	for _, s := range deletedSessions {
+		if s.Name == m.currentSession {
+			activeProjectDeleted = true
+		}
+	}
 	for _, s := range deletedSessions {
 		delete(m.sessionProjects, s.Name)
 		delete(m.sessionLabels, s.Name)
@@ -97,6 +107,9 @@ func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
 	}
 	m.err = nil
 	m.status = ""
+	if !activeProjectDeleted {
+		return m, nil
+	}
 	if nextProject != "" {
 		return m.switchToProject(nextProject)
 	}
