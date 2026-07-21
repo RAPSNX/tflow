@@ -305,17 +305,3 @@ func (m model) syncSessionMarkers(name string) error {
 	}
 	return m.tmux.SetSessionLabel(name, label)
 }
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

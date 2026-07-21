@@ -238,7 +238,7 @@ func (m model) rowStyle(selected bool, projectName string) lipgloss.Style {
 	if selected {
 		return selectedSessionStyle
 	}
-	return sessionStyle.Copy().Foreground(lipgloss.Color(projectAccentColor(projectName)))
+	return sessionStyle.Foreground(lipgloss.Color(projectAccentColor(projectName)))
 }
 
 func (m model) visibleSessionCount() int {

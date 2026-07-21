@@ -16,8 +16,6 @@ func (m model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderProjectSwitchOverlay())
 	case inputCreateSession:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Session"))
-	case inputCreatingSession:
-		return appStyle.Width(m.width).Height(m.height).Render(m.renderSessionCreatePendingOverlay())
 	case inputCreateProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Project"))
 	case inputEditProject:
@@ -81,7 +79,7 @@ func (m model) renderSessionRow(index, selectedIndex int, s session) string {
 		if selected {
 			// The live badge resets terminal styles after rendering. Reapply the
 			// selected row style so the label stays highlighted beside the badge.
-			content = currentBadgeStyle.Render("live") + selectedSessionStyle.Copy().Padding(0).Render(" "+label)
+			content = currentBadgeStyle.Render("live") + selectedSessionStyle.Padding(0).Render(" "+label)
 		}
 	}
 	return style.Width(max(16, m.width-12)).Render(content)
@@ -203,15 +201,6 @@ func (m model) renderInputOverlay(title string) string {
 		badge, title = "settings", "Project"
 	}
 	return m.renderDialogCard(badge, title, "", m.renderInputField(), false)
-}
-
-func (m model) renderSessionCreatePendingOverlay() string {
-	width := m.dialogCardWidth()
-	contentWidth := m.dialogContentWidth()
-	header := lipgloss.JoinHorizontal(lipgloss.Left, dialogHeaderBadgeStyle.Render("CREATE"), " ", titleStyle.Render("Session"))
-	divider := dialogDividerStyle.Render(strings.Repeat("─", contentWidth))
-	box := overlayStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, header, divider, mutedStyle.Render("Creating session…")))
-	return m.renderDialog(box)
 }
 
 func (m model) renderDeleteOverlay() string {
