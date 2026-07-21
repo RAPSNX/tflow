@@ -2,7 +2,7 @@
 
 ## Project Structure
 
-This is a small Go module with its current entry point in `cmd/main.go`.
+This is a small Go module with its current entry point in `cmd/tflow/main.go`.
 
 - Put reusable application code under `internal/`.
 - Avoid `pkg/` unless the project intentionally exposes public reusable APIs.

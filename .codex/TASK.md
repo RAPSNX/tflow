@@ -136,7 +136,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Create a volatile fallback in the active pane's working directory when no project session remains.
 * [x] Keep project and session order stable.
 * [x] Test volatile-session project promotion, foreign-instance preservation, persistent ID replacement, volatile-marker clearing, active-session switching, sidebar closure, status refresh, and failure handling.
-* [ ] Test creation, rename, moves, deletion, switching, active-project deletion, and fallback behavior.
+* [x] Test creation, rename, moves, deletion, switching, active-project deletion, and fallback behavior.
 
 ### P1: Generated labels
 
@@ -152,7 +152,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Preserve user-entered session-label casing and use exact displayed-label uniqueness within each scope.
 * [x] Restore already-renamed volatile sessions and their ownership markers when promotion fails before state persistence; clean up an affected session only when restoration fails.
 * [x] Emit a diagnostic for best-effort cleanup failures while returning the original operation error.
-* [ ] Test non-active session and project deletion without client switching, active-project deletion switching, and no-project fallback creation.
+* [x] Test non-active session and project deletion without client switching, active-project deletion switching, and no-project fallback creation.
 * [x] Test a mid-promotion rename failure leaves no persistent-name orphan or stale ownership marker.
 * [x] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment.
 * [x] Test fallback working-directory selection uses the active pane rather than the popup or server working directory.
