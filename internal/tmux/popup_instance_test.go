@@ -10,9 +10,12 @@ import (
 )
 
 func TestQuitAllResolvesInstanceFromSessionOnlyIgnoringServerEnv(t *testing.T) {
-	// QuitAll must resolve the instance solely from the current session's
-	// @tflow-instance marker; it must never fall back to a client-scoped
-	// registry in the tmux global server environment, which no longer exists.
+	// QuitAll must prefer the current session's own @tflow-instance marker
+	// over the client-scoped fallback slot (a different, unrelated instance
+	// here) whenever the session marker itself already resolves -- the
+	// fallback exists only for when the session carries no marker at all
+	// (see TestQuitAllRetainsClientOwnedInstanceFromPersistentSession), not
+	// as a value that overrides a live session marker.
 	t.Setenv(CurrentSessionEnv, "dev")
 	t.Setenv(CurrentClientEnv, "@2")
 	t.Setenv(CurrentInstanceEnv, "instance-stale")
@@ -24,9 +27,10 @@ func TestQuitAllResolvesInstanceFromSessionOnlyIgnoringServerEnv(t *testing.T) {
 			case "show-options":
 				return "instance-live", nil
 			case "show-environment":
-				// Even if the global environment still holds a stale entry, it
-				// must never be consulted for instance resolution.
-				return "TFLOW_MENU_INSTANCE_2=instance-stale\n", nil
+				// A stale client-scoped fallback entry for a different
+				// instance must never override a session marker that already
+				// resolved.
+				return "TFLOW_MENU_INSTANCE__2=instance-stale\n", nil
 			case "list-sessions":
 				return strings.Join([]string{
 					"otter-temp\t1\t0\t1\tinstance-stale",
@@ -49,6 +53,47 @@ func TestQuitAllResolvesInstanceFromSessionOnlyIgnoringServerEnv(t *testing.T) {
 
 	if got, want := strings.Join(killed, ","), "fox-temp"; got != want {
 		t.Fatalf("killed = %q, want %q", got, want)
+	}
+}
+
+// TestQuitAllRetainsClientOwnedInstanceFromPersistentSession covers quitting
+// from a persistent session (no @tflow-instance marker) after the same
+// client previously opened a popup from a volatile session owned by
+// instance-1. QuitAll must still resolve instance-1 via the client-scoped
+// fallback slot and clean up its volatile sessions, rather than resolving
+// an empty instance and leaving them behind.
+func TestQuitAllRetainsClientOwnedInstanceFromPersistentSession(t *testing.T) {
+	t.Setenv(CurrentSessionEnv, "dev")
+	t.Setenv(CurrentClientEnv, "@2")
+
+	var killed []string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "show-options":
+				// The active session is persistent: no instance marker.
+				return "", nil
+			case "show-environment":
+				return "TFLOW_MENU_INSTANCE__2=instance-1\n", nil
+			case "list-sessions":
+				return strings.Join([]string{
+					"otter-temp\t1\t0\t1\tinstance-1",
+					"fox-temp\t1\t0\t1\tinstance-2",
+				}, "\n"), nil
+			case "kill-session":
+				killed = append(killed, args[2])
+				return "", nil
+			default:
+				return "", nil
+			}
+		},
+	}
+
+	if err := manager.QuitAll(); err != nil {
+		t.Fatalf("QuitAll returned error: %v", err)
+	}
+	if got, want := strings.Join(killed, ","), "otter-temp"; got != want {
+		t.Fatalf("killed = %q, want %q (instance-1's own volatile session, resolved via the client-scoped slot)", got, want)
 	}
 }
 

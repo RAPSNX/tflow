@@ -42,11 +42,14 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 		}
 	}
 
-	instanceID, err := m.resolveInstanceID(currentSession)
+	instanceID, err := m.resolveInstanceID(currentSession, currentClient)
 	if err != nil {
 		return err
 	}
 	if err := m.markMenuPopup(currentClient); err != nil {
+		return err
+	}
+	if err := m.rememberClientInstance(currentClient, instanceID); err != nil {
 		return err
 	}
 

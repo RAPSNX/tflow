@@ -20,7 +20,7 @@ Persistent sessions belong to projects. Volatile sessions belong to the current 
 
 Cleanup must only affect volatile sessions owned by the relevant instance. Persistent sessions and sessions owned by other instances remain untouched.
 
-An instance ID is scoped to its attached tmux client and passed explicitly to that client's popup processes. The owning instance remains associated with the client when it switches into a persistent session. Popups opened from persistent sessions must receive that same client-scoped instance ID explicitly. tflow must not set, inherit, or consult an instance ID through tmux's global server environment.
+An instance ID is scoped to its attached tmux client and passed explicitly to that client's popup processes. The owning instance remains associated with the client when it switches into a persistent session, tracked through a deliberately client-keyed entry rather than a session marker, since persistent sessions carry none. Popups opened from persistent sessions must receive that same client-scoped instance ID explicitly, recovered from that entry when the current session carries no marker of its own. tflow must not set, inherit, or consult an instance ID through an ambient or unscoped variable, such as a single shared key or a value read without confirming it belongs to the current client.
 
 Client-scoped operations must target the originating tmux client. If that client no longer exists, tflow may select a replacement only when it can prove that the replacement belongs to the same tflow instance. It must not fall back to an arbitrary client.
 

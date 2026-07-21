@@ -80,14 +80,14 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P1: Volatile instance lifecycle
 
-* [ ] Keep one instance ID exclusively on the attached tmux client; never set, inherit, or consult it through the tmux server environment.
-* [ ] Preserve the owning instance when the client switches into a persistent session and pass it explicitly to popups opened there.
+* [x] Keep one instance ID exclusively on the attached tmux client; never set, inherit, or consult it through the tmux server environment.
+* [x] Preserve the owning instance when the client switches into a persistent session and pass it explicitly to popups opened there.
 * [x] Remove only the detached client's volatile sessions.
 * [x] Never remove persistent sessions during instance cleanup.
 * [x] Never remove volatile sessions belonging to another instance.
 * [x] Keep cleanup idempotent.
 * [x] Test multiple simultaneous tflow instances and repeated cleanup.
-* [ ] Test a popup opened from a persistent session retains the correct client-owned instance and can create a volatile fallback after deleting the final project.
+* [x] Test a popup opened from a persistent session retains the correct client-owned instance and can create a volatile fallback after deleting the final project.
 
 ### P1: Graceful signal shutdown
 
@@ -176,7 +176,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Emit a diagnostic for best-effort cleanup failures while returning the original operation error.
 * [x] Test non-active session and project deletion without client switching, active-project deletion switching, and no-project fallback creation.
 * [x] Test a mid-promotion rename failure leaves no persistent-name orphan or stale ownership marker.
-* [ ] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment and retains the correct owning instance.
+* [x] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment and retains the correct owning instance.
 * [x] Test fallback working-directory selection uses the active pane rather than the popup or server working directory.
 * [x] Test label case preservation and exact-scope duplicate handling.
 * [x] Add mutation command-count tests proving unrelated tmux session markers are not rewritten.
