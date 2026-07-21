@@ -203,3 +203,79 @@ func TestToggleMenuPrefersActiveSessionInstanceOverAmbientEnv(t *testing.T) {
 		t.Fatalf("display-popup command = %q, should not use stale ambient instance env", got)
 	}
 }
+
+// TestToggleMenuFromPersistentSessionRetainsClientOwnedInstance exercises
+// the full sequence a real client goes through: open a popup from a
+// volatile session (resolving and remembering instance-1 via the
+// client-scoped slot), close it, switch to a persistent session (no
+// @tflow-instance marker), then open a popup again. The second popup must
+// still receive instance-1, recovered from the remembered client-scoped
+// slot rather than lost -- unlike the ambient-process-environment fallback
+// the architecture forbids, this is a deliberately keyed, explicitly
+// queried global-environment entry, exercised here via a fake that actually
+// persists set-environment/show-environment state across calls, the same
+// way tmux's real global environment would.
+func TestToggleMenuFromPersistentSessionRetainsClientOwnedInstance(t *testing.T) {
+	globalEnv := map[string]string{}
+	currentSession := "otter-temp"
+	var popupArgs []string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			switch args[0] {
+			case "display-message":
+				switch args[2] {
+				case "#{session_name}":
+					return currentSession, nil
+				case "#{client_name}":
+					return "@2", nil
+				default:
+					return "", fmt.Errorf("unexpected display-message format: %v", args)
+				}
+			case "show-options":
+				if currentSession == "otter-temp" {
+					return "instance-1", nil
+				}
+				return "", nil
+			case "show-environment":
+				lines := make([]string, 0, len(globalEnv))
+				for key, value := range globalEnv {
+					lines = append(lines, key+"="+value)
+				}
+				return strings.Join(lines, "\n"), nil
+			case "set-environment":
+				switch args[1] {
+				case "-gh":
+					globalEnv[args[2]] = args[3]
+				case "-gu":
+					delete(globalEnv, args[2])
+				}
+				return "", nil
+			case "display-popup":
+				popupArgs = append([]string(nil), args...)
+				return "", nil
+			default:
+				return "", fmt.Errorf("unexpected command: %v", args)
+			}
+		},
+	}
+
+	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
+		t.Fatalf("first ToggleMenu (open from volatile session) returned error: %v", err)
+	}
+	if got := strings.Join(popupArgs, " "); !strings.Contains(got, "-e "+CurrentInstanceEnv+"=instance-1") {
+		t.Fatalf("first popup command = %q, want instance-1 resolved from the session marker", got)
+	}
+
+	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
+		t.Fatalf("second ToggleMenu (close) returned error: %v", err)
+	}
+
+	currentSession = "dev"
+	popupArgs = nil
+	if err := manager.ToggleMenu("/tmp/tflow"); err != nil {
+		t.Fatalf("third ToggleMenu (open from persistent session) returned error: %v", err)
+	}
+	if got := strings.Join(popupArgs, " "); !strings.Contains(got, "-e "+CurrentInstanceEnv+"=instance-1") {
+		t.Fatalf("third popup command = %q, want instance-1 retained via the client-scoped slot after switching to a persistent session", got)
+	}
+}

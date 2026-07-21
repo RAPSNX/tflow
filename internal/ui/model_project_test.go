@@ -416,6 +416,47 @@ func TestDeletingFinalProjectSessionCreatesVolatileFallback(t *testing.T) {
 	}
 }
 
+// TestPopupFromPersistentSessionCanCreateVolatileFallbackAfterDeletingFinalProject
+// models a popup opened while the active session is persistent, whose
+// instance ID was recovered via the tmux layer's client-scoped fallback
+// (internal/tmux's resolveInstanceID) rather than a session marker --
+// unlike TestDeletingFinalProjectSessionCreatesVolatileFallback, which sets
+// m.instanceID directly, this builds the model the same way a real popup
+// process does: reading TFLOW_INSTANCE_ID from its environment. Before the
+// tmux-layer fix, that env var would be empty for a persistent-session
+// popup, and createVolatileFallback would fail with "instance id is empty"
+// instead of succeeding here.
+func TestPopupFromPersistentSessionCanCreateVolatileFallbackAfterDeletingFinalProject(t *testing.T) {
+	t.Setenv(menuInstanceEnv, "instance-1")
+	var marked string
+	m := newModel(fakeTmuxController{
+		createSession:       func(name, cwd, command string) (session, error) { return session{Name: name}, nil },
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error { marked = name; return nil },
+	}, "").(model)
+	if m.instanceID != "instance-1" {
+		t.Fatalf("model instanceID = %q, want instance-1 from the environment", m.instanceID)
+	}
+	m.cwd = "/tmp/workspace"
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "small--otter"}}
+	m.sessionProjects = map[string]string{"small--otter": "small"}
+	m.sessionLabels = map[string]string{"small--otter": "otter"}
+	m.selectedProject = "small"
+	m.selectedSession = "small--otter"
+
+	_, cmd := m.Update(sessionKilledMsg{name: "small--otter"})
+	if cmd == nil {
+		t.Fatal("expected volatile fallback command")
+	}
+	msg := cmd().(sessionCreatedMsg)
+	if msg.err != nil {
+		t.Fatalf("volatile fallback failed: %v", msg.err)
+	}
+	if !msg.volatile || marked == "" {
+		t.Fatalf("fallback = %#v, marked = %q, want a volatile fallback session", msg, marked)
+	}
+}
+
 func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 	tmp := t.TempDir()
 	var killed []string
