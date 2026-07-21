@@ -20,15 +20,19 @@ Persistent sessions belong to projects. Volatile sessions belong to the current 
 
 Cleanup must only affect volatile sessions owned by the relevant instance. Persistent sessions and sessions owned by other instances remain untouched.
 
-An instance ID is scoped to its attached tmux client and passed explicitly to that client's popup processes. tflow must not set, inherit, or consult an instance ID through tmux's global server environment.
+An instance ID is scoped to its attached tmux client and passed explicitly to that client's popup processes. The owning instance remains associated with the client when it switches into a persistent session. Popups opened from persistent sessions must receive that same client-scoped instance ID explicitly. tflow must not set, inherit, or consult an instance ID through tmux's global server environment.
+
+Client-scoped operations must target the originating tmux client. If that client no longer exists, tflow may select a replacement only when it can prove that the replacement belongs to the same tflow instance. It must not fall back to an arbitrary client.
 
 Managed panes use tmux `remain-on-exit`. tflow does not automatically respawn exited shells or switch the client to another session.
+
+Before executing an explicit sidebar-initiated switch, tflow determines whether every pane in the outgoing session has exited. If the target switch succeeds, the outgoing session differs from the switch target, and every outgoing pane was exited, tflow removes only that outgoing session. This applies to direct session selection and project selection, which switches to the selected project's first session. Sessions with one or more live panes remain intact, and tflow never removes the session it just switched to, including when a switch resolves to the session that was already current. tflow does not monitor for exited panes or remove sessions outside an explicit sidebar switch.
 
 ### Graceful signal shutdown
 
 The tflow executable creates one runtime context that is canceled by SIGHUP, SIGINT, or SIGTERM. Cancellation is passed only to long-running runtime boundaries: the attached tmux client and the Bubble Tea popup program.
 
-After startup has created and tagged a volatile session, the owning tflow process always performs one best-effort cleanup of that instance before it exits. Signal cancellation stops the attached client, then follows that same cleanup path. Cleanup remains strictly ownership-scoped: it never removes persistent sessions or volatile sessions owned by another instance.
+After startup has created and tagged a volatile session, the owning tflow process always performs one best-effort cleanup of that instance before it exits. Signal cancellation first asks the attached tmux client to terminate gracefully and allows a bounded wait before forcefully terminating it, then follows that same cleanup path. Cleanup remains strictly ownership-scoped: it never removes persistent sessions or volatile sessions owned by another instance.
 
 A canceled popup exits its Bubble Tea program without invoking the user-facing quit action. Its existing shell wrapper then clears the client-scoped popup marker. tflow continues to let tmux own popup process lifetime and does not add popup PID tracking or a process supervisor.
 
@@ -91,6 +95,8 @@ Moving a persistent session to another project preserves its tmux session. A mov
 
 Deleting the final session of a project also deletes the project. Deleting a project removes its persistent sessions and metadata. When the active session belongs to a deleted project, tflow switches to the first session in the next project before deleting it. If no project session remains available, tflow creates a volatile fallback session. Deleting a non-active session or project leaves the attached client on its current session.
 
+When sidebar-switch cleanup removes an exited persistent session, it also removes that session's metadata and removes its project when it becomes empty. Removing an exited volatile session does not change persistent state. Sidebar-switch cleanup always uses the target selected by the user; it does not choose a replacement session or create a fallback.
+
 ## Persistent state
 
 Persistent state is stored at:
@@ -119,7 +125,7 @@ Conceptually, the state contains:
 }
 ```
 
-Malformed state causes startup to fail with a clear error. Unknown JSON fields may be ignored.
+Malformed or semantically invalid state causes startup to fail with a clear path-qualified error and is not silently normalized or rewritten. Invalid state includes empty or duplicate normalized project names, empty or duplicate session IDs, empty session labels, and duplicate labels within one project. Unknown JSON fields may be ignored.
 
 ## State updates
 
@@ -147,9 +153,11 @@ Startup performs one reconciliation against the current tmux session list.
 
 Metadata for persistent sessions that no longer exist in tmux is removed and is not retained for lazy restoration. Projects without sessions are then removed.
 
+For persistent sessions that still exist, startup restores their project and label markers from persistent state and clears stale volatile ownership markers. This repair is limited to sessions represented by persistent state and does not rewrite unrelated sessions.
+
 Normal sidebar refreshes do not modify persistent state. They list tmux sessions once and filter the result locally.
 
-If tmux cannot provide a session list because of an operational error, no metadata is removed.
+If tmux cannot provide a session list because of an operational error, no metadata is removed or repaired.
 
 ## Error handling
 
@@ -157,11 +165,13 @@ tflow reports the original operation error and avoids generalized transaction or
 
 Simple local cleanup is allowed:
 
-* kill a newly created tmux session when its metadata cannot be persisted
+* kill a newly created tmux session when its setup or metadata persistence fails
 * ignore cleanup requests for resources that are already gone
 * correct other inconsistencies during the next startup reconciliation
 
 Best-effort cleanup failures emit a diagnostic without replacing the original operation error.
+
+If a sidebar target switch fails, tflow does not remove the outgoing session. After a successful switch, failed cleanup leaves the client on its selected target and emits a diagnostic. If tmux cannot remove the exited source session, its persistent metadata remains unchanged. If tmux removes a persistent source session but its metadata update fails, tflow reports the error and startup reconciliation removes the stale metadata.
 
 The application does not attempt to guarantee consistency after process crashes, machine crashes, or power loss.
 
