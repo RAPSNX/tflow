@@ -2,8 +2,9 @@ package tmux
 
 import (
 	"fmt"
-	"os"
 	"strings"
+
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 func (m Manager) ToggleMenu(binaryPath string) error {
@@ -68,15 +69,11 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 	_, err = m.runner()(args...)
 	if err != nil {
 		if unmarkErr := m.unmarkMenuPopup(currentClient); unmarkErr != nil {
-			warnf("cleanup popup marker after failed display-popup: %v", unmarkErr)
+			diag.Warnf("cleanup popup marker after failed display-popup: %v", unmarkErr)
 		}
 		return err
 	}
 	return nil
-}
-
-func warnf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "tflow: "+format+"\n", args...)
 }
 
 func (m Manager) CloseMenu() error {
@@ -121,6 +118,9 @@ func (m Manager) closeMenuPopup(clientID string) error {
 	if closeErr != nil {
 		if isBenignPopupCloseError(closeErr) {
 			return unmarkErr
+		}
+		if unmarkErr != nil {
+			diag.Warnf("clear popup marker for client %q after close failure: %v", clientID, unmarkErr)
 		}
 		// Preserve the close error; popup-marker cleanup is deliberately best effort.
 		return closeErr
