@@ -168,6 +168,54 @@ func TestQuitAllDoesNotFallBackToAmbientEnvWithoutSessionOrClientInstance(t *tes
 	}
 }
 
+// TestToggleMenuDoesNotMarkPopupVisibleWhenRememberingInstanceFails covers
+// ordering: if remembering the client-owned instance fails, no popup was
+// ever opened, so the popup-visible marker must never be set in the first
+// place -- there would be nothing to unmark it later, and a stale marker
+// would make a later toggle try to close a popup that was never shown.
+func TestToggleMenuDoesNotMarkPopupVisibleWhenRememberingInstanceFails(t *testing.T) {
+	var calls [][]string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			calls = append(calls, append([]string(nil), args...))
+			switch args[0] {
+			case "display-message":
+				switch args[2] {
+				case "#{session_name}":
+					return "otter-temp", nil
+				case "#{client_name}":
+					return "@2", nil
+				default:
+					return "", fmt.Errorf("unexpected display-message format: %v", args)
+				}
+			case "show-options":
+				return "instance-1", nil
+			case "show-environment":
+				return "", nil
+			case "set-environment":
+				if len(args) > 1 && args[1] == "-gh" && strings.HasPrefix(args[2], "TFLOW_MENU_INSTANCE_") {
+					return "", fmt.Errorf("tmux: set-environment failed")
+				}
+				return "", nil
+			default:
+				return "", fmt.Errorf("unexpected command: %v", args)
+			}
+		},
+	}
+
+	if err := manager.ToggleMenu("/tmp/tflow"); err == nil {
+		t.Fatal("ToggleMenu returned nil error, want the remember-instance failure")
+	}
+	for _, call := range calls {
+		if call[0] == "set-environment" && len(call) > 1 && call[1] == "-gh" && strings.HasPrefix(call[2], "TFLOW_MENU_POPUP_") {
+			t.Fatalf("calls = %#v, popup-visible marker was set despite the earlier remember-instance failure", calls)
+		}
+		if call[0] == "display-popup" {
+			t.Fatalf("calls = %#v, display-popup ran despite the earlier remember-instance failure", calls)
+		}
+	}
+}
+
 func TestToggleMenuUnmarksPopupIfOpenFails(t *testing.T) {
 	var calls [][]string
 	manager := Manager{

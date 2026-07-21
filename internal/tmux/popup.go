@@ -46,10 +46,15 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 	if err != nil {
 		return err
 	}
-	if err := m.markMenuPopup(currentClient); err != nil {
+	// Remember the instance before marking the popup visible: a failure here
+	// must return before the popup marker is set, so there is nothing to
+	// unmark on this path -- markMenuPopup's own failure needs no cleanup
+	// either, and the later display-popup failure path already unmarks on
+	// its own.
+	if err := m.rememberClientInstance(currentClient, instanceID); err != nil {
 		return err
 	}
-	if err := m.rememberClientInstance(currentClient, instanceID); err != nil {
+	if err := m.markMenuPopup(currentClient); err != nil {
 		return err
 	}
 
