@@ -11,6 +11,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"tflow/internal/diag"
 )
 
 type inputMode int
@@ -26,6 +28,7 @@ const (
 	inputConfirmQuit
 	inputRename
 	inputEditProject
+	inputMoveSession
 )
 
 type sessionsLoadedMsg struct {
@@ -96,6 +99,10 @@ type deleteTarget struct {
 	session string
 }
 
+type moveTarget struct {
+	session string
+}
+
 type model struct {
 	tmux tmuxController
 
@@ -124,6 +131,8 @@ type model struct {
 	switchProjectTarget string
 	projectSwitchIndex  int
 	projectEditConfig   projectConfig
+	moveTarget          moveTarget
+	moveProjectIndex    int
 
 	cwd           string
 	statePath     string
@@ -248,11 +257,15 @@ func (m model) createVolatileSession(cwd, command, label string) (session, error
 		return session{}, err
 	}
 	if err := m.tmux.SetSessionTemporary(created.Name, true, m.instanceID); err != nil {
-		_ = m.tmux.KillSession(created.Name)
+		if killErr := m.tmux.KillSession(created.Name); killErr != nil {
+			diag.Warnf("kill unmarked volatile session %q: %v", created.Name, killErr)
+		}
 		return session{}, fmt.Errorf("mark volatile session: %w", err)
 	}
 	if err := m.tmux.SetSessionLabel(created.Name, label); err != nil {
-		_ = m.tmux.KillSession(created.Name)
+		if killErr := m.tmux.KillSession(created.Name); killErr != nil {
+			diag.Warnf("kill unlabeled volatile session %q: %v", created.Name, killErr)
+		}
 		return session{}, fmt.Errorf("set volatile session label: %w", err)
 	}
 	created.Temporary = true

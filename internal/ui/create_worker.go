@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"tflow/internal/diag"
 )
 
 type createRequest struct{ Kind, Project, Label, Workdir, Current, Instance string }
@@ -34,7 +36,9 @@ func RunCreateWorker(encoded string) error {
 	}
 	manager := newSessionManager()
 	if err := runCreateWorker(manager, request); err != nil {
-		_ = manager.DisplayMessage(err.Error())
+		if displayErr := manager.DisplayMessage(err.Error()); displayErr != nil {
+			diag.Warnf("display create-worker error message: %v", displayErr)
+		}
 	}
 	return nil
 }
@@ -91,7 +95,9 @@ func (m *model) createSessionRequest(request createRequest) error {
 	m.assignSessionProject(s.Name, request.Project)
 	m.setSessionLabel(s.Name, request.Label)
 	if err := m.saveState(); err != nil {
-		_ = m.tmux.KillSession(s.Name)
+		if killErr := m.tmux.KillSession(s.Name); killErr != nil {
+			diag.Warnf("kill unpersisted session %q: %v", s.Name, killErr)
+		}
 		return err
 	}
 	if err := m.tmux.SetSessionProject(s.Name, request.Project); err != nil {
@@ -124,7 +130,9 @@ func (m *model) createProjectRequest(request createRequest) error {
 	m.assignSessionProject(s.Name, request.Project)
 	m.setSessionLabel(s.Name, request.Label)
 	if err := m.saveState(); err != nil {
-		_ = m.tmux.KillSession(s.Name)
+		if killErr := m.tmux.KillSession(s.Name); killErr != nil {
+			diag.Warnf("kill unpersisted session %q: %v", s.Name, killErr)
+		}
 		return err
 	}
 	if err := m.tmux.SetSessionProject(s.Name, request.Project); err != nil {
@@ -136,12 +144,34 @@ func (m *model) createProjectRequest(request createRequest) error {
 	return m.tmux.SwitchClient(s.Name)
 }
 
+// promotedSession records a volatile-to-persistent rename performed during
+// promotion, so it can be restored to its original volatile identity if a
+// later step in the promotion fails.
+type promotedSession struct{ oldName, newName string }
+
+// restorePromotedSessions walks already-renamed sessions in reverse and
+// renames each back to its original volatile name. If a restore rename
+// itself fails, it performs direct best-effort cleanup of that one affected
+// session instead of leaving it stranded under its new persistent-style
+// name. Failures here are diagnostics only: they never replace the original
+// promotion error that triggered the restore.
+func (m *model) restorePromotedSessions(promoted []promotedSession) {
+	for index := len(promoted) - 1; index >= 0; index-- {
+		p := promoted[index]
+		if err := m.tmux.RenameSession(p.newName, p.oldName); err != nil {
+			diag.Warnf("restore promoted session %q to volatile name %q: %v", p.newName, p.oldName, err)
+			if killErr := m.tmux.KillSession(p.newName); killErr != nil {
+				diag.Warnf("clean up stranded promoted session %q after restore failure: %v", p.newName, killErr)
+			}
+		}
+	}
+}
+
 func (m *model) promoteVolatileSessions(project, workdir, current string) error {
 	m.addProject(project)
 	m.setProjectConfig(projectConfig{Name: project, Workdir: workdir})
 	active := ""
-	type promotion struct{ oldName, newName string }
-	promoted := make([]promotion, 0)
+	promoted := make([]promotedSession, 0)
 	for index := range m.sessions {
 		s := m.sessions[index]
 		if !s.Temporary || s.Instance != m.instanceID {
@@ -149,10 +179,12 @@ func (m *model) promoteVolatileSessions(project, workdir, current string) error 
 		}
 		id, err := newSessionID()
 		if err != nil {
+			m.restorePromotedSessions(promoted)
 			return err
 		}
 		name := persistentSessionName(id)
 		if err := m.tmux.RenameSession(s.Name, name); err != nil {
+			m.restorePromotedSessions(promoted)
 			return err
 		}
 		label := m.sessionLabel(s.Name)
@@ -161,18 +193,17 @@ func (m *model) promoteVolatileSessions(project, workdir, current string) error 
 		m.sessions[index].Name, m.sessions[index].Temporary, m.sessions[index].Instance = name, false, ""
 		m.assignSessionProject(name, project)
 		m.setSessionLabel(name, label)
-		promoted = append(promoted, promotion{oldName: s.Name, newName: name})
+		promoted = append(promoted, promotedSession{oldName: s.Name, newName: name})
 		if s.Name == current {
 			active = name
 		}
 	}
 	if active == "" {
+		m.restorePromotedSessions(promoted)
 		return fmt.Errorf("active volatile session is missing")
 	}
 	if err := m.saveState(); err != nil {
-		for index := len(promoted) - 1; index >= 0; index-- {
-			_ = m.tmux.RenameSession(promoted[index].newName, promoted[index].oldName)
-		}
+		m.restorePromotedSessions(promoted)
 		return err
 	}
 	for _, session := range promoted {

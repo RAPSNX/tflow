@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -105,7 +106,7 @@ func (m Manager) SetSessionTemporary(name string, temporary bool, instanceID str
 
 func (m Manager) SetSessionLabel(name, label string) error {
 	name = strings.TrimSpace(name)
-	label = SanitizeSessionName(label)
+	label = NormalizeSessionLabel(label)
 	if name == "" || label == "" {
 		return fmt.Errorf("session label is empty")
 	}
@@ -113,16 +114,16 @@ func (m Manager) SetSessionLabel(name, label string) error {
 	return err
 }
 
-func (Manager) AttachCommand(name string) (*exec.Cmd, error) {
+func (Manager) AttachCommand(ctx context.Context, name string) (*exec.Cmd, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, fmt.Errorf("session name is empty")
 	}
-	return exec.Command("tmux", "-L", socketName, "attach-session", "-t", name), nil
+	return exec.CommandContext(ctx, "tmux", "-L", socketName, "attach-session", "-t", name), nil
 }
 
 func (m Manager) KillSession(name string) error {
 	_, err := m.runner()("kill-session", "-t", name)
-	if err != nil && (isNoSession(err) || IsNoServer(err)) {
+	if err != nil && (IsNoSession(err) || IsNoServer(err)) {
 		return nil
 	}
 	return err
@@ -145,33 +146,6 @@ func (m Manager) SwitchClient(name string) error {
 		// client itself instead of leaving the newly created session un-focused.
 		_, err = m.runner()("switch-client", "-t", name)
 		return err
-	}
-	return nil
-}
-
-func (m Manager) SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error {
-	for name, project := range sessionProjects {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		project = store.NormalizeProjectName(project)
-		if _, err := m.runner()("set-option", "-t", name, projectMarker, project); err != nil {
-			if isNoSession(err) || IsNoServer(err) {
-				continue
-			}
-			return err
-		}
-		label := strings.TrimSpace(sessionLabels[name])
-		if label == "" {
-			label = name
-		}
-		if _, err := m.runner()("set-option", "-t", name, sessionLabelMarker, label); err != nil {
-			if isNoSession(err) || IsNoServer(err) {
-				continue
-			}
-			return err
-		}
 	}
 	return nil
 }

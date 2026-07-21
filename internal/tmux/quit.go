@@ -11,7 +11,7 @@ func (m Manager) QuitAll() error {
 	if err != nil {
 		return err
 	}
-	instanceID, err := m.resolveInstanceID(currentSession, clientID)
+	instanceID, err := m.resolveInstanceID(currentSession)
 	if err != nil {
 		return err
 	}
@@ -21,7 +21,6 @@ func (m Manager) QuitAll() error {
 	script := []string{}
 	if strings.TrimSpace(clientID) != "" {
 		script = append(script, popupCloseScript(clientID))
-		script = append(script, instanceUnsetScript(clientID))
 		script = append(script, shellTmuxCommand("detach-client", "-t", clientID)+" >/dev/null 2>&1")
 	} else {
 		script = append(script, shellTmuxCommand("detach-client")+" >/dev/null 2>&1")

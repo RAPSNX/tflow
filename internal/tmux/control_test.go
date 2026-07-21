@@ -91,22 +91,24 @@ func TestEnsureControlModeInstallsClientLifecycleHooks(t *testing.T) {
 	if err := manager.EnsureControlMode("/tmp/tflow", Palette{}); err != nil {
 		t.Fatalf("EnsureControlMode returned error: %v", err)
 	}
-	for hook, command := range map[string]string{
-		"client-attached": "remember-client",
-		"client-detached": "cleanup-client",
-	} {
-		found := false
-		for _, call := range calls {
-			if len(call) != 4 || call[0] != "set-hook" || call[1] != "-g" || call[2] != hook {
-				continue
-			}
-			if strings.Contains(call[3], "run-shell") && strings.Contains(call[3], CurrentSessionEnv) && strings.Contains(call[3], CurrentClientEnv) && strings.Contains(call[3], command) {
-				found = true
-				break
-			}
+
+	found := false
+	for _, call := range calls {
+		if len(call) != 4 || call[0] != "set-hook" || call[1] != "-g" || call[2] != "client-detached" {
+			continue
 		}
-		if !found {
-			t.Fatalf("missing %s hook for %s in %#v", hook, command, calls)
+		if strings.Contains(call[3], "run-shell") && strings.Contains(call[3], CurrentSessionEnv) && strings.Contains(call[3], CurrentClientEnv) && strings.Contains(call[3], "cleanup-client") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("missing client-detached hook for cleanup-client in %#v", calls)
+	}
+
+	for _, call := range calls {
+		if len(call) == 4 && call[0] == "set-hook" && call[2] == "client-attached" {
+			t.Fatalf("client-attached hook must not be installed; instance ID is resolved from the session, not remembered per client: %#v", call)
 		}
 	}
 }
