@@ -28,8 +28,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep volatile sessions and instance ownership out of the store.
 * [x] Ignore unknown JSON fields.
 * [x] Reject malformed JSON with a clear path-qualified error.
-* [ ] Reject semantically invalid state instead of silently dropping or synthesizing records during normalization.
-* [ ] Test empty and duplicate normalized project names, empty and duplicate session IDs, empty labels, and duplicate labels within one project.
+* [x] Reject semantically invalid state instead of silently dropping or synthesizing records during normalization.
+* [x] Test empty and duplicate normalized project names, empty and duplicate session IDs, empty labels, and duplicate labels within one project.
 * [x] Keep the state path at `$XDG_STATE_HOME/tflow/store.json` when `XDG_STATE_HOME` is set and non-empty, falling back to `~/.local/state/tflow/store.json`.
 * [x] Set the state directory mode to `0700`.
 * [x] Set the state file mode to `0600`.
