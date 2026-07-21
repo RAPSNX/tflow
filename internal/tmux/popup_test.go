@@ -53,6 +53,8 @@ func TestToggleMenuClosesExistingPopup(t *testing.T) {
 }
 
 func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
+	t.Setenv("TMUX", "")
+
 	var popupArgs []string
 	var calls [][]string
 	manager := Manager{

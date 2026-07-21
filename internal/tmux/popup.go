@@ -176,8 +176,9 @@ func clientScopedEnvKey(prefix, clientID string) string {
 }
 
 func shellTmuxCommand(args ...string) string {
+	socket := socketArgs()
 	quoted := make([]string, 0, len(args)+3)
-	quoted = append(quoted, "tmux", "-L", ShellQuote(socketName))
+	quoted = append(quoted, "tmux", socket[0], ShellQuote(socket[1]))
 	for _, arg := range args {
 		quoted = append(quoted, ShellQuote(arg))
 	}
