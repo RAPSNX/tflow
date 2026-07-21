@@ -131,21 +131,24 @@ func (m Manager) KillSession(name string) error {
 }
 
 func (m Manager) SwitchClient(name string) error {
-	args := []string{"switch-client"}
 	clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv))
-	hasClient := clientID != ""
-	if hasClient {
-		args = append(args, "-c", clientID)
+	if clientID == "" {
+		_, err := m.runner()("switch-client", "-t", name)
+		return err
 	}
-	args = append(args, "-t", name)
-	if _, err := m.runner()(args...); err != nil {
-		if !hasClient {
+	if _, err := m.runner()("switch-client", "-c", clientID, "-t", name); err != nil {
+		if !isMissingClientError(err) {
 			return err
 		}
 		// TFLOW_CURRENT_CLIENT can outlive the tmux client it named, e.g. a create-worker inherits it from a
-		// popup whose client was already recreated. Retry without the stale target so tmux resolves the live
-		// client itself instead of leaving the newly created session un-focused.
-		_, err = m.runner()("switch-client", "-t", name)
+		// popup whose client was already recreated. Retry only once a missing-client error is positively
+		// identified, and only against a replacement client resolved from the current session -- never an
+		// arbitrary client tmux itself might pick without -c.
+		replacement, resolveErr := m.resolveReplacementClient()
+		if resolveErr != nil {
+			return err
+		}
+		_, err = m.runner()("switch-client", "-c", replacement, "-t", name)
 		return err
 	}
 	return nil
@@ -189,47 +192,99 @@ func (m Manager) RunBackground(command string) error {
 	return err
 }
 func (m Manager) DisplayMessage(message string) error {
-	args := []string{"display-message"}
 	clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv))
-	hasClient := clientID != ""
-	if hasClient {
-		args = append(args, "-c", clientID)
+	if clientID == "" {
+		_, err := m.runner()("display-message", message)
+		return err
 	}
-	args = append(args, message)
-	if _, err := m.runner()(args...); err != nil {
-		if !hasClient {
+	if _, err := m.runner()("display-message", "-c", clientID, message); err != nil {
+		if !isMissingClientError(err) {
 			return err
 		}
-		// Same stale-client fallback as SwitchClient: don't let a gone client swallow the error report.
-		_, err = m.runner()("display-message", message)
+		// Same stale-client fallback as SwitchClient: don't let a gone client swallow the error report, but
+		// only retry against a same-session replacement client, never an arbitrary one.
+		replacement, resolveErr := m.resolveReplacementClient()
+		if resolveErr != nil {
+			return err
+		}
+		_, err = m.runner()("display-message", "-c", replacement, message)
 		return err
 	}
 	return nil
 }
 
 func (m Manager) CurrentPaneDir() (string, error) {
-	args := []string{"display-message", "-p"}
 	clientID := strings.TrimSpace(os.Getenv(CurrentClientEnv))
-	hasClient := clientID != ""
-	if hasClient {
-		args = append(args, "-c", clientID)
+	if clientID == "" {
+		out, err := m.runner()("display-message", "-p", "#{pane_current_path}")
+		if err != nil {
+			return "", err
+		}
+		return nonEmptyPaneDir(out)
 	}
-	args = append(args, "#{pane_current_path}")
-	out, err := m.runner()(args...)
+	out, err := m.runner()("display-message", "-p", "-c", clientID, "#{pane_current_path}")
 	if err != nil {
-		if !hasClient {
+		if !isMissingClientError(err) {
 			return "", err
 		}
 		// A popup can retain a stale client identifier after the tmux client that opened it has been recreated.
-		// Retry without the stale target only when tmux fails to resolve that client. A resolved client whose
-		// active pane path is legitimately empty must not fall back to a different client's active pane.
-		out, err = m.runner()("display-message", "-p", "#{pane_current_path}")
+		// Retry only once a missing-client error is positively identified, and only against a replacement
+		// client resolved from the current session. A resolved client whose active pane path is legitimately
+		// empty must not fall back to a different client's active pane.
+		replacement, resolveErr := m.resolveReplacementClient()
+		if resolveErr != nil {
+			return "", err
+		}
+		out, err = m.runner()("display-message", "-p", "-c", replacement, "#{pane_current_path}")
 		if err != nil {
 			return "", err
 		}
 	}
+	return nonEmptyPaneDir(out)
+}
+
+func nonEmptyPaneDir(out string) (string, error) {
 	if dir := strings.TrimSpace(out); dir != "" {
 		return dir, nil
 	}
 	return "", fmt.Errorf("active pane directory is empty")
+}
+
+// isMissingClientError reports whether err is tmux positively reporting that
+// a -c target-client could not be resolved, as opposed to some other,
+// unrelated failure that happens to occur while a stale client is in use.
+// Only this specific error should trigger a same-session client retry.
+func isMissingClientError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "can't find client")
+}
+
+// resolveReplacementClient finds the client currently attached to the
+// session recorded in CurrentSessionEnv. That session -- not the possibly
+// gone client name a caller already has -- is the reliable anchor for "the
+// same tflow instance": a client that was recreated (for example after a
+// popup respawned) is still attached to the same session, so resolving by
+// session finds its live successor instead of falling back to whatever
+// client tmux itself would pick without -c, which could belong to a
+// different instance entirely on a multi-client server.
+func (m Manager) resolveReplacementClient() (string, error) {
+	sessionName := strings.TrimSpace(os.Getenv(CurrentSessionEnv))
+	if sessionName == "" {
+		return "", fmt.Errorf("no current session to resolve a replacement client")
+	}
+	out, err := m.runner()("list-clients", "-F", "#{client_name}\t#{client_session}")
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if strings.TrimSpace(parts[1]) == sessionName {
+			if client := strings.TrimSpace(parts[0]); client != "" {
+				return client, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no client attached to session %q", sessionName)
 }
