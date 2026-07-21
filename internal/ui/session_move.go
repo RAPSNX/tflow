@@ -130,7 +130,20 @@ func (m model) applySessionMove(sessionName, targetProject string) (tea.Model, t
 		return m, nil
 	}
 
+	// Source the tmux label marker from the label the mutation actually
+	// observed on disk, not from this popup's pre-mutation model.
+	// mutateAppState/mutateAppStateLocked reload the latest on-disk state
+	// before applying store.MoveSession, and MoveSession is a pure project
+	// reassignment that preserves whatever label the moved session already
+	// has. If another tflow instance renamed this session between when this
+	// popup's model was built and now, that rename landed in the reloaded
+	// `state` first. Falling back to m.sessionLabel(sessionName) (the stale
+	// model) would write the old label back into tmux and clobber the
+	// concurrent rename until a future full sync.
 	label := m.sessionLabel(sessionName)
+	if moved, ok := stateSessions(state)[sessionName]; ok {
+		label = moved.label
+	}
 
 	// Reflect the persisted result into in-memory bookkeeping only now that
 	// the store mutation has succeeded.
@@ -146,14 +159,28 @@ func (m model) applySessionMove(sessionName, targetProject string) (tea.Model, t
 		m.projects = removeProject(m.projects, sourceProject)
 		delete(m.projectConfigs, sourceProject)
 	}
-	m.stateBase = state
-	m.stateBasePath = m.statePath
 	m.persistentSessionOrder = make(map[string][]string, len(state.Projects))
 	for _, project := range state.Projects {
 		for _, session := range project.Sessions {
 			m.persistentSessionOrder[project.Name] = append(m.persistentSessionOrder[project.Name], session.ID)
 		}
 	}
+	// Anchor stateBase to this model's own tracked view (mirroring
+	// saveState's base=desired invariant) rather than the raw state the
+	// mutation observed. mutateAppState reloads the latest on-disk state
+	// before applying the move, so `state` can include projects, sessions,
+	// or label changes written concurrently by another tflow instance that
+	// this model never folded into m.projects/m.sessionProjects/
+	// m.sessionLabels (it only applies the moved session above). Recording
+	// that broader `state` as stateBase would make a later saveState's
+	// three-way merge see those concurrent entries as present in base but
+	// absent from desired -- i.e. as if this sidebar intentionally deleted
+	// or reverted them. Using m.currentState() keeps stateBase consistent
+	// with what this model actually knows, so unrelated concurrent state is
+	// neither base nor desired at the next save and passes through
+	// untouched instead of being diffed away.
+	m.stateBase = m.currentState()
+	m.stateBasePath = m.statePath
 	m.selectedProject = targetProject
 	m.selectedSession = sessionName
 	m.syncSelection()
@@ -172,5 +199,5 @@ func (m model) applySessionMove(sessionName, targetProject string) (tea.Model, t
 	}
 	m.err = nil
 	m.status = fmt.Sprintf("Moved %s to %s.", label, targetProject)
-	return m, nil
+	return m, m.closeMenuCmd()
 }

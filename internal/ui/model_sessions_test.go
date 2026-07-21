@@ -12,6 +12,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+func TestSessionStartDirFallsBackWhenDirectoryDoesNotExist(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	missingDir := filepath.Join(t.TempDir(), "missing")
+	if got := sessionStartDir(missingDir); got != home {
+		t.Fatalf("sessionStartDir(%q) = %q, want %q", missingDir, got, home)
+	}
+}
+
 func TestDefaultSessionDirUsesCurrentDirectory(t *testing.T) {
 	original, err := os.Getwd()
 	if err != nil {

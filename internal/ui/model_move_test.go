@@ -130,8 +130,15 @@ func TestMoveSessionMovesBetweenProjectsAndWritesOnlyItsMarkers(t *testing.T) {
 	}
 
 	updated, cmd = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd != nil {
-		t.Fatal("move is applied synchronously and should not return a command")
+	if cmd == nil {
+		t.Fatal("expected close command after a successful move")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.err != nil {
+		t.Fatalf("close returned error: %v", msg.err)
+	}
+	if msg.switchSession != "" {
+		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
 	got, ok := unwrapMenuModel(updated)
 	if !ok {
@@ -140,6 +147,9 @@ func TestMoveSessionMovesBetweenProjectsAndWritesOnlyItsMarkers(t *testing.T) {
 
 	if got.err != nil {
 		t.Fatalf("move reported error: %v (status %q)", got.err, got.status)
+	}
+	if got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone after a successful move", got.mode)
 	}
 	if got.sessionProjects["tflow-p-1"] != "garden" {
 		t.Fatalf("sessionProjects[tflow-p-1] = %q, want garden", got.sessionProjects["tflow-p-1"])
@@ -374,5 +384,244 @@ func TestEscCancelsSessionMoveWithoutMutatingState(t *testing.T) {
 	small, ok := storedProjectByName(saved, "small")
 	if !ok || len(small.Sessions) != 1 {
 		t.Fatalf("persisted source project changed after cancelled move: %#v", small)
+	}
+}
+
+// TestSuccessfulSessionMoveClosesSidebar guards against the successful-move
+// path returning nil instead of the shared close command. Per
+// .codex/ARCHITECTURE.md, successful sidebar actions close the popup and
+// return focus to the active terminal, matching every other successful
+// mutation (session creation, rename, deletion).
+func TestSuccessfulSessionMoveClosesSidebar(t *testing.T) {
+	tmp := t.TempDir()
+	statePath := tmp + "/state.json"
+	seedMoveState(t, statePath,
+		storedProject{Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "otter"}}},
+		storedProject{Name: "garden", Sessions: []persistentSession{{ID: "tflow-p-9", Label: "bee"}}},
+	)
+
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.statePath = statePath
+	m.projects = []string{"small", "garden"}
+	m.sessions = []session{{Name: "tflow-p-1"}, {Name: "tflow-p-9"}}
+	m.sessionProjects = map[string]string{"tflow-p-1": "small", "tflow-p-9": "garden"}
+	m.sessionLabels = map[string]string{"tflow-p-1": "otter", "tflow-p-9": "bee"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}, "garden": {Name: "garden"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-1"
+
+	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	pending := *(updated.(*model))
+
+	updated, cmd := pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	got, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatalf("updated model = %T", updated)
+	}
+	if got.err != nil {
+		t.Fatalf("move reported error: %v", got.err)
+	}
+	if got.mode != inputNone {
+		t.Fatalf("mode = %v, want inputNone after a successful move", got.mode)
+	}
+	if cmd == nil {
+		t.Fatal("expected close command after a successful move, got nil (popup would stay open)")
+	}
+	msg, ok := cmd().(menuActionMsg)
+	if !ok {
+		t.Fatalf("cmd() = %T, want menuActionMsg", cmd())
+	}
+	if msg.err != nil {
+		t.Fatalf("close returned error: %v", msg.err)
+	}
+	if msg.switchSession != "" {
+		t.Fatalf("close msg = %#v, want plain close", msg)
+	}
+}
+
+// TestSuccessfulSessionMoveDoesNotLoseConcurrentState guards against a
+// three-way merge data-loss race. mutateAppState reloads the latest on-disk
+// state before applying MoveSession, so the state returned to
+// applySessionMove can include a project or label change written by another
+// tflow instance since this popup's model was built. applySessionMove only
+// folds the moved session into m.projects/m.sessionProjects/m.sessionLabels;
+// if it anchored stateBase to that broader returned state instead of to its
+// own tracked view, a later unrelated saveState from this sidebar would see
+// the concurrent entries as present in base but missing from desired and
+// delete or revert them (mergeAppStates in helpers.go treats that shape as
+// an intentional deletion).
+func TestSuccessfulSessionMoveDoesNotLoseConcurrentState(t *testing.T) {
+	tmp := t.TempDir()
+	statePath := tmp + "/state.json"
+	seedMoveState(t, statePath,
+		storedProject{Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "otter"}}},
+		storedProject{Name: "garden", Sessions: []persistentSession{{ID: "tflow-p-9", Label: "bee"}}},
+	)
+
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.statePath = statePath
+	m.projects = []string{"small", "garden"}
+	m.sessions = []session{{Name: "tflow-p-1"}, {Name: "tflow-p-9"}}
+	m.sessionProjects = map[string]string{"tflow-p-1": "small", "tflow-p-9": "garden"}
+	m.sessionLabels = map[string]string{"tflow-p-1": "otter", "tflow-p-9": "bee"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}, "garden": {Name: "garden"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-1"
+	// Anchor stateBase to what this model actually observed for statePath,
+	// mirroring buildModel, so the concurrent write below is only visible
+	// through the mutation's own "latest" reload, never through this
+	// model's tracked base.
+	initial, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.stateBase = initial
+	m.stateBasePath = statePath
+
+	// Simulate a second tflow instance writing to the shared store after
+	// this popup opened: it adds a brand-new project with its own session
+	// and relabels an existing, unrelated session this model already knows
+	// about.
+	if _, err := mutateAppState(statePath, func(latest appState) (appState, error) {
+		latest.Projects = append(latest.Projects, storedProject{
+			Name:     "concurrent",
+			Sessions: []persistentSession{{ID: "tflow-p-99", Label: "otter99"}},
+		})
+		for i := range latest.Projects {
+			if latest.Projects[i].Name != "garden" {
+				continue
+			}
+			for j := range latest.Projects[i].Sessions {
+				if latest.Projects[i].Sessions[j].ID == "tflow-p-9" {
+					latest.Projects[i].Sessions[j].Label = "wasp"
+				}
+			}
+		}
+		return latest, nil
+	}); err != nil {
+		t.Fatalf("simulate concurrent write: %v", err)
+	}
+
+	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	pending := *(updated.(*model))
+
+	updated, _ = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	got, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatalf("updated model = %T", updated)
+	}
+	if got.err != nil {
+		t.Fatalf("move reported error: %v", got.err)
+	}
+
+	// A later, unrelated save from this same sidebar (e.g. a subsequent
+	// rename) must not delete or revert the concurrent instance's writes.
+	if err := got.saveState(); err != nil {
+		t.Fatalf("saveState after move: %v", err)
+	}
+
+	saved, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	concurrent, ok := storedProjectByName(saved, "concurrent")
+	if !ok {
+		t.Fatal("concurrent project was deleted by a later save after a successful move")
+	}
+	if len(concurrent.Sessions) != 1 || concurrent.Sessions[0].ID != "tflow-p-99" || concurrent.Sessions[0].Label != "otter99" {
+		t.Fatalf("concurrent project sessions = %#v, want unchanged tflow-p-99=otter99", concurrent.Sessions)
+	}
+	garden, ok := storedProjectByName(saved, "garden")
+	if !ok {
+		t.Fatal("garden project missing after move and save")
+	}
+	var gardenLabel string
+	for _, s := range garden.Sessions {
+		if s.ID == "tflow-p-9" {
+			gardenLabel = s.Label
+		}
+	}
+	if gardenLabel != "wasp" {
+		t.Fatalf("tflow-p-9 label = %q, want concurrent relabel to survive the later save", gardenLabel)
+	}
+}
+
+// TestSuccessfulSessionMoveWritesReloadedLabelNotStaleModelLabel guards
+// against another instance of the same stale-model-vs-freshly-reloaded-store
+// race: store.MoveSession is a pure project reassignment that preserves
+// whatever label the moved session currently has on disk. If another tflow
+// instance renames the session being moved after this popup's model was
+// built but before Enter is pressed, the locked mutation reloads that new
+// label before applying the move. The tmux label marker write must use that
+// reloaded label, not m.sessionLabels (the popup's stale, pre-mutation
+// model), or it silently writes the old name back into tmux even though the
+// store now has the new one.
+func TestSuccessfulSessionMoveWritesReloadedLabelNotStaleModelLabel(t *testing.T) {
+	tmp := t.TempDir()
+	statePath := tmp + "/state.json"
+	seedMoveState(t, statePath,
+		storedProject{Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "otter"}}},
+		storedProject{Name: "garden", Sessions: []persistentSession{{ID: "tflow-p-9", Label: "bee"}}},
+	)
+
+	var labelWrites []string
+	m := newModel(fakeTmuxController{
+		setSessionLabel: func(name, label string) error {
+			labelWrites = append(labelWrites, fmt.Sprintf("%s=%s", name, label))
+			return nil
+		},
+	}, "").(model)
+	m.statePath = statePath
+	m.projects = []string{"small", "garden"}
+	m.sessions = []session{{Name: "tflow-p-1"}, {Name: "tflow-p-9"}}
+	m.sessionProjects = map[string]string{"tflow-p-1": "small", "tflow-p-9": "garden"}
+	// This model's own bookkeeping still has the pre-rename label: it was
+	// built before the concurrent rename below happened.
+	m.sessionLabels = map[string]string{"tflow-p-1": "otter", "tflow-p-9": "bee"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}, "garden": {Name: "garden"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-1"
+
+	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	pending := *(updated.(*model))
+
+	// Simulate a second tflow instance renaming the session being moved,
+	// after this popup opened but before Enter is pressed.
+	if _, err := mutateAppState(statePath, func(latest appState) (appState, error) {
+		for i := range latest.Projects {
+			if latest.Projects[i].Name != "small" {
+				continue
+			}
+			for j := range latest.Projects[i].Sessions {
+				if latest.Projects[i].Sessions[j].ID == "tflow-p-1" {
+					latest.Projects[i].Sessions[j].Label = "raccoon"
+				}
+			}
+		}
+		return latest, nil
+	}); err != nil {
+		t.Fatalf("simulate concurrent rename: %v", err)
+	}
+
+	updated, _ = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	got, ok := unwrapMenuModel(updated)
+	if !ok {
+		t.Fatalf("updated model = %T", updated)
+	}
+	if got.err != nil {
+		t.Fatalf("move reported error: %v", got.err)
+	}
+
+	if fmt.Sprint(labelWrites) != fmt.Sprint([]string{"tflow-p-1=raccoon"}) {
+		t.Fatalf("label marker writes = %#v, want the reloaded label raccoon, not the stale model label otter", labelWrites)
+	}
+
+	saved, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	garden, ok := storedProjectByName(saved, "garden")
+	if !ok || len(garden.Sessions) != 2 || garden.Sessions[1].ID != "tflow-p-1" || garden.Sessions[1].Label != "raccoon" {
+		t.Fatalf("persisted target project = %#v, want tflow-p-1 to keep its concurrently renamed label", garden)
 	}
 }
