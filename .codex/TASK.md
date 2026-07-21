@@ -80,7 +80,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P1: Volatile instance lifecycle
 
-* [x] Keep one instance ID exclusively on the attached tmux client; never set, inherit, or consult it through the tmux server environment.
+* [x] Keep one instance ID exclusively on the attached tmux client, tracked through a deliberately client-keyed entry when the current session carries no marker of its own; never set, inherit, or consult it through an ambient or unscoped variable.
 * [x] Preserve the owning instance when the client switches into a persistent session and pass it explicitly to popups opened there.
 * [x] Remove only the detached client's volatile sessions.
 * [x] Never remove persistent sessions during instance cleanup.
