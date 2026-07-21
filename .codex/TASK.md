@@ -47,8 +47,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Remove the temporary file when writing or renaming fails.
 * [x] Test that failed writes leave the previous JSON file unchanged.
 * [x] Test that concurrent disjoint mutations do not overwrite each other.
-* [ ] Emit a diagnostic when releasing a state lock fails while preserving any primary operation error.
-* [ ] Test lock-release diagnostics in mutation, reconciliation, and background-worker paths.
+* [x] Emit a diagnostic when releasing a state lock fails while preserving any primary operation error.
+* [x] Test lock-release diagnostics in mutation, reconciliation, and background-worker paths.
 
 ### P0: Startup reconciliation
 
