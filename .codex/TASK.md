@@ -47,8 +47,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Remove the temporary file when writing or renaming fails.
 * [x] Test that failed writes leave the previous JSON file unchanged.
 * [x] Test that concurrent disjoint mutations do not overwrite each other.
-* [ ] Emit a diagnostic when releasing a state lock fails while preserving any primary operation error.
-* [ ] Test lock-release diagnostics in mutation, reconciliation, and background-worker paths.
+* [x] Emit a diagnostic when releasing a state lock fails while preserving any primary operation error.
+* [x] Test lock-release diagnostics in mutation, reconciliation, and background-worker paths.
 
 ### P0: Startup reconciliation
 
@@ -68,9 +68,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 ### P0: Operation failure handling
 
 * [x] Kill a newly created tmux session when its metadata cannot be persisted.
-* [ ] Kill a newly created tmux session when post-creation setup such as window renaming fails.
-* [ ] Preserve the original setup error and emit a diagnostic when orphan cleanup also fails.
-* [ ] Test post-creation setup failure leaves no unmarked tmux session behind.
+* [x] Kill a newly created tmux session when post-creation setup such as window renaming fails.
+* [x] Preserve the original setup error and emit a diagnostic when orphan cleanup also fails.
+* [x] Test post-creation setup failure leaves no unmarked tmux session behind.
 * [x] Treat cleanup of an already missing session or popup as successful.
 * [x] Return the original operation error to the user.
 * [x] Remove project-wide rename rollback logic.
@@ -186,8 +186,8 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Retry a client-scoped tmux command only after positively identifying a missing-client error.
 * [ ] Resolve any replacement client within the same tflow instance; never retry against an arbitrary client.
 * [ ] Test `SwitchClient`, `DisplayMessage`, and `CurrentPaneDir` preserve client ownership on errors and in multi-client servers.
-* [ ] After a successful move, update the popup model's session label from the state observed by the locked mutation.
-* [ ] Test a concurrent rename followed by a move updates persisted state, tmux markers, in-memory labels, and the success message consistently.
+* [x] After a successful move, update the popup model's session label from the state observed by the locked mutation.
+* [x] Test a concurrent rename followed by a move updates persisted state, tmux markers, in-memory labels, and the success message consistently.
 
 ### P1: Installation and verification
 

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 func TestLoadAppStateDefaultsToEmptyStoreWhenFileMissing(t *testing.T) {
@@ -272,6 +275,46 @@ func TestReconcileAppStateSnapshotsSessionsWhileHoldingStateLock(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("concurrent mutation did not complete after reconciliation released the lock")
+	}
+}
+
+func TestMutateAppStateEmitsDiagnosticWhenLockReleaseFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	originalUnlock := unlockFlock
+	unlockFlock = func(*os.File) error { return errors.New("flock release boom") }
+	t.Cleanup(func() { unlockFlock = originalUnlock })
+
+	var buf bytes.Buffer
+	originalOutput := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = originalOutput })
+
+	if _, err := MutateAppState(path, func(state AppState) (AppState, error) { return state, nil }); err != nil {
+		t.Fatalf("MutateAppState returned error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "flock release boom") {
+		t.Fatalf("diagnostic output = %q, want lock-release failure reported", buf.String())
+	}
+}
+
+func TestReconcileAppStateEmitsDiagnosticWhenLockReleaseFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	originalUnlock := unlockFlock
+	unlockFlock = func(*os.File) error { return errors.New("flock release boom") }
+	t.Cleanup(func() { unlockFlock = originalUnlock })
+
+	var buf bytes.Buffer
+	originalOutput := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = originalOutput })
+
+	if _, err := ReconcileAppState(path, func() (map[string]struct{}, error) {
+		return map[string]struct{}{}, nil
+	}); err != nil {
+		t.Fatalf("ReconcileAppState returned error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "flock release boom") {
+		t.Fatalf("diagnostic output = %q, want lock-release failure reported", buf.String())
 	}
 }
 
