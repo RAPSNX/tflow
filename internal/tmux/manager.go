@@ -144,7 +144,11 @@ func (m Manager) SessionPanesAllDead(name string) (bool, error) {
 	if name == "" {
 		return false, nil
 	}
-	out, err := m.runner()("list-panes", "-t", name, "-F", "#{pane_dead}")
+	// -s scopes the listing to every window in the session; without it, tmux
+	// resolves -t <session> to just the session's active window, so a dead
+	// active-window pane would be reported as the whole session being dead
+	// even while another window in the same session still has a live pane.
+	out, err := m.runner()("list-panes", "-s", "-t", name, "-F", "#{pane_dead}")
 	if err != nil {
 		if IsNoSession(err) || IsNoServer(err) {
 			return false, nil
