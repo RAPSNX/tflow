@@ -176,7 +176,7 @@ func IsSessionExists(err error) bool {
 		strings.Contains(msg, "session already exists")
 }
 
-func isNoSession(err error) bool {
+func IsNoSession(err error) bool {
 	// These tmux stderr fragments were captured against tmux 3.7b.
 	return err != nil && strings.Contains(err.Error(), "can't find session")
 }

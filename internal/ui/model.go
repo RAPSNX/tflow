@@ -28,6 +28,7 @@ const (
 	inputConfirmQuit
 	inputRename
 	inputEditProject
+	inputMoveSession
 )
 
 type sessionsLoadedMsg struct {
@@ -98,6 +99,10 @@ type deleteTarget struct {
 	session string
 }
 
+type moveTarget struct {
+	session string
+}
+
 type model struct {
 	tmux tmuxController
 
@@ -126,6 +131,8 @@ type model struct {
 	switchProjectTarget string
 	projectSwitchIndex  int
 	projectEditConfig   projectConfig
+	moveTarget          moveTarget
+	moveProjectIndex    int
 
 	cwd           string
 	statePath     string

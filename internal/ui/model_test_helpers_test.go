@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"testing"
@@ -18,7 +19,7 @@ type fakeTmuxController struct {
 	currentPaneDir      func() (string, error)
 	setSessionTemporary func(name string, temporary bool, instanceID string) error
 	setSessionLabel     func(name, label string) error
-	attachCommand       func(name string) (*exec.Cmd, error)
+	attachCommand       func(ctx context.Context, name string) (*exec.Cmd, error)
 	killSession         func(name string) error
 	switchClient        func(name string) error
 	ensureControlMode   func(binaryPath string) error
@@ -26,7 +27,6 @@ type fakeTmuxController struct {
 	closeMenu           func() error
 	quitAll             func() error
 	cleanupVolatile     func(instanceID string) error
-	syncSessionProjects func(sessionProjects map[string]string) error
 }
 
 func (f fakeTmuxController) ListSessions() ([]session, error) {
@@ -89,11 +89,11 @@ func (f fakeTmuxController) SetSessionLabel(name, label string) error {
 	return nil
 }
 
-func (f fakeTmuxController) AttachCommand(name string) (*exec.Cmd, error) {
+func (f fakeTmuxController) AttachCommand(ctx context.Context, name string) (*exec.Cmd, error) {
 	if f.attachCommand != nil {
-		return f.attachCommand(name)
+		return f.attachCommand(ctx, name)
 	}
-	return exec.Command("sh", "-lc", ":"), nil
+	return exec.CommandContext(ctx, "sh", "-lc", ":"), nil
 }
 
 func (f fakeTmuxController) KillSession(name string) error {
@@ -145,21 +145,6 @@ func (f fakeTmuxController) CleanupVolatileSessions(instanceID string) error {
 	return nil
 }
 
-func (f fakeTmuxController) SyncSessionProjects(sessionProjects, sessionLabels map[string]string) error {
-	if f.syncSessionProjects != nil {
-		return f.syncSessionProjects(sessionProjects)
-	}
-	return nil
-}
-
-func cloneStringMap(src map[string]string) map[string]string {
-	dst := make(map[string]string, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}
-
 func TestMain(m *testing.M) {
 	stateHome, err := os.MkdirTemp("", "tflow-ui-state-")
 	if err != nil {
@@ -200,4 +185,15 @@ func storedSessionByID(state appState, id string) (persistentSession, bool) {
 		}
 	}
 	return persistentSession{}, false
+}
+
+// fixedAttachContext returns a context factory that always hands back the
+// given ctx, with a no-op stop. It stands in for startWithManager's real
+// signalContext factory in tests, letting a test control cancellation
+// timing directly (for example by canceling ctx from within a fake
+// AttachCommand) without going through actual OS signals.
+func fixedAttachContext(ctx context.Context) func() (context.Context, context.CancelFunc) {
+	return func() (context.Context, context.CancelFunc) {
+		return ctx, func() {}
+	}
 }
