@@ -68,9 +68,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 ### P0: Operation failure handling
 
 * [x] Kill a newly created tmux session when its metadata cannot be persisted.
-* [ ] Kill a newly created tmux session when post-creation setup such as window renaming fails.
-* [ ] Preserve the original setup error and emit a diagnostic when orphan cleanup also fails.
-* [ ] Test post-creation setup failure leaves no unmarked tmux session behind.
+* [x] Kill a newly created tmux session when post-creation setup such as window renaming fails.
+* [x] Preserve the original setup error and emit a diagnostic when orphan cleanup also fails.
+* [x] Test post-creation setup failure leaves no unmarked tmux session behind.
 * [x] Treat cleanup of an already missing session or popup as successful.
 * [x] Return the original operation error to the user.
 * [x] Remove project-wide rename rollback logic.
