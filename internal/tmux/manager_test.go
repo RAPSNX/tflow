@@ -120,6 +120,42 @@ func TestSwitchClientRetriesAgainstCorrectClientInMultiClientServer(t *testing.T
 	}
 }
 
+// TestSwitchClientRetriesUsingSwitchTargetAfterSessionRename covers
+// volatile-to-persistent promotion: the active session is renamed and then
+// SwitchClient is called with its new name, but CurrentSessionEnv (captured
+// once at process launch) still holds the pre-rename name. A tmux rename
+// keeps the client attached to the same underlying session object under
+// its new #{client_session} name, so the retry must also try the switch
+// target itself, not just the now-stale CurrentSessionEnv anchor.
+func TestSwitchClientRetriesUsingSwitchTargetAfterSessionRename(t *testing.T) {
+	t.Setenv(CurrentClientEnv, "/dev/pts/4")
+	t.Setenv(CurrentSessionEnv, "tflow-v-instance-1-old")
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		switch args[0] {
+		case "switch-client":
+			if len(args) > 1 && args[1] == "-c" && args[2] == "/dev/pts/4" {
+				return "", fmt.Errorf("can't find client /dev/pts/4")
+			}
+			return "", nil
+		case "list-clients":
+			// The client is attached to the renamed (promoted) session, not
+			// the pre-rename name CurrentSessionEnv still holds.
+			return "@3\ttflow-p-new\n", nil
+		}
+		return "", nil
+	}}
+
+	if err := manager.SwitchClient("tflow-p-new"); err != nil {
+		t.Fatalf("SwitchClient returned error: %v", err)
+	}
+	want2 := []string{"switch-client", "-c", "@3", "-t", "tflow-p-new"}
+	if len(calls) != 3 || strings.Join(calls[2], "\x00") != strings.Join(want2, "\x00") {
+		t.Fatalf("final call = %#v, want %v (resolved via the switch target after a stale CurrentSessionEnv)", calls, want2)
+	}
+}
+
 func TestSwitchClientDoesNotRetryUnrelatedError(t *testing.T) {
 	t.Setenv(CurrentClientEnv, "/dev/pts/4")
 	t.Setenv(CurrentSessionEnv, "otter-temp")

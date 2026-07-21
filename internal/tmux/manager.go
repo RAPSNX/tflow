@@ -149,7 +149,7 @@ func (m Manager) SwitchClient(name string) error {
 		// popup whose client was already recreated. Retry only once a missing-client error is positively
 		// identified, and only against a replacement client resolved from the current session -- never an
 		// arbitrary client tmux itself might pick without -c.
-		replacement, resolveErr := m.resolveReplacementClient()
+		replacement, resolveErr := m.resolveReplacementClient(name)
 		if resolveErr != nil {
 			return err
 		}
@@ -208,7 +208,7 @@ func (m Manager) DisplayMessage(message string) error {
 		}
 		// Same stale-client fallback as SwitchClient: don't let a gone client swallow the error report, but
 		// only retry against a same-session replacement client, never an arbitrary one.
-		replacement, resolveErr := m.resolveReplacementClient()
+		replacement, resolveErr := m.resolveReplacementClient("")
 		if resolveErr != nil {
 			return err
 		}
@@ -236,7 +236,7 @@ func (m Manager) CurrentPaneDir() (string, error) {
 		// Retry only once a missing-client error is positively identified, and only against a replacement
 		// client resolved from the current session. A resolved client whose active pane path is legitimately
 		// empty must not fall back to a different client's active pane.
-		replacement, resolveErr := m.resolveReplacementClient()
+		replacement, resolveErr := m.resolveReplacementClient("")
 		if resolveErr != nil {
 			return "", err
 		}
@@ -264,32 +264,52 @@ func isMissingClientError(err error) bool {
 }
 
 // resolveReplacementClient finds the client currently attached to the
-// session recorded in CurrentSessionEnv. That session -- not the possibly
-// gone client name a caller already has -- is the reliable anchor for "the
-// same tflow instance": a client that was recreated (for example after a
-// popup respawned) is still attached to the same session, so resolving by
-// session finds its live successor instead of falling back to whatever
-// client tmux itself would pick without -c, which could belong to a
-// different instance entirely on a multi-client server.
-func (m Manager) resolveReplacementClient() (string, error) {
-	sessionName := strings.TrimSpace(os.Getenv(CurrentSessionEnv))
-	if sessionName == "" {
-		return "", fmt.Errorf("no current session to resolve a replacement client")
+// session recorded in CurrentSessionEnv or, failing that, to target (when
+// non-empty). That session -- not the possibly gone client name a caller
+// already has -- is the reliable anchor for "the same tflow instance": a
+// client that was recreated (for example after a popup respawned) is still
+// attached to the same session, so resolving by session finds its live
+// successor instead of falling back to whatever client tmux itself would
+// pick without -c, which could belong to a different instance entirely on a
+// multi-client server.
+//
+// target exists for SwitchClient's own retry: volatile-to-persistent
+// promotion renames the active session and then switches to its new name in
+// the same operation, so CurrentSessionEnv (captured once at process
+// launch) can still hold the pre-rename name by the time a stale-client
+// retry runs. A tmux rename keeps the client attached to the same
+// underlying session object, just under a new #{client_session} name, so
+// checking the switch target too finds that same live client without
+// needing CurrentSessionEnv to track the rename.
+func (m Manager) resolveReplacementClient(target string) (string, error) {
+	candidates := make([]string, 0, 2)
+	if sessionName := strings.TrimSpace(os.Getenv(CurrentSessionEnv)); sessionName != "" {
+		candidates = append(candidates, sessionName)
+	}
+	if target = strings.TrimSpace(target); target != "" {
+		candidates = append(candidates, target)
+	}
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("no session context to resolve a replacement client")
 	}
 	out, err := m.runner()("list-clients", "-F", "#{client_name}\t#{client_session}")
 	if err != nil {
 		return "", err
 	}
+	bySession := map[string]string{}
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		parts := strings.SplitN(line, "\t", 2)
 		if len(parts) != 2 {
 			continue
 		}
-		if strings.TrimSpace(parts[1]) == sessionName {
-			if client := strings.TrimSpace(parts[0]); client != "" {
-				return client, nil
-			}
+		if client := strings.TrimSpace(parts[0]); client != "" {
+			bySession[strings.TrimSpace(parts[1])] = client
 		}
 	}
-	return "", fmt.Errorf("no client attached to session %q", sessionName)
+	for _, candidate := range candidates {
+		if client, ok := bySession[candidate]; ok {
+			return client, nil
+		}
+	}
+	return "", fmt.Errorf("no client attached to session %q", candidates[0])
 }
