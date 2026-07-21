@@ -286,15 +286,24 @@ func (m model) statusView() string {
 	return style.Width(max(20, m.width-6)).Render(m.status)
 }
 
-func (m model) syncTmuxSessionProjects() error {
-	sessionProjects := make(map[string]string, len(m.sessions))
-	sessionLabels := make(map[string]string, len(m.sessions))
-	for _, s := range m.sessions {
-		project := normalizeProjectName(m.sessionProjects[s.Name])
-		sessionProjects[s.Name] = project
-		sessionLabels[s.Name] = m.sessionLabel(s.Name)
+// syncSessionMarkers writes the tmux project and label markers for a single
+// session, using the model's current in-memory metadata for it. Callers must
+// scope this to the session(s) a mutation directly affects; it must never be
+// used to resync every session in the fleet.
+func (m model) syncSessionMarkers(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
 	}
-	return m.tmux.SyncSessionProjects(sessionProjects, sessionLabels)
+	project := normalizeProjectName(m.sessionProjects[name])
+	if err := m.tmux.SetSessionProject(name, project); err != nil {
+		return err
+	}
+	label := strings.TrimSpace(m.sessionLabel(name))
+	if label == "" {
+		label = name
+	}
+	return m.tmux.SetSessionLabel(name, label)
 }
 
 func max(a, b int) int {

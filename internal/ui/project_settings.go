@@ -52,11 +52,8 @@ func (m *model) commitProjectEditField() (tea.Model, tea.Cmd) {
 		m.status = err.Error()
 		return m, nil
 	}
-	if err := m.syncTmuxSessionProjects(); err != nil {
-		m.err = err
-		m.status = err.Error()
-		return m, nil
-	}
+	// Editing a project's workdir does not change any session's project or
+	// label marker, so there is nothing to write to tmux here.
 	m.err = nil
 	m.status = ""
 	return m, m.closeMenuCmd()

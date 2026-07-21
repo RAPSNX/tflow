@@ -103,7 +103,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 ### P1: Project and session behavior
 
 * [x] Close the sidebar immediately after tmux accepts valid session or project creation work, while the short-lived worker completes creation and switching.
-* [ ] Update tmux markers only for sessions directly affected by a mutation; do not rewrite unrelated sessions.
+* [x] Update tmux markers only for sessions directly affected by a mutation; do not rewrite unrelated sessions.
 * [x] Report background creation failures through the tmux status message.
 * [x] Create new project sessions in the project's configured workdir.
 * [x] Create volatile sessions in the active pane's working directory.
@@ -118,13 +118,13 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep volatile labels unique inside their owning instance.
 * [x] Allow different projects to reuse the same session label.
 * [x] Allow different tflow instances to reuse the same volatile label.
-* [ ] Move persistent sessions between projects without changing their tmux session IDs.
-* [ ] Reject moves whose labels already exist in the target project.
-* [ ] Delete a project when its final session is moved out.
+* [x] Move persistent sessions between projects without changing their tmux session IDs.
+* [x] Reject moves whose labels already exist in the target project.
+* [x] Delete a project when its final session is moved out.
 * [x] Delete a project when its final session is deleted.
 * [x] Delete all persistent sessions and metadata when a project is deleted.
-* [ ] Switch only when the active project is deleted, selecting the first session in the next project.
-* [ ] Create a volatile fallback in the active pane's working directory when no project session remains.
+* [x] Switch only when the active project is deleted, selecting the first session in the next project.
+* [x] Create a volatile fallback in the active pane's working directory when no project session remains.
 * [x] Keep project and session order stable.
 * [x] Test volatile-session project promotion, foreign-instance preservation, persistent ID replacement, volatile-marker clearing, active-session switching, sidebar closure, status refresh, and failure handling.
 * [ ] Test creation, rename, moves, deletion, switching, active-project deletion, and fallback behavior.
@@ -146,9 +146,9 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Test non-active session and project deletion without client switching, active-project deletion switching, and no-project fallback creation.
 * [ ] Test a mid-promotion rename failure leaves no persistent-name orphan or stale ownership marker.
 * [x] Test popup opening from a persistent session cannot inherit a stale instance ID from the tmux server environment.
-* [ ] Test fallback working-directory selection uses the active pane rather than the popup or server working directory.
+* [x] Test fallback working-directory selection uses the active pane rather than the popup or server working directory.
 * [ ] Test label case preservation and exact-scope duplicate handling.
-* [ ] Add mutation command-count tests proving unrelated tmux session markers are not rewritten.
+* [x] Add mutation command-count tests proving unrelated tmux session markers are not rewritten.
 
 ### P1: Installation and verification
 
