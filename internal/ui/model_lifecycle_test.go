@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -413,6 +414,56 @@ func TestPrepareStartupRepairEmitsDiagnosticWithoutFailingStartup(t *testing.T) 
 	}
 	if !strings.Contains(buf.String(), "repair") {
 		t.Fatalf("diagnostic output = %q, want a marker-repair failure diagnostic", buf.String())
+	}
+}
+
+// TestPrepareStartupRepairSerializesWithConcurrentMutation guards against a
+// state snapshot read during marker repair going stale before the tmux
+// writes it drives complete: without holding the state lock across the
+// whole repair pass, a concurrent instance's rename/move landing in that
+// window would have its fresher tmux markers overwritten by the older
+// values repair read moments earlier -- the exact inconsistency repair
+// exists to fix.
+func TestPrepareStartupRepairSerializesWithConcurrentMutation(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/small", Sessions: []persistentSession{{ID: "tflow-p-keep", Label: "otter"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	mutationDone := make(chan error, 1)
+	started := false
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) { return []session{{Name: "tflow-p-keep"}}, nil },
+		setSessionProject: func(name, project string) error {
+			if name != "tflow-p-keep" || started {
+				return nil
+			}
+			started = true
+			go func() {
+				_, err := mutateAppState(path, func(state appState) (appState, error) { return state, nil })
+				mutationDone <- err
+			}()
+			select {
+			case err := <-mutationDone:
+				t.Fatalf("concurrent mutation completed while marker repair held the state lock: %v", err)
+			case <-time.After(50 * time.Millisecond):
+			}
+			return nil
+		},
+	}
+	if _, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-mutationDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("concurrent mutation did not complete after marker repair released the state lock")
 	}
 }
 

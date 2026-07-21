@@ -274,7 +274,28 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 // session state does not know about. Repair failures are best effort and
 // left for the next startup reconciliation, matching the architecture's
 // error-handling rules for non-critical inconsistencies.
+//
+// The state read and the tmux marker writes it drives run under the same
+// state lock a concurrent mutation (rename, move, promotion) would hold.
+// Without that, a state snapshot read here could go stale between the read
+// and the writes below, and this repair pass could overwrite a concurrent
+// instance's fresher markers with the older values it just read -- the
+// exact inconsistency this repair exists to fix, reintroduced by reading
+// state without serializing against writers. ReconcileAppState already
+// calls a real tmux command (its snapshotSessions callback) while holding
+// this same lock, so holding it across the tmux writes here follows the
+// same established pattern.
 func repairPersistentSessionMarkers(manager tmuxController, path string, existing []session) {
+	unlock, err := lockAppState(path)
+	if err != nil {
+		diag.Warnf("lock state %q for startup marker repair: %v", path, err)
+		return
+	}
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release state lock %q after startup marker repair: %v", path, unlockErr)
+		}
+	}()
 	state, err := loadAppState(path)
 	if err != nil {
 		diag.Warnf("load state %q for startup marker repair: %v", path, err)
