@@ -50,6 +50,7 @@ Persistent sessions belong to a project and survive terminal exit.
 | `Ctrl+Q` | Quit current tflow instance |
 | `Ctrl+C` | Close sidebar, or pass through when sidebar is closed |
 | `Esc` | Cancel current prompt or close sidebar |
+| `PageUp` | Scroll up (enters copy-mode); use arrows/PageUp/PageDown to move, `q`/`Esc` to exit |
 | `?` | Toggle help |
 | `j` / `k` | Move selection |
 | `Enter` | Switch to selected session |

@@ -38,6 +38,7 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		{"set-hook", "-g", "client-detached", "run-shell " + ShellQuote(cleanupClientShell)},
 		{"bind-key", "-n", menuToggleKey, "run-shell", toggleShell},
 		{"bind-key", "-n", quitKey, "run-shell", quitShell},
+		{"bind-key", "-n", scrollKey, "copy-mode", "-u"},
 	}
 	for _, args := range commands {
 		if _, err := m.runner()(args...); err != nil && !IsNoServer(err) {

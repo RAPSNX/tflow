@@ -19,6 +19,7 @@ const (
 	menuHeight            = "100%"
 	menuToggleKey         = "C-f"
 	quitKey               = "C-q"
+	scrollKey             = "PageUp"
 	CurrentSessionEnv     = "TFLOW_CURRENT_SESSION"
 	CurrentClientEnv      = "TFLOW_CURRENT_CLIENT"
 	CurrentInstanceEnv    = "TFLOW_INSTANCE_ID"
