@@ -1196,46 +1196,6 @@ func TestUndocumentedKeysDoNotDispatch(t *testing.T) {
 	}
 }
 
-func TestProjectCreationKeepsVolatileSidebarContext(t *testing.T) {
-	t.Skip("superseded by background worker coverage")
-	m := newModel(fakeTmuxController{}, "scratch-temp").(model)
-	m.statePath = t.TempDir() + "/store.json"
-	m.cwd = "/tmp/workspace"
-	m.sessions = []session{{Name: "scratch-temp", Temporary: true, Instance: "instance-1"}}
-	m.instanceID = "instance-1"
-	m.mode = inputCreateProject
-	m.input.SetValue("small")
-
-	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	msg := cmd().(projectCreatedMsg)
-	pending := *(updated.(*model))
-	updated, _ = pending.Update(msg)
-	got := updated.(model)
-	if got.selectedProject != "" || got.selectedSession != "" {
-		t.Fatalf("project creation changed volatile context: project %q session %q", got.selectedProject, got.selectedSession)
-	}
-}
-
-func TestProjectCreationKeepsExistingProjectContext(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "existing--code").(model)
-	m.statePath = t.TempDir() + "/store.json"
-	m.projects = []string{"existing"}
-	m.sessions = []session{{Name: "existing--code"}}
-	m.selectedProject = "existing"
-	m.selectedSession = "existing--code"
-	m.sessionProjects = map[string]string{"existing--code": "existing"}
-	m.sessionLabels = map[string]string{"existing--code": "code"}
-
-	updated, _ := m.Update(projectCreatedMsg{
-		config:  projectConfig{Name: "new", Workdir: "/tmp/new"},
-		session: session{Name: "new--code"},
-	})
-	got := updated.(model)
-	if got.selectedProject != "existing" || got.selectedSession != "existing--code" {
-		t.Fatalf("project creation changed context: project %q session %q", got.selectedProject, got.selectedSession)
-	}
-}
-
 func TestDeletingFinalProjectSessionRemovesProjectMetadata(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 	m.statePath = t.TempDir() + "/store.json"

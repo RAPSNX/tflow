@@ -53,25 +53,15 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.sessions = append(m.sessions, msg.session)
 		}
-		if msg.volatile {
-			if m.clearSessionMetadata(msg.session.Name) {
-				if err := m.saveState(); err != nil {
-					m.err = err
-					m.status = err.Error()
-					return m.finishSessionCreationFollowUpError(err)
-				}
-			}
-			m.selectedProject = ""
-			m.selectedSession = msg.session.Name
-		} else {
-			m.assignSessionProject(msg.session.Name, msg.project)
-			m.setSessionLabel(msg.session.Name, msg.label)
-			m.selectedProject = msg.project
-			m.selectedSession = msg.session.Name
+		if m.clearSessionMetadata(msg.session.Name) {
 			if err := m.saveState(); err != nil {
+				m.err = err
+				m.status = err.Error()
 				return m.finishSessionCreationFollowUpError(err)
 			}
 		}
+		m.selectedProject = ""
+		m.selectedSession = msg.session.Name
 		if err := m.syncSessionMarkers(msg.session.Name); err != nil {
 			m.err = err
 			m.status = err.Error()
@@ -140,44 +130,6 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.switchToProject(nextProject)
 		}
 		return m.createVolatileFallback()
-	case projectCreatedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.status = msg.err.Error()
-			return m, nil
-		}
-		msg.config = normalizeProjectConfig(msg.config)
-		m.addProject(msg.config.Name)
-		m.setProjectConfig(msg.config)
-		keepContext := m.selectedProject != "" || m.selectedSession != "" || m.volatileContext()
-		if !keepContext {
-			m.selectedProject = msg.config.Name
-			m.selectedSession = ""
-		}
-		if msg.session.Name != "" {
-			if !containsSessionName(m.sessions, msg.session.Name) {
-				m.sessions = append(m.sessions, msg.session)
-			}
-			m.assignSessionProject(msg.session.Name, msg.config.Name)
-			m.setSessionLabel(msg.session.Name, msg.label)
-			if !keepContext {
-				m.selectedSession = msg.session.Name
-			}
-		}
-		m.mode = inputNone
-		if err := m.saveState(); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
-		}
-		if err := m.syncSessionMarkers(msg.session.Name); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m, nil
-		}
-		m.err = nil
-		m.status = ""
-		return m, m.closeMenuCmd()
 	case sessionRenamedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -221,11 +173,6 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, m.closeMenuCmd()
 	case projectRenamedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.status = msg.err.Error()
-			return m, nil
-		}
 		for name, project := range m.sessionProjects {
 			if normalizeProjectName(project) == msg.oldName {
 				m.sessionProjects[name] = msg.newName
@@ -278,11 +225,6 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.applyProjectDeletion(msg.project)
 	case menuActionMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.status = msg.err.Error()
-			return m, nil
-		}
 		if msg.quit {
 			m.exitAction = menuExitQuit
 			m.exitSessionName = ""

@@ -134,9 +134,6 @@ func TestMoveSessionMovesBetweenProjectsAndWritesOnlyItsMarkers(t *testing.T) {
 		t.Fatal("expected close command after a successful move")
 	}
 	msg := cmd().(menuActionMsg)
-	if msg.err != nil {
-		t.Fatalf("close returned error: %v", msg.err)
-	}
 	if msg.switchSession != "" {
 		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
@@ -430,9 +427,6 @@ func TestSuccessfulSessionMoveClosesSidebar(t *testing.T) {
 	msg, ok := cmd().(menuActionMsg)
 	if !ok {
 		t.Fatalf("cmd() = %T, want menuActionMsg", cmd())
-	}
-	if msg.err != nil {
-		t.Fatalf("close returned error: %v", msg.err)
 	}
 	if msg.switchSession != "" {
 		t.Fatalf("close msg = %#v, want plain close", msg)

@@ -122,6 +122,10 @@ func TestToggleMenuFromPersistentSessionResolvesEmptyInstanceWithoutServerEnvFal
 	// A persistent session (no @tflow-instance marker) must never let the popup
 	// inherit a stale instance ID left in the tmux global server environment by
 	// an earlier volatile session that this client used to be attached to.
+	// The popup must still receive an explicit, empty -e TFLOW_INSTANCE_ID=
+	// rather than no flag at all, so the spawned popup process's own
+	// environment can never fall through to whatever TFLOW_INSTANCE_ID
+	// happens to already be sitting in the tmux server's inherited environment.
 	var popupArgs []string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
@@ -156,9 +160,15 @@ func TestToggleMenuFromPersistentSessionResolvesEmptyInstanceWithoutServerEnvFal
 		t.Fatalf("ToggleMenu returned error: %v", err)
 	}
 
-	got := strings.Join(popupArgs, " ")
-	if strings.Contains(got, "-e "+CurrentInstanceEnv+"=") {
-		t.Fatalf("display-popup command = %q, want no instance env for a persistent session", got)
+	found := false
+	for i := 0; i+1 < len(popupArgs); i++ {
+		if popupArgs[i] == "-e" && popupArgs[i+1] == CurrentInstanceEnv+"=" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("display-popup args = %#v, want explicit empty -e %s=", popupArgs, CurrentInstanceEnv)
 	}
 }
 

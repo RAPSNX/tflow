@@ -189,6 +189,20 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] After a successful move, update the popup model's session label from the state observed by the locked mutation.
 * [x] Test a concurrent rename followed by a move updates persisted state, tmux markers, in-memory labels, and the success message consistently.
 
+### P1: Issue #86 remaining review follow-ups
+
+* [x] Stop setting the unscoped instance ID in the long-lived tflow process before tmux startup.
+* [x] Pass `TFLOW_INSTANCE_ID` explicitly to every popup, including `TFLOW_INSTANCE_ID=` when resolution is empty.
+* [x] Keep the deliberately client-keyed instance slot as the only persistent-session fallback.
+* [x] Ensure create-worker invocation receives only the instance explicitly resolved for the originating popup/client.
+* [x] Test that a popup opened from a persistent session with a stale server-environment instance ID and no remembered client instance receives an explicit, empty instance flag rather than no flag at all.
+* [x] Retain existing multi-instance tests proving a valid client-owned instance is preserved and no foreign instance is selected.
+* [x] Remove `projectCreatedMsg` and its handler; project creation is handled entirely by `create-worker`.
+* [x] Remove the non-volatile branch of `sessionCreatedMsg`'s handler; its only production producer (`createVolatileFallback`) always sets it volatile.
+* [x] Remove the never-produced `err` fields from `menuActionMsg` and `projectRenamedMsg`.
+* [x] Unexport `ui.NewMenu` to `ui.newMenu`; it has no caller outside the package's own tests.
+* [ ] `tmux.ContainsAnimalName`: verified it is not test-only in the sense the issue assumed — `internal/ui` tests call it across the package boundary to check generated labels against the unexported animal-name list, which only this exported function can do from outside `internal/tmux`. Left exported; unexporting would either break that real cross-package test coverage or require duplicating the animal list.
+
 ### P1: Installation and verification
 
 * [x] Use module path `github.com/rapsnx/tflow`.

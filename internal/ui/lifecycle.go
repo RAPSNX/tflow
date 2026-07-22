@@ -44,9 +44,6 @@ func Start() error {
 // context yet -- a SIGTERM arriving while startup is stuck in one of those
 // calls would then be silently swallowed instead of terminating tflow.
 func startWithManager(manager tmuxController, binaryPath, cwd, instanceID string, newAttachContext func() (context.Context, context.CancelFunc)) (result error) {
-	if err := os.Setenv(menuInstanceEnv, instanceID); err != nil {
-		return err
-	}
 	sessionName, err := prepareStartup(manager, binaryPath, cwd, instanceID)
 	if err != nil {
 		return err
