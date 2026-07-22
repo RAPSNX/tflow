@@ -70,6 +70,8 @@ Tmux owns popup process lifetime. tflow does not track popup PIDs or implement a
 
 The sidebar displays persistent sessions belonging to the current project. When the active session is volatile, it displays only volatile sessions owned by the current tflow instance.
 
+tflow enables tmux mouse reporting only for wheel-scroll: the wheel pages a pane's history via copy-mode like a normal terminal's scrollback, while every other mouse interaction (click, drag, double/triple-click, middle/right-click) is unbound in the root and copy-mode key tables. Because mouse reporting being on at all puts the terminal into mouse-tracking mode, text selection still requires the terminal's own override modifier (e.g. Shift in Alacritty).
+
 ## Projects and sessions
 
 A project contains:
