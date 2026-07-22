@@ -39,7 +39,7 @@ The goal is simple: fewer terminal windows, cleaner context switching, and a fas
 
 The only visible UI is a small top badge showing the current project and session. Press `Ctrl+F` to open the sidebar.
 
-Scrolling the mouse wheel pages back through a session's history like a normal terminal's scrollback. Plain clicks and drags are left untouched, so native terminal text selection keeps working as before.
+Scrolling the mouse wheel pages back through a session's history like a normal terminal's scrollback. Plain clicks and drags trigger no tmux action, but selecting text still requires the terminal's selection-override modifier (e.g. hold Shift while dragging in Alacritty), since mouse reporting being on at all puts the terminal into mouse-tracking mode.
 
 Volatile sessions are temporary.  
 Persistent sessions belong to a project and survive terminal exit.

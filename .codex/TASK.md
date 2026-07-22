@@ -117,7 +117,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 ### P1: Mouse wheel scrollback
 
 * [x] Enable tmux mouse reporting so the scroll wheel pages through a pane's history via copy-mode.
-* [x] Unbind click, drag, double-click, triple-click, and middle/right-click mouse bindings in the root and copy-mode key tables so terminal-native click-and-drag text selection is unaffected.
+* [x] Unbind click, drag, double-click, triple-click, and middle/right-click mouse bindings in the root and copy-mode key tables so tmux takes no action on them; native text selection still requires the terminal's selection-override modifier (e.g. Shift in Alacritty) since mouse reporting being on puts the terminal into mouse-tracking mode regardless of tmux's own bindings.
 * [x] Test that `EnsureControlMode` issues the mouse-on option and the full set of non-wheel unbind commands.
 
 ### P1: Sidebar performance
