@@ -51,6 +51,8 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"unbind-key", "-q", "-n", "MouseDown3Status"},
 		{"unbind-key", "-q", "-n", "MouseDown3StatusLeft"},
 		{"unbind-key", "-q", "-n", "MouseDrag1Status"},
+		{"unbind-key", "-q", "-n", "WheelUpStatus"},
+		{"unbind-key", "-q", "-n", "WheelDownStatus"},
 		{"unbind-key", "-q", "-T", "copy-mode", "MouseDown1Pane"},
 		{"unbind-key", "-q", "-T", "copy-mode", "MouseDrag1Pane"},
 		{"unbind-key", "-q", "-T", "copy-mode", "MouseDragEnd1Pane"},
