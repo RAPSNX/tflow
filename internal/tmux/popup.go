@@ -145,11 +145,13 @@ func popupShellCommand(binaryPath, clientID string) string {
 	return "sh -lc " + ShellQuote(script)
 }
 
+// popupInstanceEnvArgs always emits an explicit -e for the instance ID, even
+// when it resolved to empty, rather than omitting the flag. Omitting it would
+// let the popup process fall through to whatever TFLOW_INSTANCE_ID happens to
+// already be sitting in the tmux server's own inherited environment, instead
+// of the value this specific popup actually resolved.
 func popupInstanceEnvArgs(instanceID string) []string {
 	instanceID = strings.TrimSpace(instanceID)
-	if instanceID == "" {
-		return nil
-	}
 	return []string{"-e", fmt.Sprintf("%s=%s", CurrentInstanceEnv, instanceID)}
 }
 

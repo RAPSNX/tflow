@@ -8,7 +8,7 @@ import (
 )
 
 func TestRenderHeaderCentersBrandWithoutPopupMetadata(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHeader(40), "")
 	firstLine := strings.Split(plain, "\n")[0]
 	if got, want := strings.Index(firstLine, "TFLOW"), 17; got != want {
@@ -22,7 +22,7 @@ func TestRenderHeaderCentersBrandWithoutPopupMetadata(t *testing.T) {
 }
 
 func TestRenderSessionRowUsesDisplayLabel(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 48
 	m.selectedProject = "small"
 	m.selectedSession = "small--code"
@@ -37,7 +37,7 @@ func TestRenderSessionRowUsesDisplayLabel(t *testing.T) {
 }
 
 func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 48
 	m.projects = []string{defaultProjectName, "small"}
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
@@ -64,7 +64,7 @@ func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 }
 
 func TestRenderSessionPanelUsesCurrentProjectContext(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 48
 	m.projects = []string{defaultProjectName, "small"}
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
@@ -89,7 +89,7 @@ func TestRenderSessionPanelUsesCurrentProjectContext(t *testing.T) {
 }
 
 func TestRenderMenuIncludesBrandSessionPanelAndStatusArea(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 48
 	m.height = 16
 	m.projects = []string{defaultProjectName}
@@ -108,7 +108,7 @@ func TestRenderMenuIncludesBrandSessionPanelAndStatusArea(t *testing.T) {
 }
 
 func TestRenderFooterShowsOnlyInlineStatusByDefault(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderFooter(60), "")
 	if strings.TrimSpace(plain) != "" {
 		t.Fatalf("default footer = %q, want empty", plain)
@@ -121,7 +121,7 @@ func TestRenderFooterShowsOnlyInlineStatusByDefault(t *testing.T) {
 }
 
 func TestRenderHelpListsOneShortcutPerRow(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 48
 	m.height = 24
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHelp(), "")
@@ -139,7 +139,7 @@ func TestRenderHelpListsOneShortcutPerRow(t *testing.T) {
 }
 
 func TestRenderMenuShowsHelpInlineBelowSessions(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 48
 	m.height = 24
 	m.showHelp = true
@@ -165,7 +165,7 @@ func TestRenderMenuShowsHelpInlineBelowSessions(t *testing.T) {
 }
 
 func TestConfirmationOverlaysAdvertiseAcceptedKeys(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 48
 	m.height = 24
 
@@ -196,7 +196,7 @@ func TestConfirmationOverlaysAdvertiseAcceptedKeys(t *testing.T) {
 }
 
 func TestDialogFitsNarrowViewportAndCentersKeycaps(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 28
 	m.height = 16
 	m.input.Prompt = ""
@@ -223,7 +223,7 @@ func TestDialogFitsNarrowViewportAndCentersKeycaps(t *testing.T) {
 }
 
 func TestRenderProjectSwitchDialogListsMatchingProjects(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 48
 	m.projects = []string{"small", "storage"}
 	m.mode = inputSwitchProject
@@ -256,7 +256,7 @@ func TestRenderBadgesUseFilledContrastingStyles(t *testing.T) {
 	if currentBadgeStyle.GetBackground() == selectedSessionStyle.GetBackground() {
 		t.Fatal("live badge and selected row use the same background")
 	}
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 48
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}}
 	m.sessionProjects = map[string]string{"dev": "small", "api": "small"}
@@ -275,7 +275,7 @@ func TestRenderBadgesUseFilledContrastingStyles(t *testing.T) {
 }
 
 func TestDialogsUseSharedStructuredCardLayout(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 64
 	m.height = 24
 	m.input.Prompt = ""
@@ -325,7 +325,7 @@ func TestDialogsUseSharedStructuredCardLayout(t *testing.T) {
 }
 
 func TestDeleteDialogExplainsProjectConsequences(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 64
 	m.sessionProjects = map[string]string{"small--otter": "small", "small--fox": "small"}
 	m.sessionLabels = map[string]string{"small--otter": "otter", "small--fox": "fox"}
@@ -360,7 +360,7 @@ func TestDeleteDialogUsesDestructiveAccentsOnly(t *testing.T) {
 }
 
 func TestDialogKeepsStatusVisibleInFooter(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.width = 64
 	m.height = 20
 	m.status = "Saved project settings."

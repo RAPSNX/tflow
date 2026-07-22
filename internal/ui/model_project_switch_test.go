@@ -1,12 +1,9 @@
 package ui
 
 import (
-	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-
-	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
 
 func TestMenuEnterSwitchesSessionAndClosesMenu(t *testing.T) {
@@ -22,9 +19,6 @@ func TestMenuEnterSwitchesSessionAndClosesMenu(t *testing.T) {
 		t.Fatal("expected switch command")
 	}
 	msg := cmd().(menuActionMsg)
-	if msg.err != nil {
-		t.Fatalf("menu action returned error: %v", msg.err)
-	}
 	if msg.switchSession != "dev" {
 		t.Fatalf("switchSession = %q, want dev", msg.switchSession)
 	}
@@ -115,9 +109,6 @@ func TestProjectSwitchUsesUniquePrefixAndClosesMenu(t *testing.T) {
 		t.Fatalf("selectedSession = %q, want keep", got.selectedSession)
 	}
 	msg := cmd().(menuActionMsg)
-	if msg.err != nil {
-		t.Fatalf("menu action returned error: %v", msg.err)
-	}
 	if msg.switchSession != "keep" {
 		t.Fatalf("switchSession = %q, want keep", msg.switchSession)
 	}
@@ -150,9 +141,6 @@ func TestProjectSwitchSelectsFirstSessionInTargetProject(t *testing.T) {
 		t.Fatalf("selectedSession = %q, want keep", got.selectedSession)
 	}
 	msg := cmd().(menuActionMsg)
-	if msg.err != nil {
-		t.Fatalf("menu action returned error: %v", msg.err)
-	}
 	if msg.switchSession != "keep" {
 		t.Fatalf("switchSession = %q, want keep", msg.switchSession)
 	}
@@ -205,59 +193,5 @@ func TestProjectSwitchConfirmationRejectsLegacyYBinding(t *testing.T) {
 	}
 	if got.mode != inputConfirmProjectSwitch {
 		t.Fatalf("mode = %v", got.mode)
-	}
-}
-
-func TestCreateProjectCreatesAnimalNamedSession(t *testing.T) {
-	t.Skip("superseded by background worker coverage")
-	var createdName, createdDir string
-	m := newModel(fakeTmuxController{
-		createSession: func(name, cwd, command string) (session, error) {
-			createdName, createdDir = name, cwd
-			return session{Name: name, Windows: 1}, nil
-		},
-	}, "").(model)
-	m.statePath = t.TempDir() + "/store.json"
-	m.cwd = "/tmp/workspace"
-	m.mode = inputCreateProject
-	m.input.SetValue("small")
-	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("expected create command")
-	}
-	msg := cmd().(projectCreatedMsg)
-	if msg.err != nil {
-		t.Fatalf("create project: %v", msg.err)
-	}
-	if !runtmux.ContainsAnimalName(msg.label) || !strings.HasPrefix(createdName, "tflow-p-") || createdDir != "/tmp/workspace" {
-		t.Fatalf("created = %q in %q with label %q", createdName, createdDir, msg.label)
-	}
-	pending := *(updated.(*model))
-	updated, _ = pending.Update(msg)
-	got := updated.(model)
-	if got.sessionProjects[createdName] != "small" || got.sessionLabel(createdName) != msg.label {
-		t.Fatalf("project state = %#v labels = %#v", got.sessionProjects, got.sessionLabels)
-	}
-}
-
-func TestCreateProjectsUseAnimalNamedSessions(t *testing.T) {
-	t.Skip("superseded by background worker coverage")
-	var created []string
-	m := newModel(fakeTmuxController{createSession: func(name, cwd, command string) (session, error) {
-		created = append(created, name)
-		return session{Name: name}, nil
-	}}, "").(model)
-	m.statePath = t.TempDir() + "/store.json"
-	for _, project := range []string{"small", "garden"} {
-		m.mode = inputCreateProject
-		m.input.SetValue(project)
-		updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-		msg := cmd().(projectCreatedMsg)
-		pending := *(updated.(*model))
-		updated, _ = pending.Update(msg)
-		m = updated.(model)
-	}
-	if len(created) != 2 || !strings.HasPrefix(created[0], "tflow-p-") || !strings.HasPrefix(created[1], "tflow-p-") || created[0] == created[1] {
-		t.Fatalf("created sessions = %#v", created)
 	}
 }

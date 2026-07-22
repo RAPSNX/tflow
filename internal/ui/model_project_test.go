@@ -9,7 +9,7 @@ import (
 )
 
 func TestRStartsProjectRenameModeWithSelectedSession(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.projects = []string{defaultProjectName, "small"}
 	m.selectedProject = "small"
 	m.sessions = []session{{Name: "tflow-p-8f42ac91"}}
@@ -181,9 +181,6 @@ func TestProjectRenamePreservesSessionID(t *testing.T) {
 		t.Fatal("expected project rename command")
 	}
 	msg := cmd().(projectRenamedMsg)
-	if msg.err != nil {
-		t.Fatalf("project rename returned error: %v", msg.err)
-	}
 	pending, ok := unwrapMenuModel(updated)
 	if !ok {
 		t.Fatal("expected menu model after project rename command")

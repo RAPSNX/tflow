@@ -151,9 +151,6 @@ func TestCtrlCClosesMenu(t *testing.T) {
 		t.Fatal("expected close command")
 	}
 	msg := cmd().(menuActionMsg)
-	if msg.err != nil {
-		t.Fatalf("close returned error: %v", msg.err)
-	}
 	if msg.switchSession != "" {
 		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
@@ -170,9 +167,6 @@ func TestCtrlCClosesMenuFromModalMode(t *testing.T) {
 		t.Fatal("expected close command")
 	}
 	msg := cmd().(menuActionMsg)
-	if msg.err != nil {
-		t.Fatalf("close returned error: %v", msg.err)
-	}
 	if msg.switchSession != "" {
 		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
@@ -186,9 +180,6 @@ func TestCtrlFClosesMenuFromNormalMode(t *testing.T) {
 		t.Fatal("expected close command")
 	}
 	msg := cmd().(menuActionMsg)
-	if msg.err != nil {
-		t.Fatalf("close returned error: %v", msg.err)
-	}
 	if msg.switchSession != "" {
 		t.Fatalf("close msg = %#v, want plain close", msg)
 	}
@@ -205,9 +196,6 @@ func TestCtrlFClosesMenuFromModalMode(t *testing.T) {
 		t.Fatal("expected close command")
 	}
 	msg := cmd().(menuActionMsg)
-	if msg.err != nil {
-		t.Fatalf("close returned error: %v", msg.err)
-	}
 	if msg.switchSession != "" {
 		t.Fatalf("close msg = %#v, want plain close", msg)
 	}

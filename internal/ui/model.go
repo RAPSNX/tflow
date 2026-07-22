@@ -49,13 +49,6 @@ type sessionKilledMsg struct {
 	err     error
 }
 
-type projectCreatedMsg struct {
-	config  projectConfig
-	session session
-	label   string
-	err     error
-}
-
 type sessionRenamedMsg struct {
 	name     string
 	label    string
@@ -66,7 +59,6 @@ type sessionRenamedMsg struct {
 type projectRenamedMsg struct {
 	oldName string
 	newName string
-	err     error
 }
 
 type projectDeletedMsg struct {
@@ -75,7 +67,6 @@ type projectDeletedMsg struct {
 }
 
 type menuActionMsg struct {
-	err           error
 	switchSession string
 	quit          bool
 }
@@ -150,7 +141,10 @@ const (
 	sessionIDRetryLimit      = 128
 )
 
-func NewMenu() tea.Model {
+// newMenu builds a menu model backed by a real session manager and the
+// process's own environment; production entry points build their own model
+// via buildModel/newModel directly, so this exists only as test scaffolding.
+func newMenu() tea.Model {
 	return newModel(newSessionManager(), os.Getenv(menuCurrentEnv))
 }
 

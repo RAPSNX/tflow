@@ -14,7 +14,7 @@ import (
 )
 
 func TestMenuStartsWithCurrentSessionSelected(t *testing.T) {
-	m := NewMenu().(model)
+	m := newMenu().(model)
 	m.currentSession = "dev"
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}}
@@ -100,6 +100,37 @@ func TestPrepareStartupRetriesWhenTempSessionNameAlreadyExists(t *testing.T) {
 	}
 }
 
+// TestStartWithManagerDoesNotLeakInstanceIDIntoProcessEnv proves startup
+// never taints its own process environment with the instance ID -- doing so
+// would leak into any tmux server exec.Command forks with no explicit Env,
+// letting popups that should resolve an empty instance fall back to this
+// ambient value instead. See popupInstanceEnvArgs for the matching guarantee
+// on the popup side.
+func TestStartWithManagerDoesNotLeakInstanceIDIntoProcessEnv(t *testing.T) {
+	before := os.Getenv(menuInstanceEnv)
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return nil, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			return nil
+		},
+		attachCommand: func(ctx context.Context, name string) (*exec.Cmd, error) {
+			return exec.CommandContext(ctx, "sh", "-c", ":"), nil
+		},
+		cleanupVolatile: func(instanceID string) error {
+			return nil
+		},
+	}
+
+	if err := startWithManager(manager, "/tmp/tflow", "/tmp/project", "instance-2", fixedAttachContext(context.Background())); err != nil {
+		t.Fatalf("startWithManager returned error: %v", err)
+	}
+	if got := os.Getenv(menuInstanceEnv); got != before {
+		t.Fatalf("%s = %q, want unchanged (%q); startup must not set it in the process environment", menuInstanceEnv, got, before)
+	}
+}
+
 func TestStartWithManagerCleansUpInstanceVolatileSessionsAfterAttach(t *testing.T) {
 	var cleaned []string
 	manager := fakeTmuxController{
@@ -123,9 +154,6 @@ func TestStartWithManagerCleansUpInstanceVolatileSessionsAfterAttach(t *testing.
 	}
 	if got, want := fmt.Sprint(cleaned), fmt.Sprint([]string{"instance-2"}); got != want {
 		t.Fatalf("cleanup calls = %s, want %s", got, want)
-	}
-	if got := os.Getenv(menuInstanceEnv); got != "instance-2" {
-		t.Fatalf("%s = %q, want instance-2", menuInstanceEnv, got)
 	}
 }
 
