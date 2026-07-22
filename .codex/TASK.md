@@ -114,6 +114,12 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Emit a diagnostic when popup closing fails and marker cleanup also fails without replacing the close error.
 * [x] Test popup cleanup diagnostics through the shared diagnostic output seam.
 
+### P1: Mouse wheel scrollback
+
+* [x] Enable tmux mouse reporting so the scroll wheel pages through a pane's history via copy-mode.
+* [x] Unbind click, drag, double-click, triple-click, and middle/right-click mouse bindings in the root and copy-mode key tables so terminal-native click-and-drag text selection is unaffected.
+* [x] Test that `EnsureControlMode` issues the mouse-on option and the full set of non-wheel unbind commands.
+
 ### P1: Sidebar performance
 
 * [x] Open and refresh the sidebar with one global tmux session-list query.
