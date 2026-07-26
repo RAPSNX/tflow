@@ -14,88 +14,52 @@
 
 ---
 
-`tflow` is a small terminal workflow helper.
+`tflow` is a small terminal session manager with projects.
 
-It gives every terminal its own session environment, while still allowing important sessions to become persistent project sessions.
+When working on one repository, you may have an IDE, a terminal for tests, an agent, and another terminal for checking a Kubernetes cluster. With two or three projects in parallel, it is easy to end up with terminals everywhere. tflow keeps those sessions together and lets you jump between project contexts.
 
-The goal is simple: fewer terminal windows, cleaner context switching, and a fast keyboard-first workflow.
+tflow orchestrates this and not much more. It uses tmux as a backend for ordinary terminal sessions while preserving the terminal built-in behavior as much as possible. It is not a full terminal multiplexer or an IDE; it is a lightweight session handler for moving between sessions in the same context.
 
-## Features
+## Start
 
-- tmux-backed terminal sessions
-- fresh volatile session on every start
-- map a group of terminals aka sessions to a project
-- minimal sidebar to handle sessions and projects
+tmux is required.
 
-## Ideas
+With Nix:
 
-- session types
-  - agent: start an agent inside a project
-  - nvim: start nvim inside a project (with a terminal that can be toggled)
+```sh
+nix run github:rapsnx/tflow
+```
 
-## Concept
+To install it with Home Manager, add the flake input and module, then enable it:
 
-`tflow` starts like a normal terminal.
+```nix
+# flake.nix
+inputs.tflow.url = "github:rapsnx/tflow";
 
-The only visible UI is a small top badge showing the current project and session. Press `Ctrl+F` to open the sidebar.
+# Home Manager modules
+inputs.tflow.homeManagerModules.tflow
 
-Scrolling the mouse wheel pages back through a session's history like a normal terminal's scrollback. Plain clicks and drags trigger no tmux action, but selecting text still requires the terminal's selection-override modifier (e.g. hold Shift while dragging in Alacritty), since mouse reporting being on at all puts the terminal into mouse-tracking mode.
+# home.nix
+programs.tflow.enable = true;
+```
 
-Volatile sessions are temporary.  
-Persistent sessions belong to a project and survive terminal exit.
-
-## Keybindings
-
-| Key | Action |
-|---|---|
-| `Ctrl+F` | Toggle sidebar |
-| `Ctrl+Q` | Quit current tflow instance |
-| `Ctrl+C` | Close sidebar, or pass through when sidebar is closed |
-| `Esc` | Cancel current prompt or close sidebar |
-| `?` | Toggle help |
-| `j` / `k` | Move selection |
-| `Enter` | Switch to selected session |
-| `n` | Create session |
-| `N` | Create project |
-| `p` | Switch project |
-| `e` | Edit project workdir |
-| `r` | Rename session |
-| `R` | Rename project |
-| `m` | Move session to another project |
-| `d` | Delete session |
-| `D` | Delete project |
-
-## Install
+Without Nix:
 
 ```sh
 go install github.com/rapsnx/tflow/cmd/tflow@latest
-```
-
-## Run
-
-```sh
 tflow
 ```
 
-Or directly inside a terminal emulator:
+## How it works
 
-```sh
-alacritty -e tflow
-```
+Start `tflow` in a terminal. The initial empty project is volatile, so closing that tflow instance closes the terminals inside it just like a normal terminal would. Projects you create contain persistent sessions that can be revisited later.
 
-## Project Status
+Press `Ctrl+F` to open the sidebar. From there you can create, rename, move, delete, and switch projects and sessions. `Enter` switches to the selected session, `n` creates a session, `N` creates a project, `p` switches projects, and `m` moves a session. Press `Ctrl+Q` to quit the current tflow instance.
 
-`tflow` is experimental and under active development.
+## Future ideas
 
-The current focus is a small, reliable foundation:
+- diff view
+- ripgrep search
+- repository manager
 
-- clean tmux backend
-- minimal persistent store
-- predictable project/session lifecycle
-- fast keyboard-first sidebar UI
-
-## Design
-
-`tflow` uses a dark terminal-first design inspired by the Catppuccin color palette.
-
-It should feel like a small terminal tool, not a full IDE.
+`tflow` is experimental and intentionally minimal.
