@@ -81,10 +81,6 @@ Press `Ctrl+F` to open the sidebar. From there you can create, rename, move, del
 | `d` | Delete session |
 | `D` | Delete project |
 
-## Known limitations
-
-Some multi-line shell prompts (for example, starship configs that use a `fill`/padding module to reach the exact last terminal column before breaking to a new line) can show an extra blank line between the prompt's info line and the input line. This is a tmux line-wrap behavior for content that exactly fills the last column and is not specific to tflow — it reproduces in any tmux session. If you hit this, leave at least one column of margin instead of padding to the exact edge (for example, reserve one extra column in the fill/padding calculation).
-
 ## Future ideas
 
 - diff view
