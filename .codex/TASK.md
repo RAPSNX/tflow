@@ -235,7 +235,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Add a tag-triggered GitHub Release workflow restricted to tags that point to `main`.
 * [ ] Publish `v0.1.0-alpha.1` after this branch is merged into `main`.
 * [ ] Verify `go install github.com/rapsnx/tflow/cmd/tflow@latest` and `tflow version` after the release is available through the module proxy.
-* [x] Add a push-to-`main`-triggered Release Drafter workflow that maintains one continuously-updated draft release, bumping the alpha prerelease counter while the latest tag remains in the alpha series, without creating a git tag until the draft is manually published.
+* [x] Add a push-to-`main`-triggered Release Drafter workflow that maintains one draft release, updating its changelog body on every push and resolving its proposed alpha version from the latest *published* release; the proposed version stays fixed across multiple pushes and only advances to the next alpha once the current draft is published, without creating a git tag until then.
 
 ## Remove obsolete implementation
 
