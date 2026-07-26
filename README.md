@@ -83,26 +83,6 @@ Or directly inside a terminal emulator:
 alacritty -e tflow
 ```
 
-## Commands
-
-```sh
-tflow --help
-tflow version
-```
-
-Running `tflow` without a command starts a new tmux-backed tflow instance.
-
-## Releases
-
-Releases use [Semantic Versioning](https://semver.org/) tags such as
-`v0.1.0-alpha.1`. Pushing an annotated `v*` tag that points to `main` creates
-a GitHub Release with Linux and macOS archives and a `checksums.txt` file.
-
-```sh
-git tag -a v0.1.0-alpha.1 -m "v0.1.0-alpha.1"
-git push origin v0.1.0-alpha.1
-```
-
 ## Project Status
 
 `tflow` is experimental and under active development.
