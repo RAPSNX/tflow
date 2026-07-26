@@ -196,3 +196,23 @@ Performance optimizations should be based on tmux command count or measurements 
 * Lip Gloss provides terminal styling
 
 Implementation should prefer direct, testable code over additional lifecycle, persistence, or recovery frameworks.
+
+## CLI and releases
+
+The public command surface is deliberately small:
+
+* `tflow` starts a new tflow instance
+* `tflow version` and `tflow --version` print the build version
+* `tflow help`, `tflow -h`, and `tflow --help` describe the public commands
+
+Internal tmux worker commands remain supported for tflow's own use but are not
+part of the public help text.
+
+Release versions use Semantic Versioning Git tags with a `v` prefix. Tagged
+release builds report that exact tag. Module installs use embedded Go build
+metadata when it identifies the requested module version. Other builds report a
+development version, optionally including their Nix source revision.
+
+Pushing a `v*` tag that points to `main` creates a GitHub Release containing
+checksummed `tar.gz` archives for Linux and macOS on amd64 and arm64. Nix and
+Home Manager remain source-based; no additional package feed is managed.
