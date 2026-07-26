@@ -213,7 +213,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 * [x] Use module path `github.com/rapsnx/tflow`.
 * [x] Move the executable entry point from `cmd/main.go` to `cmd/tflow/main.go`.
-* [ ] Verify `go install github.com/rapsnx/tflow/cmd/tflow@latest`. Attempted for real against the live module proxy: fails today because the latest published tag (`v0.0.0-alpha-1`) predates the module/entry-point move and doesn't contain `cmd/tflow`. Fixing this needs a new release tag, a repo-visible decision left to the maintainer rather than made here.
+* [ ] Verify `go install github.com/rapsnx/tflow/cmd/tflow@latest` and `tflow version` after `v0.1.0-alpha.1` is available through the module proxy.
 * [x] Verify `nix build --no-link .#tflow`.
 * [x] Ensure the Nix package installs `bin/tflow`.
 * [x] Add CI for formatting, `go vet`, and `go test ./...`.
@@ -222,6 +222,19 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Add the `m` session-move keybinding to README and align the Go version badge with `go.mod`.
 * [x] Align README keybinding and persistence documentation with the implemented behavior.
 * [x] Update `AGENTS.md` entry-point and local-run instructions to `cmd/tflow`.
+
+### P1: CLI versioning and releases
+
+* [x] Add public `tflow version` and `tflow --version` commands.
+* [x] Add concise public help for `tflow help`, `tflow -h`, and `tflow --help`.
+* [x] Keep internal tmux worker commands out of the public help text.
+* [x] Resolve release versions from linker-injected tags and Go module build metadata, with a development-build fallback.
+* [x] Align Nix development-build metadata with the executable version output.
+* [x] Add GoReleaser configuration for Linux and macOS amd64/arm64 release archives and SHA-256 checksums.
+* [x] Validate release configuration and snapshot artifacts in CI.
+* [x] Add a tag-triggered GitHub Release workflow restricted to tags that point to `main`.
+* [ ] Publish `v0.1.0-alpha.1` after this branch is merged into `main`.
+* [ ] Verify `go install github.com/rapsnx/tflow/cmd/tflow@latest` and `tflow version` after the release is available through the module proxy.
 
 ## Remove obsolete implementation
 

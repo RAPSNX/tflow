@@ -38,9 +38,12 @@
 
       mkTflow =
         pkgs:
+        let
+          version = "devel-${self.shortRev or "dirty"}";
+        in
         pkgs.buildGoModule {
           pname = "tflow";
-          version = "0.0.0-alpha-0";
+          inherit version;
 
           src = self;
 
@@ -48,6 +51,10 @@
 
           subPackages = [
             "cmd/tflow"
+          ];
+
+          ldflags = [
+            "-X github.com/rapsnx/tflow/internal/buildinfo.version=${version}"
           ];
         };
 
