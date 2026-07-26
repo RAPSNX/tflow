@@ -1,0 +1,10 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+prerelease: true
+prerelease-identifier: 'alpha'
+version-resolver:
+  default: patch
+template: |
+  ## Changes
+
+  $CHANGES
