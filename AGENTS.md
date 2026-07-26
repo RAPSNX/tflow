@@ -45,6 +45,7 @@ Use Go's built-in `testing` package by default.
 - Do not implement features outside the task list unless the user explicitly asks.
 - If a requested implementation needs behavior not defined by the architecture, stop and ask.
 - Do not introduce a user-edited configuration file.
+- Always check `README.md` for user-facing changes; update it only when something needs documenting, and keep it minimal and aligned with the architecture.
 
 ## Git Workflow
 
