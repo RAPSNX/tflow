@@ -14,23 +14,27 @@
 
 ---
 
-`tflow` is a small terminal session manager with projects.
+`tflow` keeps the terminals for each project together.
 
-When working on one repository, you may have an IDE, a terminal for tests, an agent, and another terminal for checking a Kubernetes cluster. With two or three projects in parallel, it is easy to end up with terminals everywhere. tflow keeps those sessions together and lets you jump between project contexts.
+A typical repository needs more than one terminal: an IDE, a shell for tests, an agent, and sometimes a shell for checking a Kubernetes cluster. Once two or three projects are open, those terminals quickly become difficult to follow.
 
-tflow orchestrates this and not much more. It uses tmux as a backend for ordinary terminal sessions while preserving the terminal built-in behavior as much as possible. It is not a full terminal multiplexer or an IDE; it is a lightweight session handler for moving between sessions in the same context.
+tflow gives each project its own context. Its sessions stay together, and a small sidebar lets you move between them without losing your place.
 
-## Start
+It is intentionally focused. tflow uses tmux to manage ordinary terminal sessions and tries to preserve normal terminal behavior. It is not a full terminal multiplexer or an IDE; it is a lightweight way to organize and revisit project sessions.
 
-tmux is required.
+## Get started
 
-With Nix:
+tmux is required. Choose one of the following options.
+
+### Nix
 
 ```sh
 nix run github:rapsnx/tflow
 ```
 
-To install it with Home Manager, add the flake input and module, then enable it:
+### Home Manager
+
+Add the flake input and module, then enable tflow:
 
 ```nix
 # flake.nix
@@ -43,18 +47,18 @@ inputs.tflow.homeManagerModules.tflow
 programs.tflow.enable = true;
 ```
 
-Without Nix:
+### Go
 
 ```sh
 go install github.com/rapsnx/tflow/cmd/tflow@latest
 tflow
 ```
 
-## How it works
+## Use tflow
 
-Start `tflow` in a terminal. The initial empty project is volatile, so closing that tflow instance closes the terminals inside it just like a normal terminal would. Projects you create contain persistent sessions that can be revisited later.
+Start `tflow` in a terminal. It opens with a default empty project and a volatile session. This behaves like a normal terminal: closing that tflow instance closes the terminals inside it too. Projects you create contain persistent sessions that can be revisited later.
 
-Press `Ctrl+F` to open the sidebar. From there you can create, rename, move, delete, and switch projects and sessions. `Enter` switches to the selected session, `n` creates a session, `N` creates a project, `p` switches projects, and `m` moves a session. Press `Ctrl+Q` to quit the current tflow instance.
+Press `Ctrl+F` to open the sidebar. From there you can create, rename, move, delete, and switch projects and sessions. Use `Enter` to switch sessions, `n` to create a session, `N` to create a project, `p` to switch projects, and `m` to move a session. Press `Ctrl+Q` to quit the current tflow instance.
 
 ## Future ideas
 
