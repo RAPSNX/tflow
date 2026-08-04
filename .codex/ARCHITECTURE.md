@@ -70,6 +70,16 @@ Tmux owns popup process lifetime. tflow does not track popup PIDs or implement a
 
 The sidebar displays persistent sessions belonging to the current project. When the active session is volatile, it displays only volatile sessions owned by the current tflow instance.
 
+For a persistent project, the sidebar uses the ordered session records in
+persistent state as its complete session list, whether or not those tmux
+sessions are currently running. A missing persistent session is materialized
+lazily only when the user selects it. Selecting a project resolves its first
+stored session and materializes that session if needed; selecting another
+stored session materializes that selected session if needed. Materialization
+creates the stored internal tmux session ID in the project's working
+directory, restores its project and label markers, and then switches the
+originating client to it. It does not mutate persistent state.
+
 tflow enables tmux mouse reporting only for wheel-scroll: the wheel pages a pane's history via copy-mode like a normal terminal's scrollback, while every other mouse interaction (click, drag, double/triple-click, middle/right-click) is unbound in the root and copy-mode key tables. Because mouse reporting being on at all puts the terminal into mouse-tracking mode, text selection still requires the terminal's own override modifier (e.g. Shift in Alacritty).
 
 ## Projects and sessions
@@ -79,6 +89,12 @@ A project contains:
 * a unique name
 * a default working directory
 * an ordered list of persistent sessions
+
+Projects and their ordered persistent-session metadata remain available even
+when none of their sessions currently exists in tmux, such as after a reboot.
+Missing persistent sessions are recreated only through the explicit selection
+described above. A project is removed only by an explicit project deletion or
+when an explicit session deletion or move removes its final persistent session.
 
 A persistent session contains:
 
@@ -95,7 +111,7 @@ Session labels must be unique inside their project. Volatile labels must be uniq
 
 Moving a persistent session to another project preserves its tmux session. A move fails when the target project already has the session label. Moving the final session out of a project deletes that project.
 
-Deleting the final session of a project also deletes the project. Deleting a project removes its persistent sessions and metadata. When the active session belongs to a deleted project, tflow switches to the first session in the next project before deleting it. If no project session remains available, tflow creates a volatile fallback session. Deleting a non-active session or project leaves the attached client on its current session.
+Deleting the final session of a project also deletes the project. Deleting a project removes its persistent sessions and metadata. Deletion must never switch the client into another persistent project: deleting a non-active session or project leaves the client unchanged; deleting the active session selects another session from the same project when one remains; and deleting the final active session or active project creates and switches to a volatile fallback in the active pane's working directory before removal. Project creation, explicit project switching, and session moves retain their existing switching behavior.
 
 When sidebar-switch cleanup removes an exited persistent session, it also removes that session's metadata and removes its project when it becomes empty. Removing an exited volatile session does not change persistent state. Sidebar-switch cleanup always uses the target selected by the user; it does not choose a replacement session or create a fallback.
 
@@ -153,13 +169,25 @@ The rename prevents readers from seeing partially written JSON. Sudden power-los
 
 Startup performs one reconciliation against the current tmux session list.
 
-Metadata for persistent sessions that no longer exist in tmux is removed and is not retained for lazy restoration. Projects without sessions are then removed.
+Metadata for persistent sessions that no longer exist in tmux is retained for
+lazy materialization. Startup never removes a project or persistent-session
+record merely because its tmux session is absent. Explicit deletion and move
+operations remain responsible for removing their own metadata.
 
 For persistent sessions that still exist, startup restores their project and label markers from persistent state and clears stale volatile ownership markers. This repair is limited to sessions represented by persistent state and does not rewrite unrelated sessions.
 
 Normal sidebar refreshes do not modify persistent state. They list tmux sessions once and filter the result locally.
 
 If tmux cannot provide a session list because of an operational error, no metadata is removed or repaired.
+
+## Project settings editor
+
+`e` opens a YAML-formatted project-settings editor inside the sidebar. It is
+not a file and does not invoke an external editor. The editor presents every supported
+project setting (currently only `workdir`), validates the submitted document,
+and persists the resulting project configuration through the existing JSON
+store mutation path. Invalid input leaves persistent state unchanged and is
+reported in the sidebar.
 
 ## Error handling
 

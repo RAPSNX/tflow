@@ -53,12 +53,12 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 ### P0: Startup reconciliation
 
 * [x] List tmux sessions once during startup.
-* [x] Remove metadata for persistent sessions that no longer exist.
-* [x] Remove projects that have no remaining sessions.
-* [x] Persist reconciled state only when it changed.
+* [ ] Retain persistent-session and project metadata when tmux sessions are absent at startup, including after a reboot.
+* [ ] Remove the obsolete reconciliation cleanup that deletes missing persistent-session metadata and projects solely because they are absent from tmux.
+* [ ] Keep marker repair limited to persistent sessions that exist in tmux, without rewriting unrelated sessions or persistent state.
+* [ ] Test startup after an empty tmux server preserves projects and ordered persistent-session metadata without writing state.
 * [x] Treat an absent dedicated tmux server as an empty session list.
 * [x] Do not remove metadata when tmux returns another operational error.
-* [x] Do not retain missing persistent-session metadata for lazy restoration.
 * [x] Restore project and label markers for surviving persistent sessions and clear stale volatile ownership markers.
 * [x] Keep marker repair limited to persistent sessions represented by state and avoid rewriting unrelated sessions.
 * [x] Add startup marker-repair tests for partially completed creation, promotion, and move operations.
@@ -165,6 +165,19 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Test volatile-session project promotion, foreign-instance preservation, persistent ID replacement, volatile-marker clearing, active-session switching, sidebar closure, status refresh, and failure handling.
 * [x] Test creation, rename, moves, deletion, switching, active-project deletion, fallback behavior, and dead-session cleanup after direct-session and project switches.
 * [x] Test dead-session cleanup for all-dead, live, and mixed-pane outgoing sessions; persistent and volatile sources; failed target switches; failed tmux cleanup; failed metadata persistence; and no-op switches where the outgoing session equals the switch target.
+* [ ] Show every persisted project and its ordered persistent sessions in the sidebar even when some or all are absent from tmux.
+* [ ] Lazily create a missing selected persistent session with its stored internal ID, label, project marker, and project's workdir, then switch the originating client to it without changing persistent state.
+* [ ] Lazily create the first stored session when explicitly switching to a project whose sessions are absent from tmux.
+* [ ] Test lazy restoration after restart, direct missing-session selection, project selection, correct workdir and marker setup, persistence preservation, and create/switch failure handling.
+* [ ] Remove deletion paths that switch into a different persistent project; retain switching to another session in the same project and use a volatile fallback before deleting the final active session or active project.
+* [ ] Test non-active deletion leaves the client unchanged, active non-final deletion remains in its project, and final active session/project deletion never selects another project.
+
+### P1: Project settings editor
+
+* [ ] Replace the single-line project-workdir prompt with an in-sidebar YAML-formatted editor that presents all supported project settings.
+* [ ] Parse and validate the edited project settings (currently workdir) and persist them through the existing JSON store mutation path.
+* [ ] Keep project settings in the central state file; do not create a project-settings file or invoke the external editor.
+* [ ] Test valid settings updates, invalid-document rejection without state changes, and project workdir normalization including home-directory expansion on save.
 
 ### P1: Generated labels
 
