@@ -533,3 +533,190 @@ func TestLazyMaterializationUsesCurrentSavedProjectConfiguration(t *testing.T) {
 		t.Fatalf("materialized session = %#v, labels = %#v", got.sessions, got.sessionLabels)
 	}
 }
+
+func TestDeletingAbsentPersistentSessionRemovesOnlyItsMetadata(t *testing.T) {
+	initial := appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{{ID: "tflow-p-absent", Label: "absent"}},
+	}}}
+	statePath := seedLazyProjectState(t, initial.Projects...)
+	killed := false
+	m := newModel(fakeTmuxController{killSession: func(name string) error {
+		killed = true
+		return nil
+	}}, "other").(model)
+	m.statePath = statePath
+	m.stateBase = initial
+	m.stateBasePath = statePath
+	m.projects = []string{"small"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}}
+	m.sessionProjects = map[string]string{"tflow-p-absent": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-absent": "absent"}
+	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-absent"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-absent"
+
+	updated, cmd := m.killSession("tflow-p-absent")
+	if cmd == nil {
+		t.Fatal("expected deletion message")
+	}
+	msg := cmd().(sessionKilledMsg)
+	if msg.err != nil || killed {
+		t.Fatalf("delete message = %#v, killed = %t", msg, killed)
+	}
+	updated, _ = updated.(model).Update(msg)
+	got := updated.(model)
+	if len(got.projects) != 0 || len(got.projectSessions("small")) != 0 {
+		t.Fatalf("model retained deleted placeholder: %#v", got)
+	}
+	persisted, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 0 {
+		t.Fatalf("persisted state = %#v, want deleted placeholder removed", persisted)
+	}
+}
+
+func TestRenamingAbsentPersistentSessionUpdatesStateWithoutTmuxWrite(t *testing.T) {
+	initial := appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{{ID: "tflow-p-absent", Label: "old"}},
+	}}}
+	statePath := seedLazyProjectState(t, initial.Projects...)
+	labelWrites := 0
+	m := newModel(fakeTmuxController{setSessionLabel: func(name, label string) error {
+		labelWrites++
+		return nil
+	}}, "other").(model)
+	m.statePath = statePath
+	m.stateBase = initial
+	m.stateBasePath = statePath
+	m.projects = []string{"small"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}}
+	m.sessionProjects = map[string]string{"tflow-p-absent": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-absent": "old"}
+	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-absent"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-absent"
+
+	updated, cmd := m.beginRename()
+	pending := *(updated.(*model))
+	pending.input.SetValue("new")
+	updated, cmd = pending.commitRename()
+	if cmd == nil {
+		t.Fatal("expected rename message")
+	}
+	msg := cmd().(sessionRenamedMsg)
+	if msg.err != nil || labelWrites != 0 {
+		t.Fatalf("rename message = %#v, label writes = %d", msg, labelWrites)
+	}
+	updated, _ = updated.(*model).Update(msg)
+	persisted, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Projects[0].Sessions[0].Label != "new" {
+		t.Fatalf("persisted state = %#v, want updated label", persisted)
+	}
+}
+
+func TestMovingAbsentPersistentSessionUpdatesStateWithoutTmuxWrites(t *testing.T) {
+	initial := appState{Projects: []storedProject{
+		{Name: "small", Sessions: []persistentSession{{ID: "tflow-p-absent", Label: "absent"}}},
+		{Name: "garden", Sessions: []persistentSession{{ID: "tflow-p-live", Label: "live"}}},
+	}}
+	statePath := seedLazyProjectState(t, initial.Projects...)
+	markerWrites := 0
+	m := newModel(fakeTmuxController{
+		setSessionProject: func(name, project string) error { markerWrites++; return nil },
+		setSessionLabel:   func(name, label string) error { markerWrites++; return nil },
+	}, "other").(model)
+	m.statePath = statePath
+	m.projects = []string{"small", "garden"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small"}, "garden": {Name: "garden"}}
+	m.sessionProjects = map[string]string{"tflow-p-absent": "small", "tflow-p-live": "garden"}
+	m.sessionLabels = map[string]string{"tflow-p-absent": "absent", "tflow-p-live": "live"}
+	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-absent"}, "garden": {"tflow-p-live"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-absent"
+
+	updated, cmd := m.applySessionMove("tflow-p-absent", "garden")
+	if cmd == nil || markerWrites != 0 {
+		t.Fatalf("cmd = %v, marker writes = %d", cmd, markerWrites)
+	}
+	got := updated.(model)
+	if got.sessionProjects["tflow-p-absent"] != "garden" {
+		t.Fatalf("project = %q, want garden", got.sessionProjects["tflow-p-absent"])
+	}
+	persisted, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found := storedProjectByName(persisted, "small"); found {
+		t.Fatalf("persisted state = %#v, want empty source removed", persisted)
+	}
+}
+
+func TestRenameRejectsLabelUsedByAbsentPersistentSession(t *testing.T) {
+	labelWrites := 0
+	m := newModel(fakeTmuxController{setSessionLabel: func(name, label string) error {
+		labelWrites++
+		return nil
+	}}, "tflow-p-live").(model)
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "tflow-p-live", Label: "live"}}
+	m.sessionProjects = map[string]string{"tflow-p-live": "small", "tflow-p-absent": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-live": "live", "tflow-p-absent": "reserved"}
+	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-live", "tflow-p-absent"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-live"
+	m.renameTarget = renameTarget{session: "tflow-p-live"}
+	m.input.SetValue("reserved")
+
+	updated, cmd := m.commitRename()
+	got := *(updated.(*model))
+	if cmd != nil || labelWrites != 0 || got.status != "Session name already exists in this project." {
+		t.Fatalf("cmd = %v, writes = %d, status = %q", cmd, labelWrites, got.status)
+	}
+}
+
+func TestSecondLazyMaterializationReusesSessionCreatedByFirstPopup(t *testing.T) {
+	statePath := seedLazyProjectState(t, storedProject{
+		Name: "small", Workdir: "/work/small", Sessions: []persistentSession{{ID: "tflow-p-code", Label: "code"}},
+	})
+	var running []session
+	createCalls := 0
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) { return append([]session(nil), running...), nil },
+		createSession: func(name, cwd, command string) (session, error) {
+			createCalls++
+			created := session{Name: name, Windows: 1}
+			running = append(running, created)
+			return created, nil
+		},
+	}
+	newPopup := func() model {
+		m := newModel(manager, "scratch").(model)
+		m.statePath = statePath
+		m.projects = []string{"small"}
+		m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/work/small"}}
+		m.sessionProjects = map[string]string{"tflow-p-code": "small"}
+		m.sessionLabels = map[string]string{"tflow-p-code": "code"}
+		m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-code"}}
+		m.selectedProject = "small"
+		m.selectedSession = "tflow-p-code"
+		return m
+	}
+
+	first, firstCmd := newPopup().switchSelectedSession()
+	if firstCmd == nil || createCalls != 1 {
+		t.Fatalf("first materialization cmd = %v, creates = %d", firstCmd, createCalls)
+	}
+	second, secondCmd := newPopup().switchSelectedSession()
+	if secondCmd == nil || createCalls != 1 {
+		t.Fatalf("second materialization cmd = %v, creates = %d", secondCmd, createCalls)
+	}
+	if len(second.(model).sessions) != 1 || second.(model).sessions[0].Name != "tflow-p-code" {
+		t.Fatalf("second popup sessions = %#v", second.(model).sessions)
+	}
+	_ = first
+}

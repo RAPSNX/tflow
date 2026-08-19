@@ -80,7 +80,7 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if project == "" {
 			project = normalizeProjectName(m.sessionProjects[msg.name])
 		}
-		deleted, found := m.findSession(msg.name)
+		deleted, found := m.sessionInfo(msg.name)
 		deletingProject := found && !deleted.Temporary && project != "" && m.isLastProjectSession(project, msg.name)
 		// A blank m.currentSession means the client's active session is
 		// unknown to this model instance; treat that as if the deleted
@@ -136,7 +136,7 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
-		session, found := m.findSession(msg.name)
+		session, found := m.sessionInfo(msg.name)
 		if !found {
 			m.err = fmt.Errorf("renamed session %q is missing", msg.name)
 			m.status = m.err.Error()

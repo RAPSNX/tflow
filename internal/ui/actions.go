@@ -75,6 +75,23 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	running, err := m.tmux.ListSessions()
+	if err != nil {
+		m.err, m.status = err, err.Error()
+		return m, nil
+	}
+	for _, existing := range running {
+		if existing.Name != name {
+			continue
+		}
+		existing.Label = label
+		existing.Temporary = false
+		existing.Instance = ""
+		m.setSessionLabel(name, label)
+		m.sessions = append(m.sessions, existing)
+		return m.switchSelectedSession()
+	}
+
 	created, err := m.tmux.CreateSession(name, workdir, "")
 	if err != nil {
 		m.err = fmt.Errorf("create saved session %q: %w", name, err)
@@ -211,6 +228,9 @@ func (m model) killSession(name string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, func() tea.Msg {
+		if _, running := m.findSession(name); !running {
+			return sessionKilledMsg{name: name, project: normalizeProjectName(m.sessionProjects[name])}
+		}
 		return sessionKilledMsg{name: name, project: normalizeProjectName(m.sessionProjects[name]), err: m.tmux.KillSession(name)}
 	}
 }
@@ -320,7 +340,7 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 			m.status = ""
 			return m, nil
 		}
-		selected, found := m.findSession(target.session)
+		selected, found := m.sessionInfo(target.session)
 		if !found {
 			m.status = "Session no longer exists."
 			return m, nil
@@ -342,7 +362,11 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 		m.input.Blur()
 		m.input.Prompt = ""
 		return m, func() tea.Msg {
-			return sessionRenamedMsg{name: target.session, label: label, volatile: selected.Temporary, err: m.tmux.SetSessionLabel(target.session, label)}
+			var err error
+			if _, running := m.findSession(target.session); running {
+				err = m.tmux.SetSessionLabel(target.session, label)
+			}
+			return sessionRenamedMsg{name: target.session, label: label, volatile: selected.Temporary, err: err}
 		}
 	default:
 		m.status = "Select a session or project to rename."

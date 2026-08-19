@@ -97,7 +97,7 @@ func (m *model) commitSessionMove() (tea.Model, tea.Cmd) {
 // project on their next read of sessionProjects.
 func (m model) applySessionMove(sessionName, targetProject string) (tea.Model, tea.Cmd) {
 	targetProject = normalizeProjectName(targetProject)
-	selected, found := m.findSession(sessionName)
+	selected, found := m.sessionInfo(sessionName)
 	if !found || selected.Temporary {
 		m.status = "Session no longer exists."
 		return m, nil
@@ -188,17 +188,19 @@ func (m model) applySessionMove(sessionName, targetProject string) (tea.Model, t
 	m.selectedSession = sessionName
 	m.syncSelection()
 
-	// Update tmux markers only for the session that moved; do not resync
-	// unrelated sessions.
-	if err := m.tmux.SetSessionProject(sessionName, targetProject); err != nil {
-		m.err = err
-		m.status = err.Error()
-		return m, nil
-	}
-	if err := m.tmux.SetSessionLabel(sessionName, label); err != nil {
-		m.err = err
-		m.status = err.Error()
-		return m, nil
+	// Update tmux markers only when the moved session is running; a saved
+	// placeholder has no tmux markers to rewrite.
+	if _, running := m.findSession(sessionName); running {
+		if err := m.tmux.SetSessionProject(sessionName, targetProject); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
+		if err := m.tmux.SetSessionLabel(sessionName, label); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
 	}
 	m.err = nil
 	m.status = fmt.Sprintf("Moved %s to %s.", label, targetProject)

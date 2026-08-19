@@ -43,6 +43,9 @@ func (m model) deleteProject(project string) (tea.Model, tea.Cmd) {
 	sessions := m.projectSessions(project)
 	return m, func() tea.Msg {
 		for _, s := range sessions {
+			if _, running := m.findSession(s.Name); !running {
+				continue
+			}
 			if err := m.tmux.KillSession(s.Name); err != nil {
 				return projectDeletedMsg{project: project, err: err}
 			}

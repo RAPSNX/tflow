@@ -25,10 +25,26 @@ func (m *model) shiftSession(delta int) {
 }
 
 func (m model) selectedSessionInfo() (session, bool) {
-	if m.selectedSession == "" {
+	return m.sessionInfo(m.selectedSession)
+}
+
+// sessionInfo returns a running session when present, or a persistent
+// placeholder when its stored row belongs to the sidebar model. Placeholders
+// are manageable without materializing their tmux sessions.
+func (m model) sessionInfo(name string) (session, bool) {
+	if strings.TrimSpace(name) == "" {
 		return session{}, false
 	}
-	return m.findSession(m.selectedSession)
+	if s, ok := m.findSession(name); ok {
+		return s, true
+	}
+	project := normalizeProjectName(m.sessionProjects[name])
+	for _, s := range m.projectSessions(project) {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return session{}, false
 }
 
 func (m model) currentSessionInfo() (session, bool) {
