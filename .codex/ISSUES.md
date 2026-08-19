@@ -1,14 +1,37 @@
 # Issue tracker
-This file is human written, and contains findings while using `tflow`.
-This findings should always be validated against `ARCHITECTURE.md` and `TASK.md`.
-And afterwards it should valid and correct tasks derived from it.
-If anything here will collide or interfer with the current `ARCHITECTURE.md`, stop and ask questions.
 
-## Issues
+This file is human written and contains findings while using `tflow`.
+Findings must be validated against `ARCHITECTURE.md` and `TASK.md`, then
+turned into correct derived tasks. If a finding conflicts with the current
+architecture, stop and ask questions.
 
-- Projects are vanished after reboot.
-- Project creation should take the actual PWD as workdir directly.
-- Project edit should use `~` as home folder, and should have autocompletion.
-- Project edit should open the project settings yaml as file in the `EDITOR`.
-- Having multiple projects open, and delete a session in a project, can result in jumping to another project.
-    - It should be ensured, that no action will move the Project ever, except the `switch project`.
+## Reviewed findings
+
+### Projects disappear after reboot
+
+Confirmed. Persistent project and session metadata must remain after tmux is
+restarted, and missing sessions are recreated lazily only when selected.
+
+### Project creation working directory
+
+Confirmed. New projects use the originating active tmux pane current directory
+as their initial workdir.
+
+### Home paths and completion
+
+`~` is expanded when a project workdir is saved. Path completion is out of
+scope because the external editor provides it.
+
+### Project settings editor
+
+Confirmed. `e` temporarily replaces the sidebar with a YAML document in
+`$EDITOR`, falling back to `nvim`; tflow strictly validates the document and
+persists the supported settings to the central JSON store. The temporary
+document is removed after editing and is not a persistent configuration file.
+
+### Unexpected project changes after deletion
+
+Confirmed. Deletion must never select another persistent project. Explicit
+project selection, project creation, and successful session moves may switch
+the client; a deletion either keeps the client in its current project or uses
+a volatile fallback when it removes the final active project session.

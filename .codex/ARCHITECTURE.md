@@ -90,6 +90,11 @@ A project contains:
 * a default working directory
 * an ordered list of persistent sessions
 
+Creating a project uses the originating active tmux pane's current directory
+as its initial working directory. That directory is resolved for the
+originating client before the short-lived creation worker starts and is passed
+to that worker explicitly.
+
 Projects and their ordered persistent-session metadata remain available even
 when none of their sessions currently exists in tmux, such as after a reboot.
 Missing persistent sessions are recreated only through the explicit selection
@@ -109,7 +114,7 @@ After a successful promotion, tflow switches the client directly to the promoted
 
 Session labels must be unique inside their project. Volatile labels must be unique inside their owning instance.
 
-Moving a persistent session to another project preserves its tmux session. A move fails when the target project already has the session label. Moving the final session out of a project deletes that project.
+Moving a persistent session to another project preserves its tmux session. A move fails when the target project already has the session label. Moving the final session out of a project deletes that project. After a successful move, tflow switches the originating client to the moved session in its target project.
 
 Deleting the final session of a project also deletes the project. Deleting a project removes its persistent sessions and metadata. Deletion must never switch the client into another persistent project: deleting a non-active session or project leaves the client unchanged; deleting the active session selects another session from the same project when one remains; and deleting the final active session or active project creates and switches to a volatile fallback in the active pane's working directory before removal. Project creation, explicit project switching, and session moves retain their existing switching behavior.
 
@@ -182,12 +187,14 @@ If tmux cannot provide a session list because of an operational error, no metada
 
 ## Project settings editor
 
-`e` opens a YAML-formatted project-settings editor inside the sidebar. It is
-not a file and does not invoke an external editor. The editor presents every supported
-project setting (currently only `workdir`), validates the submitted document,
-and persists the resulting project configuration through the existing JSON
-store mutation path. Invalid input leaves persistent state unchanged and is
-reported in the sidebar.
+`e` temporarily replaces the sidebar UI with a YAML project-settings document
+in `$EDITOR`, falling back to `nvim` when `$EDITOR` is unset. The document is a
+temporary internal file, not a persistent user-edited configuration file. When
+the editor exits, tflow removes the temporary file, strictly validates its
+supported settings (currently only `workdir`), rejects unknown keys, and
+persists valid settings through the existing JSON store mutation path. Editor,
+validation, or persistence failures leave state unchanged and are reported
+when the sidebar resumes.
 
 ## Error handling
 
@@ -201,7 +208,7 @@ Simple local cleanup is allowed:
 
 Best-effort cleanup failures emit a diagnostic without replacing the original operation error.
 
-If a sidebar target switch fails, tflow does not remove the outgoing session. After a successful switch, failed cleanup leaves the client on its selected target and emits a diagnostic. If tmux cannot remove the exited source session, its persistent metadata remains unchanged. If tmux removes a persistent source session but its metadata update fails, tflow reports the error and startup reconciliation removes the stale metadata.
+If a sidebar target switch fails, tflow does not remove the outgoing session. After a successful switch, failed cleanup leaves the client on its selected target and emits a diagnostic. If tmux cannot remove the exited source session, its persistent metadata remains unchanged. If tmux removes a persistent source session but its metadata update fails, tflow reports the error and retains the metadata for later lazy materialization.
 
 The application does not attempt to guarantee consistency after process crashes, machine crashes, or power loss.
 

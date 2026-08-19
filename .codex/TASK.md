@@ -63,7 +63,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep marker repair limited to persistent sessions represented by state and avoid rewriting unrelated sessions.
 * [x] Add startup marker-repair tests for partially completed creation, promotion, and move operations.
 * [x] Do not reconcile or write state during ordinary sidebar refreshes.
-* [x] Test missing-session cleanup without lazy restoration, empty-project cleanup, and tmux-error preservation.
+* [x] Test explicit empty-project cleanup and tmux-error preservation.
 
 ### P0: Operation failure handling
 
@@ -142,6 +142,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep the selected target active and report a diagnostic when post-switch cleanup or its persistent-state update fails.
 * [x] Report background creation failures through the tmux status message.
 * [x] Create new project sessions in the project's configured workdir.
+* [ ] Resolve the originating active tmux pane directory before creating a project and pass it explicitly to the creation worker as the project's initial workdir.
 * [x] Create volatile sessions in the active pane's working directory.
 * [x] When creating a project from a volatile session, promote every volatile session owned by the current tflow instance into the new project.
 * [x] Give each promoted session a generated persistent `tflow-p-<id>` identity while preserving its display label and visible order.
@@ -159,8 +160,6 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Delete a project when its final session is moved out.
 * [x] Delete a project when its final session is deleted.
 * [x] Delete all persistent sessions and metadata when a project is deleted.
-* [x] Switch only when the active project is deleted, selecting the first session in the next project.
-* [x] Create a volatile fallback in the active pane's working directory when no project session remains.
 * [x] Keep project and session order stable.
 * [x] Test volatile-session project promotion, foreign-instance preservation, persistent ID replacement, volatile-marker clearing, active-session switching, sidebar closure, status refresh, and failure handling.
 * [x] Test creation, rename, moves, deletion, switching, active-project deletion, fallback behavior, and dead-session cleanup after direct-session and project switches.
@@ -169,15 +168,17 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [ ] Lazily create a missing selected persistent session with its stored internal ID, label, project marker, and project's workdir, then switch the originating client to it without changing persistent state.
 * [ ] Lazily create the first stored session when explicitly switching to a project whose sessions are absent from tmux.
 * [ ] Test lazy restoration after restart, direct missing-session selection, project selection, correct workdir and marker setup, persistence preservation, and create/switch failure handling.
+* [ ] After a successful session move, switch the originating client to the moved session in its target project without changing its tmux identity.
+* [ ] Test project creation uses the originating active pane directory and a successful move switches to its moved session.
 * [ ] Remove deletion paths that switch into a different persistent project; retain switching to another session in the same project and use a volatile fallback before deleting the final active session or active project.
 * [ ] Test non-active deletion leaves the client unchanged, active non-final deletion remains in its project, and final active session/project deletion never selects another project.
 
 ### P1: Project settings editor
 
-* [ ] Replace the single-line project-workdir prompt with an in-sidebar YAML-formatted editor that presents all supported project settings.
-* [ ] Parse and validate the edited project settings (currently workdir) and persist them through the existing JSON store mutation path.
-* [ ] Keep project settings in the central state file; do not create a project-settings file or invoke the external editor.
-* [ ] Test valid settings updates, invalid-document rejection without state changes, and project workdir normalization including home-directory expansion on save.
+* [ ] Replace the single-line project-workdir prompt with a temporary YAML document opened in $EDITOR, falling back to nvim, within the existing sidebar popup.
+* [ ] Strictly parse the editor document after exit, accept only supported project settings (currently workdir), and persist valid settings through the existing JSON store mutation path.
+* [ ] Create the temporary editor document securely, remove it on every exit path, and never add a persistent project-settings file.
+* [ ] Test editor selection, valid settings updates, unknown-key and invalid-document rejection without state changes, temporary-file cleanup, and project workdir normalization including home-directory expansion on save.
 
 ### P1: Generated labels
 
@@ -220,13 +221,13 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Remove the non-volatile branch of `sessionCreatedMsg`'s handler; its only production producer (`createVolatileFallback`) always sets it volatile.
 * [x] Remove the never-produced `err` fields from `menuActionMsg` and `projectRenamedMsg`.
 * [x] Unexport `ui.NewMenu` to `ui.newMenu`; it has no caller outside the package's own tests.
-* [ ] `tmux.ContainsAnimalName`: verified it is not test-only in the sense the issue assumed — `internal/ui` tests call it across the package boundary to check generated labels against the unexported animal-name list, which only this exported function can do from outside `internal/tmux`. Left exported; unexporting would either break that real cross-package test coverage or require duplicating the animal list.
+* [x] Keep `tmux.ContainsAnimalName` exported: `internal/ui` tests call it across the package boundary to check generated labels against the unexported animal-name list, which only this exported function can provide without duplicating that list.
 
 ### P1: Installation and verification
 
 * [x] Use module path `github.com/rapsnx/tflow`.
 * [x] Move the executable entry point from `cmd/main.go` to `cmd/tflow/main.go`.
-* [ ] Verify `go install github.com/rapsnx/tflow/cmd/tflow@latest` and `tflow version` after `v0.1.0-alpha.1` is available through the module proxy.
+* [ ] Verify go install github.com/rapsnx/tflow/cmd/tflow@latest and tflow version against the current published release through the module proxy.
 * [x] Verify `nix build --no-link .#tflow`.
 * [x] Ensure the Nix package installs `bin/tflow`.
 * [x] Add CI for formatting, `go vet`, and `go test ./...`.
@@ -246,8 +247,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Add GoReleaser configuration for Linux and macOS amd64/arm64 release archives and SHA-256 checksums.
 * [x] Validate release configuration and snapshot artifacts in CI.
 * [x] Add a tag-triggered GitHub Release workflow restricted to tags that point to `main`.
-* [ ] Publish `v0.1.0-alpha.1` after this branch is merged into `main`.
-* [ ] Verify `go install github.com/rapsnx/tflow/cmd/tflow@latest` and `tflow version` after the release is available through the module proxy.
+* [x] Publish v0.1.0-alpha.1 after its branch is merged into main.
 * [x] Add a push-to-`main`-triggered Release Drafter workflow that maintains one draft release, updating its changelog body on every push and resolving its proposed alpha version from the latest *published* release; the proposed version stays fixed across multiple pushes and only advances to the next alpha once the current draft is published, without creating a git tag until then.
 
 ## Remove obsolete implementation
