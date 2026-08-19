@@ -8,6 +8,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+func seedLazyProjectState(t *testing.T, projects ...storedProject) string {
+	t.Helper()
+	path := t.TempDir() + "/store.json"
+	if err := saveAppState(path, appState{Projects: projects}); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestMenuEnterSwitchesSessionAndClosesMenu(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "dev").(model)
 	m.projects = []string{defaultProjectName}
@@ -277,6 +286,14 @@ func TestSwitchSelectedSessionMaterializesPersistedSession(t *testing.T) {
 
 func TestSwitchToProjectMaterializesFirstPersistedSession(t *testing.T) {
 	var created string
+	statePath := seedLazyProjectState(t, storedProject{
+		Name:    "small",
+		Workdir: "/work/small",
+		Sessions: []persistentSession{
+			{ID: "tflow-p-first", Label: "first"},
+			{ID: "tflow-p-second", Label: "second"},
+		},
+	})
 	m := newModel(fakeTmuxController{
 		createSession: func(name, cwd, command string) (session, error) {
 			created = name
@@ -288,6 +305,7 @@ func TestSwitchToProjectMaterializesFirstPersistedSession(t *testing.T) {
 	m.sessionProjects = map[string]string{"tflow-p-first": "small", "tflow-p-second": "small"}
 	m.sessionLabels = map[string]string{"tflow-p-first": "first", "tflow-p-second": "second"}
 	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-first", "tflow-p-second"}}
+	m.statePath = statePath
 
 	updated, cmd := m.switchToProject("small")
 	got := updated.(model)
@@ -304,6 +322,9 @@ func TestSwitchToProjectMaterializesFirstPersistedSession(t *testing.T) {
 
 func TestSwitchSelectedSessionCleansUpWhenMaterializationSetupFails(t *testing.T) {
 	var killed []string
+	statePath := seedLazyProjectState(t, storedProject{
+		Name: "small", Workdir: "/work/small", Sessions: []persistentSession{{ID: "tflow-p-code", Label: "code"}},
+	})
 	m := newModel(fakeTmuxController{
 		setSessionLabel: func(name, label string) error { return errors.New("label failed") },
 		killSession:     func(name string) error { killed = append(killed, name); return nil },
@@ -312,6 +333,7 @@ func TestSwitchSelectedSessionCleansUpWhenMaterializationSetupFails(t *testing.T
 	m.sessionProjects = map[string]string{"tflow-p-code": "small"}
 	m.sessionLabels = map[string]string{"tflow-p-code": "code"}
 	m.selectedSession = "tflow-p-code"
+	m.statePath = statePath
 
 	updated, cmd := m.switchSelectedSession()
 	got := updated.(model)
@@ -329,6 +351,9 @@ func TestSwitchSelectedSessionCleansUpWhenMaterializationSetupFails(t *testing.T
 func TestLazyMaterializationLeavesTargetWhenClientSwitchFails(t *testing.T) {
 	created := false
 	killed := false
+	statePath := seedLazyProjectState(t, storedProject{
+		Name: "small", Workdir: "/work/small", Sessions: []persistentSession{{ID: "tflow-p-code", Label: "code"}},
+	})
 	manager := fakeTmuxController{
 		createSession: func(name, cwd, command string) (session, error) {
 			created = true
@@ -342,6 +367,7 @@ func TestLazyMaterializationLeavesTargetWhenClientSwitchFails(t *testing.T) {
 	m.sessionProjects = map[string]string{"tflow-p-code": "small"}
 	m.sessionLabels = map[string]string{"tflow-p-code": "code"}
 	m.selectedSession = "tflow-p-code"
+	m.statePath = statePath
 
 	updated, cmd := m.switchSelectedSession()
 	if cmd == nil {
@@ -357,6 +383,9 @@ func TestLazyMaterializationLeavesTargetWhenClientSwitchFails(t *testing.T) {
 }
 
 func TestSwitchSelectedSessionReportsMaterializationCreateFailure(t *testing.T) {
+	statePath := seedLazyProjectState(t, storedProject{
+		Name: "small", Workdir: "/work/small", Sessions: []persistentSession{{ID: "tflow-p-code", Label: "code"}},
+	})
 	m := newModel(fakeTmuxController{
 		createSession: func(name, cwd, command string) (session, error) {
 			return session{}, errors.New("create failed")
@@ -366,10 +395,141 @@ func TestSwitchSelectedSessionReportsMaterializationCreateFailure(t *testing.T) 
 	m.sessionProjects = map[string]string{"tflow-p-code": "small"}
 	m.sessionLabels = map[string]string{"tflow-p-code": "code"}
 	m.selectedSession = "tflow-p-code"
+	m.statePath = statePath
 
 	updated, cmd := m.switchSelectedSession()
 	got := updated.(model)
 	if cmd != nil || !strings.Contains(got.status, "create failed") || len(got.sessions) != 0 {
 		t.Fatalf("cmd = %v, status = %q, sessions = %#v", cmd, got.status, got.sessions)
+	}
+}
+
+func TestDeletingRunningSessionPreservesAbsentPersistedSibling(t *testing.T) {
+	initial := appState{Projects: []storedProject{{
+		Name:    "small",
+		Workdir: "/work/small",
+		Sessions: []persistentSession{
+			{ID: "tflow-p-running", Label: "running"},
+			{ID: "tflow-p-absent", Label: "absent"},
+		},
+	}}}
+	statePath := seedLazyProjectState(t, initial.Projects...)
+	var created string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			created = name
+			return session{Name: name}, nil
+		},
+	}, "tflow-p-running").(model)
+	m.statePath = statePath
+	m.stateBase = initial
+	m.stateBasePath = statePath
+	m.projects = []string{"small"}
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/work/small"}}
+	m.sessions = []session{{Name: "tflow-p-running", Label: "running"}}
+	m.sessionProjects = map[string]string{"tflow-p-running": "small", "tflow-p-absent": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-running": "running", "tflow-p-absent": "absent"}
+	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-running", "tflow-p-absent"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-running"
+
+	updated, cmd := m.Update(sessionKilledMsg{name: "tflow-p-running", project: "small"})
+	got := updated.(model)
+	if cmd == nil {
+		t.Fatal("expected switch to the saved sibling")
+	}
+	if len(got.projects) != 1 || got.projects[0] != "small" {
+		t.Fatalf("projects = %#v, want small retained", got.projects)
+	}
+	if got.selectedSession != "tflow-p-absent" || created != "tflow-p-absent" {
+		t.Fatalf("selected = %q, created = %q, want absent sibling restored", got.selectedSession, created)
+	}
+	persisted, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 1 || len(persisted.Projects[0].Sessions) != 1 || persisted.Projects[0].Sessions[0].ID != "tflow-p-absent" {
+		t.Fatalf("persisted state = %#v, want only absent sibling", persisted)
+	}
+}
+
+func TestLazyMaterializationDoesNotCreateDeletedSavedSession(t *testing.T) {
+	statePath := seedLazyProjectState(t)
+	created := false
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			created = true
+			return session{Name: name}, nil
+		},
+	}, "scratch").(model)
+	m.statePath = statePath
+	m.sessionProjects = map[string]string{"tflow-p-code": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-code": "code"}
+	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-code"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-code"
+
+	updated, cmd := m.switchSelectedSession()
+	got := updated.(model)
+	if cmd != nil || created || got.status != "Session no longer exists." {
+		t.Fatalf("cmd = %v, created = %t, status = %q", cmd, created, got.status)
+	}
+}
+
+func TestLazyMaterializationDoesNotCreateSessionMovedToAnotherProject(t *testing.T) {
+	statePath := seedLazyProjectState(t, storedProject{
+		Name: "garden", Workdir: "/work/garden", Sessions: []persistentSession{{ID: "tflow-p-code", Label: "code"}},
+	})
+	created := false
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			created = true
+			return session{Name: name}, nil
+		},
+	}, "scratch").(model)
+	m.statePath = statePath
+	m.sessionProjects = map[string]string{"tflow-p-code": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-code": "code"}
+	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-code"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-code"
+
+	updated, cmd := m.switchSelectedSession()
+	got := updated.(model)
+	if cmd != nil || created || got.status != "Session is no longer in the selected project." {
+		t.Fatalf("cmd = %v, created = %t, status = %q", cmd, created, got.status)
+	}
+}
+
+func TestLazyMaterializationUsesCurrentSavedProjectConfiguration(t *testing.T) {
+	statePath := seedLazyProjectState(t, storedProject{
+		Name: "small", Workdir: "/work/current", Sessions: []persistentSession{{ID: "tflow-p-code", Label: "current"}},
+	})
+	var createdDir, markedLabel string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			createdDir = cwd
+			return session{Name: name}, nil
+		},
+		setSessionLabel: func(name, label string) error {
+			markedLabel = label
+			return nil
+		},
+	}, "scratch").(model)
+	m.statePath = statePath
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/work/stale"}}
+	m.sessionProjects = map[string]string{"tflow-p-code": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-code": "stale"}
+	m.persistentSessionOrder = map[string][]string{"small": {"tflow-p-code"}}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-code"
+
+	updated, cmd := m.switchSelectedSession()
+	got := updated.(model)
+	if cmd == nil || createdDir != "/work/current" || markedLabel != "current" {
+		t.Fatalf("cmd = %v, workdir = %q, label = %q", cmd, createdDir, markedLabel)
+	}
+	if got.sessionLabels["tflow-p-code"] != "current" || got.sessions[0].Label != "current" {
+		t.Fatalf("materialized session = %#v, labels = %#v", got.sessions, got.sessionLabels)
 	}
 }

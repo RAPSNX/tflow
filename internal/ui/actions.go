@@ -36,8 +36,46 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 		m.status = "No session selected."
 		return m, nil
 	}
-	label := m.sessionLabel(name)
-	created, err := m.tmux.CreateSession(name, m.projectDir(project), "")
+
+	unlock, err := lockAppState(m.statePath)
+	if err != nil {
+		m.err, m.status = err, err.Error()
+		return m, nil
+	}
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release state lock %q after lazy materialization: %v", m.statePath, unlockErr)
+		}
+	}()
+
+	state, err := loadAppState(m.statePath)
+	if err != nil {
+		m.err, m.status = err, err.Error()
+		return m, nil
+	}
+	label, workdir, found := "", "", false
+	for _, storedProject := range state.Projects {
+		for _, storedSession := range storedProject.Sessions {
+			if storedSession.ID != name {
+				continue
+			}
+			if storedProject.Name != project {
+				m.status = "Session is no longer in the selected project."
+				return m, nil
+			}
+			label, workdir, found = storedSession.Label, storedProject.Workdir, true
+			break
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		m.status = "Session no longer exists."
+		return m, nil
+	}
+
+	created, err := m.tmux.CreateSession(name, workdir, "")
 	if err != nil {
 		m.err = fmt.Errorf("create saved session %q: %w", name, err)
 		m.status = m.err.Error()
@@ -64,6 +102,7 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 	created.Label = label
 	created.Temporary = false
 	created.Instance = ""
+	m.setSessionLabel(name, label)
 	m.sessions = append(m.sessions, created)
 	return m.switchSelectedSession()
 }

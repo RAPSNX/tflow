@@ -212,8 +212,8 @@ func (m model) projectSessions(project string) []session {
 }
 
 func (m model) isLastProjectSession(project, deletedName string) bool {
-	for _, s := range m.sessions {
-		if s.Name != deletedName && !s.Temporary && normalizeProjectName(m.sessionProjects[s.Name]) == project {
+	for _, session := range m.projectSessions(project) {
+		if session.Name != deletedName {
 			return false
 		}
 	}
