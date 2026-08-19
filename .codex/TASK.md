@@ -164,10 +164,10 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Test volatile-session project promotion, foreign-instance preservation, persistent ID replacement, volatile-marker clearing, active-session switching, sidebar closure, status refresh, and failure handling.
 * [x] Test creation, rename, moves, deletion, switching, active-project deletion, fallback behavior, and dead-session cleanup after direct-session and project switches.
 * [x] Test dead-session cleanup for all-dead, live, and mixed-pane outgoing sessions; persistent and volatile sources; failed target switches; failed tmux cleanup; failed metadata persistence; and no-op switches where the outgoing session equals the switch target.
-* [ ] Show every persisted project and its ordered persistent sessions in the sidebar even when some or all are absent from tmux.
-* [ ] Lazily create a missing selected persistent session with its stored internal ID, label, project marker, and project's workdir, then switch the originating client to it without changing persistent state.
-* [ ] Lazily create the first stored session when explicitly switching to a project whose sessions are absent from tmux.
-* [ ] Test lazy restoration after restart, direct missing-session selection, project selection, correct workdir and marker setup, persistence preservation, and create/switch failure handling.
+* [x] Show every persisted project and its ordered persistent sessions in the sidebar even when some or all are absent from tmux.
+* [x] Lazily create a missing selected persistent session with its stored internal ID, label, project marker, and project's workdir, then switch the originating client to it without changing persistent state.
+* [x] Lazily create the first stored session when explicitly switching to a project whose sessions are absent from tmux.
+* [x] Test lazy restoration after restart, direct missing-session selection, project selection, correct workdir and marker setup, persistence preservation, and create/switch failure handling.
 * [ ] After a successful session move, switch the originating client to the moved session in its target project without changing its tmux identity.
 * [ ] Test project creation uses the originating active pane directory and a successful move switches to its moved session.
 * [ ] Remove deletion paths that switch into a different persistent project; retain switching to another session in the same project and use a volatile fallback before deleting the final active session or active project.

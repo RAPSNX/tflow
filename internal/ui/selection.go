@@ -132,6 +132,13 @@ func (m *model) assignSessionProject(name, project string) {
 	}
 	m.sessionProjects[name] = project
 	if project != "" {
+		if m.persistentSessionOrder == nil {
+			m.persistentSessionOrder = map[string][]string{}
+		}
+		if !containsString(m.persistentSessionOrder[project], name) {
+			m.persistentSessionOrder[project] = append(m.persistentSessionOrder[project], name)
+		}
+
 		m.addProject(project)
 		if _, exists := m.projectConfigs[project]; !exists {
 			m.setProjectConfig(projectConfig{Name: project})
@@ -174,21 +181,30 @@ func (m model) uniqueMatchingProject(query string) (string, bool) {
 
 func (m model) projectSessions(project string) []session {
 	project = normalizeProjectName(project)
+	if ordered, known := m.persistentSessionOrder[project]; known {
+		result := make([]session, 0, len(ordered))
+		for _, name := range ordered {
+			if normalizeProjectName(m.sessionProjects[name]) != project {
+				continue
+			}
+			if s, ok := m.findSession(name); ok {
+				result = append(result, s)
+				continue
+			}
+			result = append(result, session{Name: name, Label: m.sessionLabel(name)})
+		}
+		for _, s := range m.sessions {
+			if s.Temporary || normalizeProjectName(m.sessionProjects[s.Name]) != project || containsSessionName(result, s.Name) {
+				continue
+			}
+			result = append(result, s)
+		}
+		return result
+	}
+
 	result := make([]session, 0, len(m.sessions))
-	sessionsByName := make(map[string]session, len(m.sessions))
 	for _, s := range m.sessions {
 		if !s.Temporary && normalizeProjectName(m.sessionProjects[s.Name]) == project {
-			sessionsByName[s.Name] = s
-		}
-	}
-	for _, name := range m.persistentSessionOrder[project] {
-		if s, ok := sessionsByName[name]; ok {
-			result = append(result, s)
-			delete(sessionsByName, name)
-		}
-	}
-	for _, s := range m.sessions {
-		if _, ok := sessionsByName[s.Name]; ok {
 			result = append(result, s)
 		}
 	}

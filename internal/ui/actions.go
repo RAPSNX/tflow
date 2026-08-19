@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/rapsnx/tflow/internal/diag"
 )
 
 func (m model) loadSessionsCmd() tea.Cmd {
@@ -15,14 +17,55 @@ func (m model) loadSessionsCmd() tea.Cmd {
 }
 
 func (m model) switchSelectedSession() (tea.Model, tea.Cmd) {
-	s, ok := m.selectedSessionInfo()
-	if !ok {
+	name := strings.TrimSpace(m.selectedSession)
+	if name == "" {
 		m.status = "No session selected."
 		return m, nil
 	}
-	return m, func() tea.Msg {
-		return menuActionMsg{switchSession: s.Name}
+	if _, ok := m.findSession(name); !ok {
+		return m.materializePersistentSession(name)
 	}
+	return m, func() tea.Msg {
+		return menuActionMsg{switchSession: name}
+	}
+}
+
+func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
+	project := normalizeProjectName(m.sessionProjects[name])
+	if project == "" {
+		m.status = "No session selected."
+		return m, nil
+	}
+	label := m.sessionLabel(name)
+	created, err := m.tmux.CreateSession(name, m.projectDir(project), "")
+	if err != nil {
+		m.err = fmt.Errorf("create saved session %q: %w", name, err)
+		m.status = m.err.Error()
+		return m, nil
+	}
+	cleanup := func(operation string, err error) (tea.Model, tea.Cmd) {
+		if killErr := m.tmux.KillSession(name); killErr != nil {
+			diag.Warnf("kill lazily materialized session %q after %s failure: %v", name, operation, killErr)
+		}
+		m.err = fmt.Errorf("%s saved session %q: %w", operation, name, err)
+		m.status = m.err.Error()
+		return m, nil
+	}
+	if err := m.tmux.SetSessionProject(name, project); err != nil {
+		return cleanup("set project marker for", err)
+	}
+	if err := m.tmux.SetSessionLabel(name, label); err != nil {
+		return cleanup("set label marker for", err)
+	}
+	if err := m.tmux.SetSessionTemporary(name, false, ""); err != nil {
+		return cleanup("clear volatile markers for", err)
+	}
+	created.Name = name
+	created.Label = label
+	created.Temporary = false
+	created.Instance = ""
+	m.sessions = append(m.sessions, created)
+	return m.switchSelectedSession()
 }
 
 func (m *model) beginProjectSwitch() (tea.Model, tea.Cmd) {
