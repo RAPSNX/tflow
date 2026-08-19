@@ -53,10 +53,10 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 ### P0: Startup reconciliation
 
 * [x] List tmux sessions once during startup.
-* [ ] Retain persistent-session and project metadata when tmux sessions are absent at startup, including after a reboot.
-* [ ] Remove the obsolete reconciliation cleanup that deletes missing persistent-session metadata and projects solely because they are absent from tmux.
-* [ ] Keep marker repair limited to persistent sessions that exist in tmux, without rewriting unrelated sessions or persistent state.
-* [ ] Test startup after an empty tmux server preserves projects and ordered persistent-session metadata without writing state.
+* [x] Retain persistent-session and project metadata when tmux sessions are absent at startup, including after a reboot.
+* [x] Remove the obsolete reconciliation cleanup that deletes missing persistent-session metadata and projects solely because they are absent from tmux.
+* [x] Keep marker repair limited to persistent sessions that exist in tmux, without rewriting unrelated sessions or persistent state.
+* [x] Test startup after an empty tmux server preserves projects and ordered persistent-session metadata without writing state.
 * [x] Treat an absent dedicated tmux server as an empty session list.
 * [x] Do not remove metadata when tmux returns another operational error.
 * [x] Restore project and label markers for surviving persistent sessions and clear stale volatile ownership markers.
@@ -142,7 +142,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep the selected target active and report a diagnostic when post-switch cleanup or its persistent-state update fails.
 * [x] Report background creation failures through the tmux status message.
 * [x] Create new project sessions in the project's configured workdir.
-* [ ] Resolve the originating active tmux pane directory before creating a project and pass it explicitly to the creation worker as the project's initial workdir.
+* [x] Resolve the originating active tmux pane directory before creating a project and pass it explicitly to the creation worker as the project's initial workdir.
 * [x] Create volatile sessions in the active pane's working directory.
 * [x] When creating a project from a volatile session, promote every volatile session owned by the current tflow instance into the new project.
 * [x] Give each promoted session a generated persistent `tflow-p-<id>` identity while preserving its display label and visible order.
@@ -164,10 +164,10 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Test volatile-session project promotion, foreign-instance preservation, persistent ID replacement, volatile-marker clearing, active-session switching, sidebar closure, status refresh, and failure handling.
 * [x] Test creation, rename, moves, deletion, switching, active-project deletion, fallback behavior, and dead-session cleanup after direct-session and project switches.
 * [x] Test dead-session cleanup for all-dead, live, and mixed-pane outgoing sessions; persistent and volatile sources; failed target switches; failed tmux cleanup; failed metadata persistence; and no-op switches where the outgoing session equals the switch target.
-* [ ] Show every persisted project and its ordered persistent sessions in the sidebar even when some or all are absent from tmux.
-* [ ] Lazily create a missing selected persistent session with its stored internal ID, label, project marker, and project's workdir, then switch the originating client to it without changing persistent state.
-* [ ] Lazily create the first stored session when explicitly switching to a project whose sessions are absent from tmux.
-* [ ] Test lazy restoration after restart, direct missing-session selection, project selection, correct workdir and marker setup, persistence preservation, and create/switch failure handling.
+* [x] Show every persisted project and its ordered persistent sessions in the sidebar even when some or all are absent from tmux.
+* [x] Lazily create a missing selected persistent session with its stored internal ID, label, project marker, and project's workdir, then switch the originating client to it without changing persistent state.
+* [x] Lazily create the first stored session when explicitly switching to a project whose sessions are absent from tmux.
+* [x] Test lazy restoration after restart, direct missing-session selection, project selection, correct workdir and marker setup, persistence preservation, and create/switch failure handling.
 * [ ] After a successful session move, switch the originating client to the moved session in its target project without changing its tmux identity.
 * [ ] Test project creation uses the originating active pane directory and a successful move switches to its moved session.
 * [ ] Remove deletion paths that switch into a different persistent project; retain switching to another session in the same project and use a volatile fallback before deleting the final active session or active project.

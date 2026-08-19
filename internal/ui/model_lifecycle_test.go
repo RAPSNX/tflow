@@ -422,7 +422,7 @@ func TestPrepareStartupEmitsDiagnosticWhenCleanupKillFails(t *testing.T) {
 	}
 }
 
-func TestPrepareStartupReconcilesStateWithOneSessionList(t *testing.T) {
+func TestPrepareStartupRetainsMissingStateAfterEmptyTmuxServer(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	path := appStatePath()
 	if err := saveAppState(path, appState{Projects: []storedProject{{
@@ -434,7 +434,7 @@ func TestPrepareStartupReconcilesStateWithOneSessionList(t *testing.T) {
 	manager := fakeTmuxController{
 		listSessions: func() ([]session, error) {
 			lists++
-			return []session{{Name: "tflow-p-keep"}}, nil
+			return nil, nil
 		},
 	}
 	if _, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1"); err != nil {
@@ -447,7 +447,7 @@ func TestPrepareStartupReconcilesStateWithOneSessionList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Projects) != 1 || len(state.Projects[0].Sessions) != 1 || state.Projects[0].Sessions[0].ID != "tflow-p-keep" {
+	if len(state.Projects) != 1 || len(state.Projects[0].Sessions) != 2 || state.Projects[0].Sessions[0].ID != "tflow-p-keep" || state.Projects[0].Sessions[1].ID != "tflow-p-missing" {
 		t.Fatalf("reconciled state = %#v", state)
 	}
 }

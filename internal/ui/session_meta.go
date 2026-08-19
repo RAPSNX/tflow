@@ -45,11 +45,11 @@ func (m *model) clearSessionMetadata(names ...string) bool {
 func (m model) hasSessionLabel(project, label string, exceptName string) bool {
 	project = normalizeProjectName(project)
 	label = sanitizeSessionName(label)
-	for _, s := range m.sessions {
+	for _, s := range m.projectSessions(project) {
 		if s.Name == exceptName || s.Temporary {
 			continue
 		}
-		if normalizeProjectName(m.sessionProjects[s.Name]) == project && m.sessionLabel(s.Name) == label {
+		if m.sessionLabel(s.Name) == label {
 			return true
 		}
 	}

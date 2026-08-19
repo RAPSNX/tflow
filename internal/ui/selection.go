@@ -25,10 +25,26 @@ func (m *model) shiftSession(delta int) {
 }
 
 func (m model) selectedSessionInfo() (session, bool) {
-	if m.selectedSession == "" {
+	return m.sessionInfo(m.selectedSession)
+}
+
+// sessionInfo returns a running session when present, or a persistent
+// placeholder when its stored row belongs to the sidebar model. Placeholders
+// are manageable without materializing their tmux sessions.
+func (m model) sessionInfo(name string) (session, bool) {
+	if strings.TrimSpace(name) == "" {
 		return session{}, false
 	}
-	return m.findSession(m.selectedSession)
+	if s, ok := m.findSession(name); ok {
+		return s, true
+	}
+	project := normalizeProjectName(m.sessionProjects[name])
+	for _, s := range m.projectSessions(project) {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return session{}, false
 }
 
 func (m model) currentSessionInfo() (session, bool) {
@@ -132,6 +148,13 @@ func (m *model) assignSessionProject(name, project string) {
 	}
 	m.sessionProjects[name] = project
 	if project != "" {
+		if m.persistentSessionOrder == nil {
+			m.persistentSessionOrder = map[string][]string{}
+		}
+		if !containsString(m.persistentSessionOrder[project], name) {
+			m.persistentSessionOrder[project] = append(m.persistentSessionOrder[project], name)
+		}
+
 		m.addProject(project)
 		if _, exists := m.projectConfigs[project]; !exists {
 			m.setProjectConfig(projectConfig{Name: project})
@@ -174,21 +197,30 @@ func (m model) uniqueMatchingProject(query string) (string, bool) {
 
 func (m model) projectSessions(project string) []session {
 	project = normalizeProjectName(project)
+	if ordered, known := m.persistentSessionOrder[project]; known {
+		result := make([]session, 0, len(ordered))
+		for _, name := range ordered {
+			if normalizeProjectName(m.sessionProjects[name]) != project {
+				continue
+			}
+			if s, ok := m.findSession(name); ok {
+				result = append(result, s)
+				continue
+			}
+			result = append(result, session{Name: name, Label: m.sessionLabel(name)})
+		}
+		for _, s := range m.sessions {
+			if s.Temporary || normalizeProjectName(m.sessionProjects[s.Name]) != project || containsSessionName(result, s.Name) {
+				continue
+			}
+			result = append(result, s)
+		}
+		return result
+	}
+
 	result := make([]session, 0, len(m.sessions))
-	sessionsByName := make(map[string]session, len(m.sessions))
 	for _, s := range m.sessions {
 		if !s.Temporary && normalizeProjectName(m.sessionProjects[s.Name]) == project {
-			sessionsByName[s.Name] = s
-		}
-	}
-	for _, name := range m.persistentSessionOrder[project] {
-		if s, ok := sessionsByName[name]; ok {
-			result = append(result, s)
-			delete(sessionsByName, name)
-		}
-	}
-	for _, s := range m.sessions {
-		if _, ok := sessionsByName[s.Name]; ok {
 			result = append(result, s)
 		}
 	}
@@ -196,8 +228,8 @@ func (m model) projectSessions(project string) []session {
 }
 
 func (m model) isLastProjectSession(project, deletedName string) bool {
-	for _, s := range m.sessions {
-		if s.Name != deletedName && !s.Temporary && normalizeProjectName(m.sessionProjects[s.Name]) == project {
+	for _, session := range m.projectSessions(project) {
+		if session.Name != deletedName {
 			return false
 		}
 	}

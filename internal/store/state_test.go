@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -212,7 +213,7 @@ func TestMutateAppStatePreservesConcurrentDisjointMutations(t *testing.T) {
 	}
 }
 
-func TestReconcileAppStateRemovesMissingSessionsAndEmptyProjects(t *testing.T) {
+func TestReconcileAppStateRetainsMissingSessionsAndProjectsWithoutWriting(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "store.json")
 	state := AppState{Projects: []Project{
 		{Name: "small", Workdir: "/small", Sessions: []PersistentSession{{ID: "tflow-p-keep", Label: "keep"}, {ID: "tflow-p-missing", Label: "missing"}}},
@@ -221,21 +222,28 @@ func TestReconcileAppStateRemovesMissingSessionsAndEmptyProjects(t *testing.T) {
 	if err := SaveAppState(path, state); err != nil {
 		t.Fatal(err)
 	}
+	originalRename := renameAppStateFile
+	wrote := false
+	renameAppStateFile = func(oldPath, newPath string) error {
+		wrote = true
+		return originalRename(oldPath, newPath)
+	}
+	t.Cleanup(func() { renameAppStateFile = originalRename })
 	changed, err := ReconcileAppState(path, func() (map[string]struct{}, error) {
-		return map[string]struct{}{"tflow-p-keep": {}}, nil
+		return map[string]struct{}{}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !changed {
-		t.Fatal("ReconcileAppState reported no change")
+	if changed || wrote {
+		t.Fatalf("changed = %t, wrote = %t, want false", changed, wrote)
 	}
 	got, err := LoadAppState(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Projects) != 1 || got.Projects[0].Name != "small" || len(got.Projects[0].Sessions) != 1 || got.Projects[0].Sessions[0].ID != "tflow-p-keep" {
-		t.Fatalf("reconciled state = %#v", got)
+	if !reflect.DeepEqual(got, state) {
+		t.Fatalf("reconciled state = %#v, want %#v", got, state)
 	}
 }
 

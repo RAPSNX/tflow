@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -465,4 +466,46 @@ func createRequestFromCommand(t *testing.T, command string) createRequest {
 		t.Fatal(err)
 	}
 	return request
+}
+
+func TestProjectCreateUsesActivePaneDirectory(t *testing.T) {
+	var command string
+	m := newModel(fakeTmuxController{
+		currentPaneDir: func() (string, error) { return "/active/project", nil },
+		runBackground: func(value string) error {
+			command = value
+			return nil
+		},
+	}, "scratch").(model)
+	m.mode = inputCreateProject
+	m.input.SetValue("small")
+
+	updated, closeMenu := m.commitProjectCreate()
+	got := updated.(*model)
+	if closeMenu == nil || got.mode != inputNone {
+		t.Fatalf("closeMenu = %v, mode = %v", closeMenu, got.mode)
+	}
+	request := createRequestFromCommand(t, command)
+	if request.Kind != "project" || request.Project != "small" || request.Workdir != "/active/project" {
+		t.Fatalf("request = %#v", request)
+	}
+}
+
+func TestProjectCreateKeepsFormOpenWhenActivePaneDirectoryFails(t *testing.T) {
+	submitted := false
+	m := newModel(fakeTmuxController{
+		currentPaneDir: func() (string, error) { return "", errors.New("pane directory failed") },
+		runBackground: func(string) error {
+			submitted = true
+			return nil
+		},
+	}, "scratch").(model)
+	m.mode = inputCreateProject
+	m.input.SetValue("small")
+
+	updated, closeMenu := m.commitProjectCreate()
+	got := updated.(*model)
+	if closeMenu != nil || submitted || got.mode != inputCreateProject || got.status != "pane directory failed" {
+		t.Fatalf("closeMenu = %v, submitted = %t, mode = %v, status = %q", closeMenu, submitted, got.mode, got.status)
+	}
 }

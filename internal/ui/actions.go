@@ -5,7 +5,17 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/rapsnx/tflow/internal/diag"
+	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
+
+func ignoreMissingSession(err error) error {
+	if runtmux.IsNoSession(err) || runtmux.IsNoServer(err) {
+		return nil
+	}
+	return err
+}
 
 func (m model) loadSessionsCmd() tea.Cmd {
 	return func() tea.Msg {
@@ -15,14 +25,111 @@ func (m model) loadSessionsCmd() tea.Cmd {
 }
 
 func (m model) switchSelectedSession() (tea.Model, tea.Cmd) {
-	s, ok := m.selectedSessionInfo()
-	if !ok {
+	name := strings.TrimSpace(m.selectedSession)
+	if name == "" {
 		m.status = "No session selected."
 		return m, nil
 	}
-	return m, func() tea.Msg {
-		return menuActionMsg{switchSession: s.Name}
+	if _, ok := m.findSession(name); !ok {
+		return m.materializePersistentSession(name)
 	}
+	return m, func() tea.Msg {
+		return menuActionMsg{switchSession: name}
+	}
+}
+
+func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
+	project := normalizeProjectName(m.sessionProjects[name])
+	if project == "" {
+		m.status = "No session selected."
+		return m, nil
+	}
+
+	unlock, err := lockAppState(m.statePath)
+	if err != nil {
+		m.err, m.status = err, err.Error()
+		return m, nil
+	}
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release state lock %q after lazy materialization: %v", m.statePath, unlockErr)
+		}
+	}()
+
+	state, err := loadAppState(m.statePath)
+	if err != nil {
+		m.err, m.status = err, err.Error()
+		return m, nil
+	}
+	label, workdir, found := "", "", false
+	for _, storedProject := range state.Projects {
+		for _, storedSession := range storedProject.Sessions {
+			if storedSession.ID != name {
+				continue
+			}
+			if storedProject.Name != project {
+				m.status = "Session is no longer in the selected project."
+				return m, nil
+			}
+			label, workdir, found = storedSession.Label, storedProject.Workdir, true
+			break
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		m.status = "Session no longer exists."
+		return m, nil
+	}
+
+	running, err := m.tmux.ListSessions()
+	if err != nil {
+		m.err, m.status = err, err.Error()
+		return m, nil
+	}
+	for _, existing := range running {
+		if existing.Name != name {
+			continue
+		}
+		existing.Label = label
+		existing.Temporary = false
+		existing.Instance = ""
+		m.setSessionLabel(name, label)
+		m.sessions = append(m.sessions, existing)
+		return m.switchSelectedSession()
+	}
+
+	created, err := m.tmux.CreateSession(name, workdir, "")
+	if err != nil {
+		m.err = fmt.Errorf("create saved session %q: %w", name, err)
+		m.status = m.err.Error()
+		return m, nil
+	}
+	cleanup := func(operation string, err error) (tea.Model, tea.Cmd) {
+		if killErr := m.tmux.KillSession(name); killErr != nil {
+			diag.Warnf("kill lazily materialized session %q after %s failure: %v", name, operation, killErr)
+		}
+		m.err = fmt.Errorf("%s saved session %q: %w", operation, name, err)
+		m.status = m.err.Error()
+		return m, nil
+	}
+	if err := m.tmux.SetSessionProject(name, project); err != nil {
+		return cleanup("set project marker for", err)
+	}
+	if err := m.tmux.SetSessionLabel(name, label); err != nil {
+		return cleanup("set label marker for", err)
+	}
+	if err := m.tmux.SetSessionTemporary(name, false, ""); err != nil {
+		return cleanup("clear volatile markers for", err)
+	}
+	created.Name = name
+	created.Label = label
+	created.Temporary = false
+	created.Instance = ""
+	m.setSessionLabel(name, label)
+	m.sessions = append(m.sessions, created)
+	return m.switchSelectedSession()
 }
 
 func (m *model) beginProjectSwitch() (tea.Model, tea.Cmd) {
@@ -60,7 +167,12 @@ func (m *model) commitProjectCreate() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if err := m.submitCreate(createRequest{Kind: "project", Project: name, Label: randomAnimalName(), Workdir: m.cwd, Current: m.currentSession, Instance: m.instanceID}); err != nil {
+	workdir, err := m.tmux.CurrentPaneDir()
+	if err != nil {
+		m.err, m.status = err, err.Error()
+		return m, nil
+	}
+	if err := m.submitCreate(createRequest{Kind: "project", Project: name, Label: randomAnimalName(), Workdir: workdir, Current: m.currentSession, Instance: m.instanceID}); err != nil {
 		m.err, m.status = err, err.Error()
 		return m, nil
 	}
@@ -124,7 +236,7 @@ func (m model) killSession(name string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, func() tea.Msg {
-		return sessionKilledMsg{name: name, project: normalizeProjectName(m.sessionProjects[name]), err: m.tmux.KillSession(name)}
+		return sessionKilledMsg{name: name, project: normalizeProjectName(m.sessionProjects[name]), err: ignoreMissingSession(m.tmux.KillSession(name))}
 	}
 }
 
@@ -233,7 +345,7 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 			m.status = ""
 			return m, nil
 		}
-		selected, found := m.findSession(target.session)
+		selected, found := m.sessionInfo(target.session)
 		if !found {
 			m.status = "Session no longer exists."
 			return m, nil
@@ -255,7 +367,11 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 		m.input.Blur()
 		m.input.Prompt = ""
 		return m, func() tea.Msg {
-			return sessionRenamedMsg{name: target.session, label: label, volatile: selected.Temporary, err: m.tmux.SetSessionLabel(target.session, label)}
+			var err error
+			if selected.Temporary {
+				err = m.tmux.SetSessionLabel(target.session, label)
+			}
+			return sessionRenamedMsg{name: target.session, label: label, volatile: selected.Temporary, err: err}
 		}
 	default:
 		m.status = "Select a session or project to rename."
