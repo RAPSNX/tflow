@@ -142,7 +142,7 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Keep the selected target active and report a diagnostic when post-switch cleanup or its persistent-state update fails.
 * [x] Report background creation failures through the tmux status message.
 * [x] Create new project sessions in the project's configured workdir.
-* [ ] Resolve the originating active tmux pane directory before creating a project and pass it explicitly to the creation worker as the project's initial workdir.
+* [x] Resolve the originating active tmux pane directory before creating a project and pass it explicitly to the creation worker as the project's initial workdir.
 * [x] Create volatile sessions in the active pane's working directory.
 * [x] When creating a project from a volatile session, promote every volatile session owned by the current tflow instance into the new project.
 * [x] Give each promoted session a generated persistent `tflow-p-<id>` identity while preserving its display label and visible order.

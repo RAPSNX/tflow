@@ -103,7 +103,12 @@ func (m *model) commitProjectCreate() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if err := m.submitCreate(createRequest{Kind: "project", Project: name, Label: randomAnimalName(), Workdir: m.cwd, Current: m.currentSession, Instance: m.instanceID}); err != nil {
+	workdir, err := m.tmux.CurrentPaneDir()
+	if err != nil {
+		m.err, m.status = err, err.Error()
+		return m, nil
+	}
+	if err := m.submitCreate(createRequest{Kind: "project", Project: name, Label: randomAnimalName(), Workdir: workdir, Current: m.currentSession, Instance: m.instanceID}); err != nil {
 		m.err, m.status = err, err.Error()
 		return m, nil
 	}
