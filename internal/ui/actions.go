@@ -7,7 +7,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/rapsnx/tflow/internal/diag"
+	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
+
+func ignoreMissingSession(err error) error {
+	if runtmux.IsNoSession(err) || runtmux.IsNoServer(err) {
+		return nil
+	}
+	return err
+}
 
 func (m model) loadSessionsCmd() tea.Cmd {
 	return func() tea.Msg {
@@ -228,10 +236,7 @@ func (m model) killSession(name string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, func() tea.Msg {
-		if _, running := m.findSession(name); !running {
-			return sessionKilledMsg{name: name, project: normalizeProjectName(m.sessionProjects[name])}
-		}
-		return sessionKilledMsg{name: name, project: normalizeProjectName(m.sessionProjects[name]), err: m.tmux.KillSession(name)}
+		return sessionKilledMsg{name: name, project: normalizeProjectName(m.sessionProjects[name]), err: ignoreMissingSession(m.tmux.KillSession(name))}
 	}
 }
 
@@ -363,7 +368,7 @@ func (m *model) commitRename() (tea.Model, tea.Cmd) {
 		m.input.Prompt = ""
 		return m, func() tea.Msg {
 			var err error
-			if _, running := m.findSession(target.session); running {
+			if selected.Temporary {
 				err = m.tmux.SetSessionLabel(target.session, label)
 			}
 			return sessionRenamedMsg{name: target.session, label: label, volatile: selected.Temporary, err: err}

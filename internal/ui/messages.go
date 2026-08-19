@@ -162,6 +162,11 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = err.Error()
 				return m, nil
 			}
+			if err := ignoreMissingSession(m.tmux.SetSessionLabel(msg.name, msg.label)); err != nil {
+				m.err = err
+				m.status = err.Error()
+				return m, nil
+			}
 		}
 		m.mode = inputNone
 		m.renameTarget = renameTarget{}

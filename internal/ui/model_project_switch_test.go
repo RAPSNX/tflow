@@ -560,7 +560,7 @@ func TestDeletingAbsentPersistentSessionRemovesOnlyItsMetadata(t *testing.T) {
 		t.Fatal("expected deletion message")
 	}
 	msg := cmd().(sessionKilledMsg)
-	if msg.err != nil || killed {
+	if msg.err != nil || !killed {
 		t.Fatalf("delete message = %#v, killed = %t", msg, killed)
 	}
 	updated, _ = updated.(model).Update(msg)
@@ -640,7 +640,7 @@ func TestMovingAbsentPersistentSessionUpdatesStateWithoutTmuxWrites(t *testing.T
 	m.selectedSession = "tflow-p-absent"
 
 	updated, cmd := m.applySessionMove("tflow-p-absent", "garden")
-	if cmd == nil || markerWrites != 0 {
+	if cmd == nil || markerWrites != 2 {
 		t.Fatalf("cmd = %v, marker writes = %d", cmd, markerWrites)
 	}
 	got := updated.(model)
