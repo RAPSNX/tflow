@@ -1,18 +1,13 @@
 package store
 
-import (
-	"reflect"
+import "github.com/rapsnx/tflow/internal/diag"
 
-	"github.com/rapsnx/tflow/internal/diag"
-)
-
-// ReconcileAppState removes persistent-session metadata that no longer has a
-// matching tmux session and drops projects left without sessions. It writes
-// state only when reconciliation changes it.
+// ReconcileAppState observes the tmux session list while holding the state
+// lock. Persistent metadata is intentionally retained when a session is not
+// running so it can be materialized later through an explicit user selection.
 //
-// The session snapshot is taken while the state lock is held. This prevents a
-// concurrent mutation from adding metadata after the snapshot but before the
-// reconciled state is saved.
+// The session snapshot is taken while the state lock is held so startup
+// observes tmux and persistent state within the same mutation boundary.
 func ReconcileAppState(path string, snapshotSessions func() (map[string]struct{}, error)) (bool, error) {
 	unlock, err := AcquireAppStateLock(path)
 	if err != nil {
@@ -24,34 +19,11 @@ func ReconcileAppState(path string, snapshotSessions func() (map[string]struct{}
 		}
 	}()
 
-	state, err := LoadAppState(path)
-	if err != nil {
+	if _, err := LoadAppState(path); err != nil {
 		return false, err
 	}
-	sessions, err := snapshotSessions()
-	if err != nil {
+	if _, err := snapshotSessions(); err != nil {
 		return false, err
 	}
-	reconciled := AppState{Projects: make([]Project, 0, len(state.Projects))}
-	for _, project := range state.Projects {
-		remaining := make([]PersistentSession, 0, len(project.Sessions))
-		for _, session := range project.Sessions {
-			if _, exists := sessions[session.ID]; exists {
-				remaining = append(remaining, session)
-			}
-		}
-		if len(remaining) == 0 {
-			continue
-		}
-		project.Sessions = remaining
-		reconciled.Projects = append(reconciled.Projects, project)
-	}
-	reconciled = NormalizeAppState(reconciled)
-	if reflect.DeepEqual(state, reconciled) {
-		return false, nil
-	}
-	if err := SaveAppState(path, reconciled); err != nil {
-		return false, err
-	}
-	return true, nil
+	return false, nil
 }

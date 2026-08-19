@@ -53,10 +53,10 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 ### P0: Startup reconciliation
 
 * [x] List tmux sessions once during startup.
-* [ ] Retain persistent-session and project metadata when tmux sessions are absent at startup, including after a reboot.
-* [ ] Remove the obsolete reconciliation cleanup that deletes missing persistent-session metadata and projects solely because they are absent from tmux.
-* [ ] Keep marker repair limited to persistent sessions that exist in tmux, without rewriting unrelated sessions or persistent state.
-* [ ] Test startup after an empty tmux server preserves projects and ordered persistent-session metadata without writing state.
+* [x] Retain persistent-session and project metadata when tmux sessions are absent at startup, including after a reboot.
+* [x] Remove the obsolete reconciliation cleanup that deletes missing persistent-session metadata and projects solely because they are absent from tmux.
+* [x] Keep marker repair limited to persistent sessions that exist in tmux, without rewriting unrelated sessions or persistent state.
+* [x] Test startup after an empty tmux server preserves projects and ordered persistent-session metadata without writing state.
 * [x] Treat an absent dedicated tmux server as an empty session list.
 * [x] Do not remove metadata when tmux returns another operational error.
 * [x] Restore project and label markers for surviving persistent sessions and clear stale volatile ownership markers.
