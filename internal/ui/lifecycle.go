@@ -474,9 +474,6 @@ func removeDeadOutgoingSession(manager tmuxController, menu model, outgoing stri
 // operation.
 func deletePersistentSessionsAfterSwitch(manager tmuxController, menu model) {
 	for _, name := range menu.exitDeleteSessions {
-		if _, running := menu.findSession(name); !running {
-			continue
-		}
 		if err := ignoreMissingSession(manager.KillSession(name)); err != nil {
 			diag.Warnf("delete session %q after fallback switch: %v", name, err)
 			return
