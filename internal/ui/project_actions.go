@@ -40,6 +40,9 @@ func (m model) deleteProject(project string) (tea.Model, tea.Cmd) {
 		m.status = "Select a project to delete."
 		return m, nil
 	}
+	if m.projectIsActive(project) {
+		return m.deferPersistentDeletion(project)
+	}
 	sessions := m.projectSessions(project)
 	return m, func() tea.Msg {
 		for _, s := range sessions {
@@ -51,6 +54,19 @@ func (m model) deleteProject(project string) (tea.Model, tea.Cmd) {
 	}
 }
 
+func (m model) projectIsActive(project string) bool {
+	return m.currentSession == "" || normalizeProjectName(m.sessionProjects[m.currentSession]) == project
+}
+
+func (m model) deferPersistentDeletion(project string) (tea.Model, tea.Cmd) {
+	sessions := m.projectSessions(project)
+	m.deferredDelete = make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		m.deferredDelete = append(m.deferredDelete, session.Name)
+	}
+	return m.createVolatileFallback()
+}
+
 func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
 	project = normalizeProjectName(project)
 	if project == "" {
@@ -59,7 +75,6 @@ func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	nextProject := m.nextProjectAfter(project, true)
 	deletedSessions := m.projectSessions(project)
 	// A blank m.currentSession means the client's active session is unknown
 	// to this model instance; treat that as if the active session belonged
@@ -108,8 +123,5 @@ func (m model) applyProjectDeletion(project string) (tea.Model, tea.Cmd) {
 	if !activeProjectDeleted {
 		return m, nil
 	}
-	if nextProject != "" {
-		return m.switchToProject(nextProject)
-	}
-	return m.createVolatileFallback()
+	return m, nil
 }

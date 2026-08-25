@@ -168,10 +168,10 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 * [x] Lazily create a missing selected persistent session with its stored internal ID, label, project marker, and project's workdir, then switch the originating client to it without changing persistent state.
 * [x] Lazily create the first stored session when explicitly switching to a project whose sessions are absent from tmux.
 * [x] Test lazy restoration after restart, direct missing-session selection, project selection, correct workdir and marker setup, persistence preservation, and create/switch failure handling.
-* [ ] After a successful session move, switch the originating client to the moved session in its target project without changing its tmux identity.
-* [ ] Test project creation uses the originating active pane directory and a successful move switches to its moved session.
-* [ ] Remove deletion paths that switch into a different persistent project; retain switching to another session in the same project and use a volatile fallback before deleting the final active session or active project.
-* [ ] Test non-active deletion leaves the client unchanged, active non-final deletion remains in its project, and final active session/project deletion never selects another project.
+* [x] After a successful session move, switch the originating client to the moved session in its target project without changing its tmux identity.
+* [x] Test project creation uses the originating active pane directory and a successful move switches to its moved session.
+* [x] Remove deletion paths that switch into a different persistent project; retain switching to another session in the same project and use a volatile fallback before deleting the final active session or active project.
+* [x] Test non-active deletion leaves the client unchanged, active non-final deletion remains in its project, and final active session/project deletion never selects another project.
 
 ### P1: Project settings editor
 

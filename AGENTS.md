@@ -51,6 +51,7 @@ Use Go's built-in `testing` package by default.
 
 - If the current worktree has pre-existing changes, stop immediately.
 - Work in a dedicated git worktree on a task branch created from `main`; when updating an existing PR, continue on that PR's branch.
+- When addressing pull request review comments, always verify each comment against the architecture and codebase, and resolve the review thread in GitHub once fixed.
 - Keep changes focused and avoid unrelated rewrites.
 - End every change in a meaningful commit.
 - Push the branch and open or update a published pull request.

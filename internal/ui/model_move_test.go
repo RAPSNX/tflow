@@ -134,8 +134,8 @@ func TestMoveSessionMovesBetweenProjectsAndWritesOnlyItsMarkers(t *testing.T) {
 		t.Fatal("expected close command after a successful move")
 	}
 	msg := cmd().(menuActionMsg)
-	if msg.switchSession != "" {
-		t.Fatalf("close msg = %#v, want plain close", msg)
+	if msg.switchSession != "tflow-p-1" {
+		t.Fatalf("switch msg = %#v, want moved session", msg)
 	}
 	got, ok := unwrapMenuModel(updated)
 	if !ok {
@@ -297,7 +297,7 @@ func TestMoveSessionOutOfFinalProjectSessionDeletesSourceProject(t *testing.T) {
 	}
 }
 
-func TestMoveSessionDoesNotSwitchClientForActiveSession(t *testing.T) {
+func TestMoveSessionSwitchesClientToMovedSession(t *testing.T) {
 	tmp := t.TempDir()
 	statePath := tmp + "/state.json"
 	seedMoveState(t, statePath,
@@ -305,13 +305,7 @@ func TestMoveSessionDoesNotSwitchClientForActiveSession(t *testing.T) {
 		storedProject{Name: "garden", Sessions: []persistentSession{{ID: "tflow-p-9", Label: "bee"}}},
 	)
 
-	var switched []string
-	m := newModel(fakeTmuxController{
-		switchClient: func(name string) error {
-			switched = append(switched, name)
-			return nil
-		},
-	}, "tflow-p-1").(model)
+	m := newModel(fakeTmuxController{}, "tflow-p-1").(model)
 	m.statePath = statePath
 	m.projects = []string{"small", "garden"}
 	m.sessions = []session{{Name: "tflow-p-1"}, {Name: "tflow-p-9"}}
@@ -324,7 +318,7 @@ func TestMoveSessionDoesNotSwitchClientForActiveSession(t *testing.T) {
 	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	pending := *(updated.(*model))
 
-	updated, _ = pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := pending.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
 	got, ok := unwrapMenuModel(updated)
 	if !ok {
 		t.Fatalf("updated model = %T", updated)
@@ -332,14 +326,25 @@ func TestMoveSessionDoesNotSwitchClientForActiveSession(t *testing.T) {
 	if got.err != nil {
 		t.Fatalf("move reported error: %v", got.err)
 	}
-	if len(switched) != 0 {
-		t.Fatalf("switch-client calls = %#v, want none: moving preserves the active session's tmux identity", switched)
+	if cmd == nil {
+		t.Fatal("expected moved-session switch command")
 	}
-	if got.currentSession != "tflow-p-1" {
-		t.Fatalf("currentSession = %q, want unchanged tflow-p-1", got.currentSession)
+	action := cmd().(menuActionMsg)
+	if action.switchSession != "tflow-p-1" {
+		t.Fatalf("switch session = %q, want moved session", action.switchSession)
+	}
+	final, _ := got.Update(action)
+	var switched []string
+	if err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error { switched = append(switched, name); return nil },
+	}, final); err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if got, want := fmt.Sprint(switched), fmt.Sprint([]string{"tflow-p-1"}); got != want {
+		t.Fatalf("switch-client calls = %s, want %s", got, want)
 	}
 	if got.currentProject() != "garden" {
-		t.Fatalf("currentProject() = %q, want garden reflected without a client switch", got.currentProject())
+		t.Fatalf("currentProject() = %q, want garden after moving the active session", got.currentProject())
 	}
 }
 
@@ -428,8 +433,8 @@ func TestSuccessfulSessionMoveClosesSidebar(t *testing.T) {
 	if !ok {
 		t.Fatalf("cmd() = %T, want menuActionMsg", cmd())
 	}
-	if msg.switchSession != "" {
-		t.Fatalf("close msg = %#v, want plain close", msg)
+	if msg.switchSession != "tflow-p-1" {
+		t.Fatalf("switch msg = %#v, want moved session", msg)
 	}
 }
 

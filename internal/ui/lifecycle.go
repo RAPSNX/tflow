@@ -412,9 +412,14 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 		// reported as a diagnostic and treated as "not dead" -- it must never
 		// block the switch itself, which is the primary operation here.
 		outgoing := strings.TrimSpace(menu.currentSession)
-		removable := outgoing != "" && outgoing != target && outgoingSessionPanesAllDead(manager, outgoing)
+		deletingAfterSwitch := len(menu.exitDeleteSessions) > 0
+		removable := !deletingAfterSwitch && outgoing != "" && outgoing != target && outgoingSessionPanesAllDead(manager, outgoing)
 		if err := manager.SwitchClient(target); err != nil {
 			return err
+		}
+		if deletingAfterSwitch {
+			deletePersistentSessionsAfterSwitch(manager, menu)
+			return nil
 		}
 		if removable {
 			removeDeadOutgoingSession(manager, menu, outgoing)
@@ -459,6 +464,32 @@ func removeDeadOutgoingSession(manager tmuxController, menu model, outgoing stri
 		return store.RemoveSession(state, outgoing), nil
 	}); err != nil {
 		diag.Warnf("remove persisted metadata for dead outgoing session %q: %v", outgoing, err)
+	}
+}
+
+// deletePersistentSessionsAfterSwitch removes explicit deletion targets only
+// after the fallback client switch succeeded. This keeps the client attached
+// throughout active final-session and active-project deletion. Failures are
+// diagnostics because the fallback switch is already the completed primary
+// operation.
+func deletePersistentSessionsAfterSwitch(manager tmuxController, menu model) {
+	for _, name := range menu.exitDeleteSessions {
+		if err := ignoreMissingSession(manager.KillSession(name)); err != nil {
+			diag.Warnf("delete session %q after fallback switch: %v", name, err)
+			return
+		}
+	}
+	path := menu.statePath
+	if strings.TrimSpace(path) == "" {
+		path = appStatePath()
+	}
+	if _, err := mutateAppState(path, func(state appState) (appState, error) {
+		for _, name := range menu.exitDeleteSessions {
+			state = store.RemoveSession(state, name)
+		}
+		return state, nil
+	}); err != nil {
+		diag.Warnf("remove persistent metadata after fallback switch: %v", err)
 	}
 }
 
