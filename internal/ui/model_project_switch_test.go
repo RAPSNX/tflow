@@ -619,7 +619,7 @@ func TestRenamingAbsentPersistentSessionUpdatesStateWithoutTmuxWrite(t *testing.
 	}
 }
 
-func TestMovingAbsentPersistentSessionUpdatesStateWithoutTmuxWrites(t *testing.T) {
+func TestMovingAbsentPersistentSessionMaterializesItForTheRequiredSwitch(t *testing.T) {
 	initial := appState{Projects: []storedProject{
 		{Name: "small", Sessions: []persistentSession{{ID: "tflow-p-absent", Label: "absent"}}},
 		{Name: "garden", Sessions: []persistentSession{{ID: "tflow-p-live", Label: "live"}}},
@@ -640,7 +640,7 @@ func TestMovingAbsentPersistentSessionUpdatesStateWithoutTmuxWrites(t *testing.T
 	m.selectedSession = "tflow-p-absent"
 
 	updated, cmd := m.applySessionMove("tflow-p-absent", "garden")
-	if cmd == nil || markerWrites != 2 {
+	if cmd == nil || markerWrites != 4 {
 		t.Fatalf("cmd = %v, marker writes = %d", cmd, markerWrites)
 	}
 	got := updated.(model)

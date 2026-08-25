@@ -239,6 +239,43 @@ func TestRunMenuExitActionNeverCleansUpWhenSwitchFails(t *testing.T) {
 	}
 }
 
+func TestRunMenuExitActionKeepsPersistentDeletionWhenFallbackSwitchFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{{ID: "tflow-p-old", Label: "old"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var killed []string
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-fallback",
+		exitDeleteSessions: []string{"tflow-p-old"},
+		currentSession:     "tflow-p-old",
+		statePath:          path,
+		sessions:           []session{{Name: "tflow-p-old"}, {Name: "tflow-v-fallback", Temporary: true}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error { return fmt.Errorf("tmux: switch failed") },
+		killSession:  func(name string) error { killed = append(killed, name); return nil },
+	}, menu)
+	if err == nil || !strings.Contains(err.Error(), "switch failed") {
+		t.Fatalf("runMenuExitAction error = %v, want fallback switch failure", err)
+	}
+	if len(killed) != 0 {
+		t.Fatalf("killed = %#v, want no persistent deletion before the fallback switch succeeds", killed)
+	}
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 1 || len(persisted.Projects[0].Sessions) != 1 {
+		t.Fatalf("persisted state = %#v, want deletion metadata retained", persisted)
+	}
+}
+
 func TestRunMenuExitActionReportsDiagnosticWhenTmuxCleanupFails(t *testing.T) {
 	var buf bytes.Buffer
 	original := diag.Output

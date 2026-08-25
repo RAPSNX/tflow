@@ -15,7 +15,7 @@ func TestDDeletesSelectedSession(t *testing.T) {
 			killed = append(killed, name)
 			return nil
 		},
-	}, "").(model)
+	}, "other").(model)
 	m.projects = []string{defaultProjectName}
 	m.sessions = []session{{Name: "dev"}}
 	m.sessionProjects = map[string]string{"dev": defaultProjectName}

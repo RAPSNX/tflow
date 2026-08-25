@@ -200,7 +200,7 @@ func TestDDeletesProjectWithSelectedSession(t *testing.T) {
 			killed = append(killed, name)
 			return nil
 		},
-	}, "").(model)
+	}, "other").(model)
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{"small"}
 	m.sessions = []session{{Name: "tflow-p-8f42ac91"}}
@@ -462,7 +462,7 @@ func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 			killed = append(killed, name)
 			return nil
 		},
-	}, "").(model)
+	}, "keep").(model)
 	m.statePath = tmp + "/state.json"
 	m.projects = []string{"small", "storage"}
 	m.sessions = []session{{Name: "dev"}, {Name: "api"}, {Name: "keep"}}
@@ -490,8 +490,8 @@ func TestDeleteProjectDeletesSessionsInCurrentProject(t *testing.T) {
 	if !ok {
 		t.Fatalf("updated model = %T", updated)
 	}
-	if followUp == nil {
-		t.Fatal("expected session switch command")
+	if followUp != nil {
+		t.Fatal("deleted non-active project must not switch sessions")
 	}
 	if containsString(got.projects, "small") {
 		t.Fatalf("projects still contain deleted project: %#v", got.projects)
@@ -601,6 +601,14 @@ func TestKillNonActiveSessionDoesNotSwitchClient(t *testing.T) {
 func TestDeletingActiveProjectFallbackUsesActivePaneWorkdir(t *testing.T) {
 	tmp := t.TempDir()
 	const distinctiveCwd = "/tmp/distinctive-active-pane-cwd"
+	const deletedSession = "small--otter"
+	statePath := tmp + "/state.json"
+	if err := saveAppState(statePath, appState{Projects: []storedProject{{
+		Name: "small", Workdir: distinctiveCwd, Sessions: []persistentSession{{ID: deletedSession, Label: "otter"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
 	var createdCwd string
 	m := newModel(fakeTmuxController{
 		createSession: func(name, cwd, command string) (session, error) {
@@ -608,36 +616,98 @@ func TestDeletingActiveProjectFallbackUsesActivePaneWorkdir(t *testing.T) {
 			return session{Name: name}, nil
 		},
 		setSessionTemporary: func(name string, temporary bool, instanceID string) error { return nil },
-	}, "small--otter").(model)
+	}, deletedSession).(model)
 	m.instanceID = "instance-1"
 	m.cwd = distinctiveCwd
-	m.statePath = tmp + "/state.json"
+	m.statePath = statePath
 	m.projects = []string{"small"}
-	m.sessions = []session{{Name: "small--otter"}}
-	m.sessionProjects = map[string]string{"small--otter": "small"}
-	m.sessionLabels = map[string]string{"small--otter": "otter"}
+	m.sessions = []session{{Name: deletedSession}}
+	m.sessionProjects = map[string]string{deletedSession: "small"}
+	m.sessionLabels = map[string]string{deletedSession: "otter"}
 	m.selectedProject = "small"
 
 	updated, cmd := m.deleteProject("small")
 	pending := updated.(model)
 	if cmd == nil {
-		t.Fatal("expected delete command")
+		t.Fatal("expected fallback creation command")
 	}
-	msg := cmd().(projectDeletedMsg)
-	if msg.err != nil {
-		t.Fatalf("delete returned error: %v", msg.err)
-	}
-
-	_, followUp := pending.Update(msg)
-	if followUp == nil {
-		t.Fatal("expected volatile fallback command")
-	}
-	created := followUp().(sessionCreatedMsg)
+	created := cmd().(sessionCreatedMsg)
 	if created.err != nil || !created.volatile {
-		t.Fatalf("fallback session = %#v", created)
+		t.Fatalf("fallback session = %+v", created)
 	}
 	if createdCwd != distinctiveCwd {
 		t.Fatalf("fallback cwd = %q, want %q", createdCwd, distinctiveCwd)
+	}
+
+	updated, switchCmd := pending.Update(created)
+	if switchCmd == nil {
+		t.Fatal("expected fallback switch command")
+	}
+	action := switchCmd().(menuActionMsg)
+	if action.switchSession != created.session.Name || fmt.Sprint(action.deleteSessions) != fmt.Sprint([]string{deletedSession}) {
+		t.Fatalf("fallback action = %+v", action)
+	}
+	final, _ := updated.(model).Update(action)
+
+	var switched, killed []string
+	if err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error { switched = append(switched, name); return nil },
+		killSession:  func(name string) error { killed = append(killed, name); return nil },
+	}, final); err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if got, want := fmt.Sprint(switched), fmt.Sprint([]string{created.session.Name}); got != want {
+		t.Fatalf("switched = %s, want %s", got, want)
+	}
+	if got, want := fmt.Sprint(killed), fmt.Sprint([]string{deletedSession}); got != want {
+		t.Fatalf("killed = %s, want %s", got, want)
+	}
+	persisted, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 0 {
+		t.Fatalf("persisted state = %+v, want deleted project removed", persisted)
+	}
+}
+
+func TestFailedFinalProjectFallbackDoesNotArmLaterSwitch(t *testing.T) {
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			return session{}, fmt.Errorf("create failed")
+		},
+	}, "small--otter").(model)
+	m.instanceID = "instance-1"
+	m.projects = []string{"small", "garden"}
+	m.sessions = []session{{Name: "small--otter"}, {Name: "garden--bee"}}
+	m.sessionProjects = map[string]string{"small--otter": "small", "garden--bee": "garden"}
+	m.sessionLabels = map[string]string{"small--otter": "otter", "garden--bee": "bee"}
+	m.selectedProject = "small"
+	m.selectedSession = "small--otter"
+
+	updated, cmd := m.deleteProject("small")
+	if cmd == nil {
+		t.Fatal("expected fallback creation command")
+	}
+	failed := cmd().(sessionCreatedMsg)
+	if failed.err == nil {
+		t.Fatal("expected fallback creation failure")
+	}
+	updated, _ = updated.(model).Update(failed)
+	got := updated.(model)
+	if len(got.deferredDelete) != 0 {
+		t.Fatalf("deferred deletion = %#v, want cleared after fallback failure", got.deferredDelete)
+	}
+
+	got.selectedProject = "garden"
+	got.selectedSession = "garden--bee"
+	_, switchCmd := got.switchSelectedSession()
+	if switchCmd == nil {
+		t.Fatal("expected explicit session switch command")
+	}
+	action := switchCmd().(menuActionMsg)
+	if len(action.deleteSessions) != 0 {
+		t.Fatalf("later switch action = %#v, must not delete the failed project", action)
 	}
 }
 

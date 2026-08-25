@@ -67,8 +67,9 @@ type projectDeletedMsg struct {
 }
 
 type menuActionMsg struct {
-	switchSession string
-	quit          bool
+	switchSession  string
+	deleteSessions []string
+	quit           bool
 }
 
 type menuExitAction int
@@ -123,6 +124,7 @@ type model struct {
 	projectEditConfig   projectConfig
 	moveTarget          moveTarget
 	moveProjectIndex    int
+	deferredDelete      []string
 
 	cwd           string
 	statePath     string
@@ -130,10 +132,11 @@ type model struct {
 	stateBasePath string
 	stateLockHeld bool
 
-	exitAction      menuExitAction
-	exitSessionName string
-	status          string
-	err             error
+	exitAction         menuExitAction
+	exitSessionName    string
+	exitDeleteSessions []string
+	status             string
+	err                error
 }
 
 const (

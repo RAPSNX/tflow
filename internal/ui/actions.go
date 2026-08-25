@@ -34,7 +34,7 @@ func (m model) switchSelectedSession() (tea.Model, tea.Cmd) {
 		return m.materializePersistentSession(name)
 	}
 	return m, func() tea.Msg {
-		return menuActionMsg{switchSession: name}
+		return menuActionMsg{switchSession: name, deleteSessions: append([]string(nil), m.deferredDelete...)}
 	}
 }
 
@@ -235,8 +235,12 @@ func (m model) killSession(name string) (tea.Model, tea.Cmd) {
 		m.status = "No session selected."
 		return m, nil
 	}
+	project := normalizeProjectName(m.sessionProjects[name])
+	if project != "" && m.projectIsActive(project) && len(m.projectSessions(project)) == 1 {
+		return m.deferPersistentDeletion(project)
+	}
 	return m, func() tea.Msg {
-		return sessionKilledMsg{name: name, project: normalizeProjectName(m.sessionProjects[name]), err: ignoreMissingSession(m.tmux.KillSession(name))}
+		return sessionKilledMsg{name: name, project: project, err: ignoreMissingSession(m.tmux.KillSession(name))}
 	}
 }
 
@@ -415,6 +419,7 @@ func (m model) nextProjectAfter(project string, deletingProject bool) string {
 
 func (m model) createVolatileFallback() (tea.Model, tea.Cmd) {
 	if strings.TrimSpace(m.instanceID) == "" {
+		m.deferredDelete = nil
 		m.err = fmt.Errorf("tflow instance id is empty")
 		m.status = m.err.Error()
 		return m, nil

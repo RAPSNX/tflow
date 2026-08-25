@@ -11,6 +11,7 @@ import (
 
 func (m model) finishSessionCreationFollowUpError(err error) (tea.Model, tea.Cmd) {
 	m.mode = inputNone
+	m.deferredDelete = nil
 	m.err = err
 	m.status = err.Error()
 	return m, nil
@@ -42,6 +43,7 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case sessionCreatedMsg:
 		if msg.err != nil {
+			m.deferredDelete = nil
 			m.err = msg.err
 			m.status = msg.err.Error()
 			return m, nil
@@ -125,9 +127,11 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !activeSessionDeleted {
 			return m, nil
 		}
-		nextProject := m.nextProjectAfter(project, deletingProject)
-		if nextProject != "" {
-			return m.switchToProject(nextProject)
+		remaining := m.projectSessions(project)
+		if len(remaining) > 0 {
+			m.selectedProject = project
+			m.selectedSession = remaining[0].Name
+			return m.switchSelectedSession()
 		}
 		return m.createVolatileFallback()
 	case sessionRenamedMsg:
@@ -233,12 +237,15 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.quit {
 			m.exitAction = menuExitQuit
 			m.exitSessionName = ""
+			m.exitDeleteSessions = nil
 		} else if strings.TrimSpace(msg.switchSession) != "" {
 			m.exitAction = menuExitSwitchSession
 			m.exitSessionName = msg.switchSession
+			m.exitDeleteSessions = append([]string(nil), msg.deleteSessions...)
 		} else {
 			m.exitAction = menuExitNone
 			m.exitSessionName = ""
+			m.exitDeleteSessions = nil
 		}
 		m.err = nil
 		m.status = ""
