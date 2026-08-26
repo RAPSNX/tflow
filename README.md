@@ -74,7 +74,7 @@ Press `Ctrl+F` to open the sidebar. From there you can create, rename, move, del
 | `n` | Create a session |
 | `N` | Create a project |
 | `p` | Switch project |
-| `e` | Edit project workdir |
+| `e` | Edit project settings |
 | `r` | Rename session |
 | `R` | Rename project |
 | `m` | Move session to another project |

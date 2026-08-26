@@ -18,8 +18,6 @@ func (m model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Session"))
 	case inputCreateProject:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("New Project"))
-	case inputEditProject:
-		return appStyle.Width(m.width).Height(m.height).Render(m.renderInputOverlay("Project Settings"))
 	case inputConfirmDelete:
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderDeleteOverlay())
 	case inputConfirmProjectSwitch:
@@ -197,8 +195,6 @@ func (m model) renderInputOverlay(title string) string {
 		title = "Session"
 	case "New Project":
 		title = "Project"
-	case "Project Settings":
-		badge, title = "settings", "Project"
 	}
 	return m.renderDialogCard(badge, title, "", m.renderInputField(), false)
 }

@@ -26,7 +26,6 @@ const (
 	inputConfirmProjectSwitch
 	inputConfirmQuit
 	inputRename
-	inputEditProject
 	inputMoveSession
 )
 
@@ -121,7 +120,6 @@ type model struct {
 	deleteTarget        deleteTarget
 	switchProjectTarget string
 	projectSwitchIndex  int
-	projectEditConfig   projectConfig
 	moveTarget          moveTarget
 	moveProjectIndex    int
 	deferredDelete      []string

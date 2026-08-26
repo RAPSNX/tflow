@@ -175,10 +175,10 @@ This checklist is derived from `.codex/ARCHITECTURE.md`. Work is ordered by prio
 
 ### P1: Project settings editor
 
-* [ ] Replace the single-line project-workdir prompt with a temporary YAML document opened in $EDITOR, falling back to nvim, within the existing sidebar popup.
-* [ ] Strictly parse the editor document after exit, accept only supported project settings (currently workdir), and persist valid settings through the existing JSON store mutation path.
-* [ ] Create the temporary editor document securely, remove it on every exit path, and never add a persistent project-settings file.
-* [ ] Test editor selection, valid settings updates, unknown-key and invalid-document rejection without state changes, temporary-file cleanup, and project workdir normalization including home-directory expansion on save.
+* [x] Replace the single-line project-workdir prompt with a temporary YAML document opened in $EDITOR, falling back to nvim, within the existing sidebar popup.
+* [x] Strictly parse the editor document after exit, accept only supported project settings (currently workdir), and persist valid settings through the existing JSON store mutation path.
+* [x] Create the temporary editor document securely, remove it on every exit path, and never add a persistent project-settings file.
+* [x] Test editor selection, valid settings updates, unknown-key and invalid-document rejection without state changes, temporary-file cleanup, and project workdir normalization including home-directory expansion on save.
 
 ### P1: Generated labels
 

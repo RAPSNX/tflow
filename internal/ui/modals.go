@@ -140,16 +140,6 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			return m.confirmQuit()
 		}
-	case inputEditProject:
-		switch msg.Type {
-		case tea.KeyEsc:
-			return m.cancelProjectEdit()
-		case tea.KeyEnter:
-			return m.commitProjectEditField()
-		}
-		next, cmd := m.input.Update(msg)
-		m.input = next
-		return m, cmd
 	case inputRename:
 		switch msg.Type {
 		case tea.KeyEsc:

@@ -294,7 +294,7 @@ func TestDialogsUseSharedStructuredCardLayout(t *testing.T) {
 	}{
 		{"create session", func() string { return m.renderInputOverlay("New Session") }, "CREATE", "Session", "", []string{"project: small"}},
 		{"create project", func() string { return m.renderInputOverlay("New Project") }, "CREATE", "Project", "", []string{"project:"}},
-		{"settings", func() string { return m.renderInputOverlay("Project Settings") }, "SETTINGS", "Project", "", nil},
+		{"move", m.renderSessionMoveOverlay, "MOVE", "Session", "Move", nil},
 		{"rename", m.renderRenameOverlay, "RENAME", "Session", "Current: otter", nil},
 		{"switch", m.renderProjectSwitchOverlay, "SWITCH", "Project", "Choose a project.", nil},
 		{"delete", m.renderDeleteOverlay, "DELETE", "Session", "Delete otter?", nil},
