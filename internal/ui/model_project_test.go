@@ -731,6 +731,47 @@ func TestEditProjectRequiresProjectContext(t *testing.T) {
 	}
 }
 
+func TestSplitShellWords(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    []string
+		wantErr bool
+	}{
+		{input: "", want: nil},
+		{input: "   ", want: nil},
+		{input: "nvim", want: []string{"nvim"}},
+		{input: "nvim -c 'set ft=yaml'", want: []string{"nvim", "-c", "set ft=yaml"}},
+		{input: `code --wait --new-window`, want: []string{"code", "--wait", "--new-window"}},
+		{input: `"/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl" -w`, want: []string{"/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl", "-w"}},
+		{input: `vim "quoted with \"escaped\" quotes"`, want: []string{"vim", `quoted with "escaped" quotes`}},
+		{input: `unclosed 'quote`, wantErr: true},
+		{input: `unclosed "quote`, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := splitShellWords(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("splitShellWords(%q) expected error, got nil", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("splitShellWords(%q) unexpected error: %v", tt.input, err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("splitShellWords(%q) = %#v, want %#v", tt.input, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("splitShellWords(%q)[%d] = %q, want %q", tt.input, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestResolveEditorCommand(t *testing.T) {
 	t.Run("defaults to nvim", func(t *testing.T) {
 		t.Setenv("EDITOR", "")
@@ -759,6 +800,50 @@ func TestResolveEditorCommand(t *testing.T) {
 			t.Fatalf("args = %v", cmd.Args)
 		}
 	})
+
+	t.Run("preserves quoted arguments with spaces", func(t *testing.T) {
+		t.Setenv("EDITOR", `nvim -c "set ft=yaml"`)
+		cmd, err := resolveEditorCommand("/tmp/test.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cmd.Path != "nvim" && !strings.HasSuffix(cmd.Path, "/nvim") {
+			t.Fatalf("expected nvim, got %q", cmd.Path)
+		}
+		if len(cmd.Args) != 4 || cmd.Args[1] != "-c" || cmd.Args[2] != "set ft=yaml" || cmd.Args[3] != "/tmp/test.yaml" {
+			t.Fatalf("args = %v", cmd.Args)
+		}
+	})
+
+	t.Run("preserves quoted executable path with spaces", func(t *testing.T) {
+		t.Setenv("EDITOR", `"/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl" -w`)
+		cmd, err := resolveEditorCommand("/tmp/test.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cmd.Path != "/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl" {
+			t.Fatalf("expected subl path, got %q", cmd.Path)
+		}
+		if len(cmd.Args) != 3 || cmd.Args[1] != "-w" || cmd.Args[2] != "/tmp/test.yaml" {
+			t.Fatalf("args = %v", cmd.Args)
+		}
+	})
+}
+
+func TestActiveTempFilesCleanup(t *testing.T) {
+	tempFile, err := os.CreateTemp("", "tflow-test-active-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempPath := tempFile.Name()
+	_ = tempFile.Close()
+
+	registerTempFile(tempPath)
+	cleanupActiveTempFiles()
+
+	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
+		t.Fatalf("expected temp file %q to be removed by cleanupActiveTempFiles", tempPath)
+	}
 }
 
 func TestFormatAndParseProjectSettingsYAML(t *testing.T) {

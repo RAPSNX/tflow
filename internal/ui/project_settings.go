@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
@@ -25,12 +26,123 @@ type projectEditorFinishedMsg struct {
 	err      error
 }
 
+var (
+	activeTempFilesMu sync.Mutex
+	activeTempFiles   = make(map[string]struct{})
+)
+
+func registerTempFile(path string) {
+	activeTempFilesMu.Lock()
+	defer activeTempFilesMu.Unlock()
+	activeTempFiles[path] = struct{}{}
+}
+
+func unregisterTempFile(path string) {
+	activeTempFilesMu.Lock()
+	defer activeTempFilesMu.Unlock()
+	delete(activeTempFiles, path)
+}
+
+func cleanupActiveTempFiles() {
+	activeTempFilesMu.Lock()
+	defer activeTempFilesMu.Unlock()
+	for path := range activeTempFiles {
+		_ = os.Remove(path)
+		delete(activeTempFiles, path)
+	}
+}
+
+func splitShellWords(cmd string) ([]string, error) {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return nil, nil
+	}
+
+	var words []string
+	var current strings.Builder
+	inSingle := false
+	inDouble := false
+	escaped := false
+	inToken := false
+
+	for i := 0; i < len(cmd); i++ {
+		ch := cmd[i]
+
+		if escaped {
+			current.WriteByte(ch)
+			escaped = false
+			inToken = true
+			continue
+		}
+
+		if inSingle {
+			if ch == '\'' {
+				inSingle = false
+			} else {
+				current.WriteByte(ch)
+			}
+			inToken = true
+			continue
+		}
+
+		if inDouble {
+			if ch == '"' {
+				inDouble = false
+			} else if ch == '\\' {
+				if i+1 < len(cmd) && (cmd[i+1] == '"' || cmd[i+1] == '\\' || cmd[i+1] == '$' || cmd[i+1] == '`' || cmd[i+1] == '\n') {
+					escaped = true
+				} else {
+					current.WriteByte(ch)
+				}
+			} else {
+				current.WriteByte(ch)
+			}
+			inToken = true
+			continue
+		}
+
+		switch ch {
+		case '\\':
+			escaped = true
+			inToken = true
+		case '\'':
+			inSingle = true
+			inToken = true
+		case '"':
+			inDouble = true
+			inToken = true
+		case ' ', '\t', '\n', '\r':
+			if inToken {
+				words = append(words, current.String())
+				current.Reset()
+				inToken = false
+			}
+		default:
+			current.WriteByte(ch)
+			inToken = true
+		}
+	}
+
+	if inSingle || inDouble || escaped {
+		return nil, fmt.Errorf("unclosed quote or escape in command %q", cmd)
+	}
+
+	if inToken {
+		words = append(words, current.String())
+	}
+
+	return words, nil
+}
+
 var resolveEditorCommand = func(tempFile string) (*exec.Cmd, error) {
 	editor := strings.TrimSpace(os.Getenv("EDITOR"))
 	if editor == "" {
 		editor = "nvim"
 	}
-	parts := strings.Fields(editor)
+	parts, err := splitShellWords(editor)
+	if err != nil {
+		return nil, fmt.Errorf("parse EDITOR: %w", err)
+	}
 	if len(parts) == 0 {
 		parts = []string{"nvim"}
 	}
@@ -93,10 +205,12 @@ func (m model) editProject() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	tempPath := tempFile.Name()
+	registerTempFile(tempPath)
 
 	if err := os.Chmod(tempPath, 0600); err != nil {
 		_ = tempFile.Close()
 		_ = os.Remove(tempPath)
+		unregisterTempFile(tempPath)
 		m.err = err
 		m.status = fmt.Sprintf("Failed to set temporary file permissions: %v", err)
 		return m, nil
@@ -105,12 +219,14 @@ func (m model) editProject() (tea.Model, tea.Cmd) {
 	if _, err := tempFile.Write(yamlContent); err != nil {
 		_ = tempFile.Close()
 		_ = os.Remove(tempPath)
+		unregisterTempFile(tempPath)
 		m.err = err
 		m.status = fmt.Sprintf("Failed to write temporary file: %v", err)
 		return m, nil
 	}
 	if err := tempFile.Close(); err != nil {
 		_ = os.Remove(tempPath)
+		unregisterTempFile(tempPath)
 		m.err = err
 		m.status = fmt.Sprintf("Failed to close temporary file: %v", err)
 		return m, nil
@@ -119,6 +235,7 @@ func (m model) editProject() (tea.Model, tea.Cmd) {
 	cmd, err := resolveEditorCommand(tempPath)
 	if err != nil {
 		_ = os.Remove(tempPath)
+		unregisterTempFile(tempPath)
 		m.err = err
 		m.status = fmt.Sprintf("Failed to resolve editor: %v", err)
 		return m, nil
@@ -138,7 +255,10 @@ func (m model) editProject() (tea.Model, tea.Cmd) {
 
 func (m model) handleProjectEditorFinished(msg projectEditorFinishedMsg) (tea.Model, tea.Cmd) {
 	if msg.tempPath != "" {
-		defer os.Remove(msg.tempPath)
+		defer func() {
+			_ = os.Remove(msg.tempPath)
+			unregisterTempFile(msg.tempPath)
+		}()
 	}
 
 	if msg.err != nil {
