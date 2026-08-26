@@ -39,6 +39,49 @@ func TestMStartsSessionMoveModeExcludingCurrentProject(t *testing.T) {
 	}
 }
 
+func TestMoveProjectNavigationCycles(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.projects = []string{"small", "garden", "forest", "desert"}
+	m.sessions = []session{{Name: "tflow-p-1"}}
+	m.sessionProjects = map[string]string{"tflow-p-1": "small"}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-1"
+
+	updated, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	got := *(updated.(*model))
+	if got.moveProjectIndex != 0 {
+		t.Fatalf("initial index = %d, want 0", got.moveProjectIndex)
+	}
+
+	// Down arrow moves to index 1
+	updated, _ = got.updateModal(tea.KeyMsg{Type: tea.KeyDown})
+	got = updated.(model)
+	if got.moveProjectIndex != 1 {
+		t.Fatalf("index after down = %d, want 1", got.moveProjectIndex)
+	}
+
+	// Down arrow moves to index 2
+	updated, _ = got.updateModal(tea.KeyMsg{Type: tea.KeyDown})
+	got = updated.(model)
+	if got.moveProjectIndex != 2 {
+		t.Fatalf("index after down = %d, want 2", got.moveProjectIndex)
+	}
+
+	// Down arrow wraps to 0
+	updated, _ = got.updateModal(tea.KeyMsg{Type: tea.KeyDown})
+	got = updated.(model)
+	if got.moveProjectIndex != 0 {
+		t.Fatalf("index after wrap down = %d, want 0", got.moveProjectIndex)
+	}
+
+	// Up arrow wraps to 2
+	updated, _ = got.updateModal(tea.KeyMsg{Type: tea.KeyUp})
+	got = updated.(model)
+	if got.moveProjectIndex != 2 {
+		t.Fatalf("index after wrap up = %d, want 2", got.moveProjectIndex)
+	}
+}
+
 func TestMRequiresASelectedSession(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 

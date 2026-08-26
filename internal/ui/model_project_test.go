@@ -3,6 +3,10 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -727,7 +731,160 @@ func TestEditProjectRequiresProjectContext(t *testing.T) {
 	}
 }
 
-func TestEditProjectStartsInlineSettingsFlow(t *testing.T) {
+func TestSplitShellWords(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    []string
+		wantErr bool
+	}{
+		{input: "", want: nil},
+		{input: "   ", want: nil},
+		{input: "nvim", want: []string{"nvim"}},
+		{input: "nvim -c 'set ft=yaml'", want: []string{"nvim", "-c", "set ft=yaml"}},
+		{input: `code --wait --new-window`, want: []string{"code", "--wait", "--new-window"}},
+		{input: `"/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl" -w`, want: []string{"/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl", "-w"}},
+		{input: `vim "quoted with \"escaped\" quotes"`, want: []string{"vim", `quoted with "escaped" quotes`}},
+		{input: `unclosed 'quote`, wantErr: true},
+		{input: `unclosed "quote`, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := splitShellWords(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("splitShellWords(%q) expected error, got nil", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("splitShellWords(%q) unexpected error: %v", tt.input, err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("splitShellWords(%q) = %#v, want %#v", tt.input, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("splitShellWords(%q)[%d] = %q, want %q", tt.input, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestResolveEditorCommand(t *testing.T) {
+	t.Run("defaults to nvim", func(t *testing.T) {
+		t.Setenv("EDITOR", "")
+		cmd, err := resolveEditorCommand("/tmp/test.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cmd.Path != "nvim" && !strings.HasSuffix(cmd.Path, "/nvim") {
+			t.Fatalf("expected nvim, got %q", cmd.Path)
+		}
+		if len(cmd.Args) != 2 || cmd.Args[1] != "/tmp/test.yaml" {
+			t.Fatalf("args = %v", cmd.Args)
+		}
+	})
+
+	t.Run("respects custom EDITOR with flags", func(t *testing.T) {
+		t.Setenv("EDITOR", "code --wait")
+		cmd, err := resolveEditorCommand("/tmp/test.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cmd.Path != "code" && !strings.HasSuffix(cmd.Path, "/code") {
+			t.Fatalf("expected code, got %q", cmd.Path)
+		}
+		if len(cmd.Args) != 3 || cmd.Args[1] != "--wait" || cmd.Args[2] != "/tmp/test.yaml" {
+			t.Fatalf("args = %v", cmd.Args)
+		}
+	})
+
+	t.Run("preserves quoted arguments with spaces", func(t *testing.T) {
+		t.Setenv("EDITOR", `nvim -c "set ft=yaml"`)
+		cmd, err := resolveEditorCommand("/tmp/test.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cmd.Path != "nvim" && !strings.HasSuffix(cmd.Path, "/nvim") {
+			t.Fatalf("expected nvim, got %q", cmd.Path)
+		}
+		if len(cmd.Args) != 4 || cmd.Args[1] != "-c" || cmd.Args[2] != "set ft=yaml" || cmd.Args[3] != "/tmp/test.yaml" {
+			t.Fatalf("args = %v", cmd.Args)
+		}
+	})
+
+	t.Run("preserves quoted executable path with spaces", func(t *testing.T) {
+		t.Setenv("EDITOR", `"/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl" -w`)
+		cmd, err := resolveEditorCommand("/tmp/test.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cmd.Path != "/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl" {
+			t.Fatalf("expected subl path, got %q", cmd.Path)
+		}
+		if len(cmd.Args) != 3 || cmd.Args[1] != "-w" || cmd.Args[2] != "/tmp/test.yaml" {
+			t.Fatalf("args = %v", cmd.Args)
+		}
+	})
+}
+
+func TestActiveTempFilesCleanup(t *testing.T) {
+	tempFile, err := os.CreateTemp("", "tflow-test-active-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempPath := tempFile.Name()
+	_ = tempFile.Close()
+
+	registerTempFile(tempPath)
+	cleanupActiveTempFiles()
+
+	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
+		t.Fatalf("expected temp file %q to be removed by cleanupActiveTempFiles", tempPath)
+	}
+}
+
+func TestFormatAndParseProjectSettingsYAML(t *testing.T) {
+	cfg := projectConfig{
+		Name:    "myproj",
+		Workdir: "/path/to/myproj",
+	}
+	data, err := formatProjectSettingsYAML(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "workdir: /path/to/myproj") {
+		t.Fatalf("formatted yaml missing workdir: %s", string(data))
+	}
+
+	doc, err := parseProjectSettingsYAML(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Workdir != "/path/to/myproj" {
+		t.Fatalf("workdir = %q", doc.Workdir)
+	}
+
+	t.Run("rejects unknown keys", func(t *testing.T) {
+		invalid := []byte("workdir: /tmp\nextra_key: value\n")
+		_, err := parseProjectSettingsYAML(invalid)
+		if err == nil {
+			t.Fatal("expected error on unknown key")
+		}
+	})
+
+	t.Run("rejects multiple documents", func(t *testing.T) {
+		multiple := []byte("workdir: /tmp\n---\nworkdir: /other\n")
+		_, err := parseProjectSettingsYAML(multiple)
+		if err == nil {
+			t.Fatal("expected error on multiple documents")
+		}
+	})
+}
+
+func TestEditProjectGeneratesYAMLAndExecutesEditor(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 	m.projects = []string{"small"}
 	m.selectedProject = "small"
@@ -735,23 +892,40 @@ func TestEditProjectStartsInlineSettingsFlow(t *testing.T) {
 		"small": {Name: "small", Workdir: "/tmp/small"},
 	}
 
+	var executedPath string
+	oldResolve := resolveEditorCommand
+	defer func() { resolveEditorCommand = oldResolve }()
+	resolveEditorCommand = func(tempFile string) (*exec.Cmd, error) {
+		executedPath = tempFile
+		info, err := os.Stat(tempFile)
+		if err != nil {
+			t.Fatalf("stat temp file: %v", err)
+		}
+		if mode := info.Mode().Perm(); mode != 0600 {
+			t.Fatalf("file mode = %v, want 0600", mode)
+		}
+		content, err := os.ReadFile(tempFile)
+		if err != nil {
+			t.Fatalf("read temp file: %v", err)
+		}
+		if !strings.Contains(string(content), "workdir: /tmp/small") {
+			t.Fatalf("content = %s", string(content))
+		}
+		return exec.Command("true", tempFile), nil
+	}
+
 	updated, cmd := m.editProject()
-	got := updated.(model)
-	if cmd != nil {
-		t.Fatal("expected no command")
+	if cmd == nil {
+		t.Fatal("expected command from editProject")
 	}
-	if got.mode != inputEditProject {
-		t.Fatalf("mode = %v, want inputEditProject", got.mode)
+	_ = updated
+	if executedPath == "" {
+		t.Fatal("expected editor to be invoked with temp file path")
 	}
-	if got.input.Prompt != "" {
-		t.Fatalf("prompt = %q", got.input.Prompt)
-	}
-	if got.input.Value() != "/tmp/small" {
-		t.Fatalf("value = %q", got.input.Value())
-	}
+	_ = os.Remove(executedPath)
 }
 
-func TestEditProjectSavesOnlyWorkdirToStoreState(t *testing.T) {
+func TestEditProjectHandlesFinishedSuccessAndTildeExpansion(t *testing.T) {
 	tmp := t.TempDir()
 	m := newModel(fakeTmuxController{}, "").(model)
 	m.statePath = tmp + "/store.json"
@@ -760,18 +934,44 @@ func TestEditProjectSavesOnlyWorkdirToStoreState(t *testing.T) {
 	m.projectConfigs = map[string]projectConfig{"small": {
 		Name: "small",
 	}}
+	if err := m.saveState(); err != nil {
+		t.Fatal(err)
+	}
 
-	updated, _ := m.editProject()
-	step := updated.(model)
-	step.input.SetValue("/tmp/small")
-	updated, cmd := step.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	final := *(updated.(*model))
-	if cmd == nil || final.mode != inputNone {
-		t.Fatalf("unexpected edit result: %#v", final)
+	tempFile, err := os.CreateTemp(tmp, "settings-*.yaml")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := final.projectConfigs["small"].Workdir; got != "/tmp/small" {
-		t.Fatalf("workdir = %q", got)
+	tempPath := tempFile.Name()
+	if _, err := tempFile.WriteString("workdir: ~/myproject\n"); err != nil {
+		t.Fatal(err)
 	}
+	_ = tempFile.Close()
+
+	updated, cmd := m.handleProjectEditorFinished(projectEditorFinishedMsg{
+		project:  "small",
+		tempPath: tempPath,
+		err:      nil,
+	})
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	final := updated.(model)
+	if final.err != nil {
+		t.Fatalf("unexpected error: %v", final.err)
+	}
+
+	// Verify temp file is removed
+	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
+		t.Fatalf("expected temp file to be removed, got err: %v", err)
+	}
+
+	home, _ := os.UserHomeDir()
+	expectedWorkdir := filepath.Join(home, "myproject")
+	if got := final.projectConfigs["small"].Workdir; got != expectedWorkdir {
+		t.Fatalf("workdir = %q, want %q", got, expectedWorkdir)
+	}
+
 	savedState, err := loadAppState(m.statePath)
 	if err != nil {
 		t.Fatal(err)
@@ -780,8 +980,112 @@ func TestEditProjectSavesOnlyWorkdirToStoreState(t *testing.T) {
 	if !ok {
 		t.Fatal("saved project small is missing")
 	}
-	if got := project.Workdir; got != "/tmp/small" {
-		t.Fatalf("saved workdir = %q", got)
+	if got := project.Workdir; got != expectedWorkdir {
+		t.Fatalf("saved workdir = %q, want %q", got, expectedWorkdir)
+	}
+}
+
+func TestEditProjectRejectsUnknownYAMLFieldsAndPreservesStore(t *testing.T) {
+	tmp := t.TempDir()
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.statePath = tmp + "/store.json"
+	m.projects = []string{"small"}
+	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{"small": {
+		Name:    "small",
+		Workdir: "/original/workdir",
+	}}
+	if err := m.saveState(); err != nil {
+		t.Fatal(err)
+	}
+
+	tempFile, err := os.CreateTemp(tmp, "settings-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempPath := tempFile.Name()
+	if _, err := tempFile.WriteString("workdir: /new/workdir\nunknown_field: true\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = tempFile.Close()
+
+	updated, cmd := m.handleProjectEditorFinished(projectEditorFinishedMsg{
+		project:  "small",
+		tempPath: tempPath,
+		err:      nil,
+	})
+	if cmd != nil {
+		t.Fatal("expected no command")
+	}
+	final := updated.(model)
+	if final.err == nil {
+		t.Fatal("expected error on unknown YAML field")
+	}
+	if !strings.Contains(final.status, "Invalid settings") {
+		t.Fatalf("status = %q", final.status)
+	}
+
+	// Verify temp file is removed
+	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
+		t.Fatalf("expected temp file to be removed, got err: %v", err)
+	}
+
+	savedState, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := storedProjectByName(savedState, "small")
+	if !ok || project.Workdir != "/original/workdir" {
+		t.Fatalf("store modified unexpectedly: %#v", project)
+	}
+}
+
+func TestEditProjectHandlesEditorErrorAndPreservesStore(t *testing.T) {
+	tmp := t.TempDir()
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.statePath = tmp + "/store.json"
+	m.projects = []string{"small"}
+	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{"small": {
+		Name:    "small",
+		Workdir: "/original/workdir",
+	}}
+	if err := m.saveState(); err != nil {
+		t.Fatal(err)
+	}
+
+	tempFile, err := os.CreateTemp(tmp, "settings-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempPath := tempFile.Name()
+	_ = tempFile.Close()
+
+	updated, _ := m.handleProjectEditorFinished(projectEditorFinishedMsg{
+		project:  "small",
+		tempPath: tempPath,
+		err:      fmt.Errorf("editor exited with status 1"),
+	})
+	final := updated.(model)
+	if final.err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(final.status, "Editor error") {
+		t.Fatalf("status = %q", final.status)
+	}
+
+	// Verify temp file is removed
+	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
+		t.Fatalf("expected temp file to be removed, got err: %v", err)
+	}
+
+	savedState, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := storedProjectByName(savedState, "small")
+	if !ok || project.Workdir != "/original/workdir" {
+		t.Fatalf("store modified unexpectedly: %#v", project)
 	}
 }
 

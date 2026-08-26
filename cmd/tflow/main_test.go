@@ -65,3 +65,13 @@ func TestRunUnknownCommand(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 }
+
+func TestRunCreateWorkerRequiresPayload(t *testing.T) {
+	err := run([]string{"create-worker"}, &bytes.Buffer{}, func() error {
+		t.Fatal("create-worker must not start tflow")
+		return nil
+	})
+	if err == nil || err.Error() != "create-worker requires one payload" {
+		t.Fatalf("run() error = %v", err)
+	}
+}

@@ -233,6 +233,8 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.applyProjectDeletion(msg.project)
+	case projectEditorFinishedMsg:
+		return m.handleProjectEditorFinished(msg)
 	case menuActionMsg:
 		if msg.quit {
 			m.exitAction = menuExitQuit

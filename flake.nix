@@ -47,7 +47,7 @@
 
           src = self;
 
-          vendorHash = "sha256-UORW9eGwCwt/rakuC10j3PEFCmlobyJk09jSIqVHZo8=";
+          vendorHash = "sha256-my7yKS36TlSAUaQbz/G5drFQ6WSj9P5KQ4Hqtvvo2sE=";
 
           subPackages = [
             "cmd/tflow"

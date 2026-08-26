@@ -170,6 +170,7 @@ func OpenMenu(ctx context.Context) error {
 type menuProgramRunner func(context.Context, tea.Model) (tea.Model, error)
 
 func openMenu(ctx context.Context, manager tmuxController, runProgram menuProgramRunner) error {
+	defer cleanupActiveTempFiles()
 	menu, err := buildModel(manager, os.Getenv(menuCurrentEnv))
 	if err != nil {
 		return err

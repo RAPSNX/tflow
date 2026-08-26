@@ -47,62 +47,6 @@ func TestDefaultSessionDirUsesCurrentDirectory(t *testing.T) {
 	}
 }
 
-func TestCreateSessionUsesCurrentDirectory(t *testing.T) {
-	t.Skip("superseded by background worker coverage")
-	var gotCWD string
-	m := newModel(fakeTmuxController{
-		createSession: func(name, cwd, command string) (session, error) {
-			gotCWD = cwd
-			if command != "" {
-				t.Fatalf("command = %q, want empty", command)
-			}
-			return session{Name: name, Windows: 1}, nil
-		},
-	}, "").(model)
-	m.selectedProject = "small"
-	m.mode = inputCreateSession
-	m.input.SetValue("dev")
-
-	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("expected create command")
-	}
-	msg := cmd().(sessionCreatedMsg)
-	if msg.err != nil {
-		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
-	}
-	if gotCWD != m.cwd {
-		t.Fatalf("cwd = %q, want %q", gotCWD, m.cwd)
-	}
-}
-
-func TestCreateSessionUsesProjectDirectoryWhenConfigured(t *testing.T) {
-	t.Skip("superseded by background worker coverage")
-	var gotCWD string
-	m := newModel(fakeTmuxController{
-		createSession: func(name, cwd, command string) (session, error) {
-			gotCWD = cwd
-			return session{Name: name, Windows: 1}, nil
-		},
-	}, "").(model)
-	m.selectedProject = "small"
-	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/tmp/project-small"}}
-	m.mode = inputCreateSession
-	m.input.SetValue("dev")
-
-	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("expected create command")
-	}
-	msg := cmd().(sessionCreatedMsg)
-	if msg.err != nil {
-		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
-	}
-	if gotCWD != "/tmp/project-small" {
-		t.Fatalf("cwd = %q, want /tmp/project-small", gotCWD)
-	}
-}
-
 func TestCreateSessionRejectsDuplicateLabelWithinProject(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 	m.projects = []string{"small"}
@@ -123,35 +67,6 @@ func TestCreateSessionRejectsDuplicateLabelWithinProject(t *testing.T) {
 	}
 }
 
-func TestCreateSessionUsesExpandedHomeDirectoryWhenConfigured(t *testing.T) {
-	t.Skip("superseded by background worker coverage")
-	t.Setenv("HOME", "/tmp/home")
-
-	var gotCWD string
-	m := newModel(fakeTmuxController{
-		createSession: func(name, cwd, command string) (session, error) {
-			gotCWD = cwd
-			return session{Name: name, Windows: 1}, nil
-		},
-	}, "").(model)
-	m.selectedProject = "small"
-	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "~/project-small"}}
-	m.mode = inputCreateSession
-	m.input.SetValue("dev")
-
-	_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("expected create command")
-	}
-	msg := cmd().(sessionCreatedMsg)
-	if msg.err != nil {
-		t.Fatalf("sessionCreatedMsg.err = %v", msg.err)
-	}
-	if gotCWD != "/tmp/home/project-small" {
-		t.Fatalf("cwd = %q, want /tmp/home/project-small", gotCWD)
-	}
-}
-
 func TestSanitizeSessionName(t *testing.T) {
 	if got, want := sanitizeSessionName(" Prod/Main 01 "), "Prod/Main 01"; got != want {
 		t.Fatalf("sanitizeSessionName = %q, want %q", got, want)
@@ -163,109 +78,6 @@ func TestProjectNormalizationPreservesOrderAndDeduplicates(t *testing.T) {
 	want := []string{"small", "default", "alpha"}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("normalizeProjectList = %#v, want %#v", got, want)
-	}
-}
-
-func TestCreateUnscopedSessionIsVolatileAndDoesNotPersistMetadata(t *testing.T) {
-	t.Skip("superseded by background worker coverage")
-	var tagged []string
-	m := newModel(fakeTmuxController{
-		createSession: func(name, cwd, command string) (session, error) {
-			return session{Name: name, Windows: 1}, nil
-		},
-		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
-			tagged = append(tagged, fmt.Sprintf("%s:%t:%s", name, temporary, instanceID))
-			return nil
-		},
-	}, "scratch-temp").(model)
-	m.statePath = t.TempDir() + "/store.json"
-	m.instanceID = "instance-1"
-	m.sessions = []session{{Name: volatileSessionName("instance-1", "scratch-temp"), Temporary: true, Instance: "instance-1"}}
-	m.currentSession = volatileSessionName("instance-1", "scratch-temp")
-	m.selectedProject = "old-project"
-	m.mode = inputCreateSession
-	m.input.SetValue("notes")
-
-	updated, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("expected session creation command")
-	}
-	msg := cmd().(sessionCreatedMsg)
-	if msg.err != nil {
-		t.Fatalf("session creation returned error: %v", msg.err)
-	}
-	if !msg.volatile {
-		t.Fatal("created unscoped session is not volatile")
-	}
-	if len(tagged) != 1 || !strings.HasPrefix(tagged[0], "tflow-v-instance-1-") || !strings.HasSuffix(tagged[0], ":true:instance-1") {
-		t.Fatalf("temporary tags = %#v, want opaque ID tagged to the instance", tagged)
-	}
-	got := updated.(model)
-	updated, followUp := got.Update(msg)
-	got = updated.(model)
-	if got.selectedProject != "" || got.selectedSession != msg.session.Name {
-		t.Fatalf("selection = project %q session %q, want volatile notes", got.selectedProject, got.selectedSession)
-	}
-	if sessions := got.contextSessions(); len(sessions) != 2 {
-		t.Fatalf("volatile sessions = %#v, want startup and new session", sessions)
-	}
-	for _, name := range []string{volatileSessionName("instance-1", "scratch-temp"), msg.session.Name} {
-		session, found := got.findSession(name)
-		if !found || !session.Temporary || session.Instance != "instance-1" {
-			t.Fatalf("session %q = %#v, want instance-owned volatile session", name, session)
-		}
-	}
-	if followUp == nil {
-		t.Fatal("expected switch command")
-	}
-	if action := followUp().(menuActionMsg); action.switchSession != msg.session.Name {
-		t.Fatalf("switch session = %q, want notes", action.switchSession)
-	}
-	if _, ok := got.sessionProjects[msg.session.Name]; ok {
-		t.Fatalf("volatile session metadata persisted: %#v", got.sessionProjects)
-	}
-}
-
-func TestVolatileSessionNamesAreScopedToEachInstance(t *testing.T) {
-	t.Skip("superseded by background worker coverage")
-	create := func(instanceID string) sessionCreatedMsg {
-		m := newModel(fakeTmuxController{
-			createSession: func(name, cwd, command string) (session, error) { return session{Name: name}, nil },
-			setSessionTemporary: func(name string, temporary bool, gotInstanceID string) error {
-				if !temporary || gotInstanceID != instanceID {
-					t.Fatalf("temporary session = %q, %t, %q", name, temporary, gotInstanceID)
-				}
-				return nil
-			},
-		}, "").(model)
-		m.instanceID = instanceID
-		m.mode = inputCreateSession
-		m.input.SetValue("code")
-
-		_, cmd := m.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
-		if cmd == nil {
-			t.Fatal("expected create command")
-		}
-		return cmd().(sessionCreatedMsg)
-	}
-
-	first := create("instance-1")
-	second := create("instance-2")
-	if first.err != nil || second.err != nil {
-		t.Fatalf("create errors = %v, %v", first.err, second.err)
-	}
-	if first.session.Name == second.session.Name {
-		t.Fatalf("volatile tmux names collide: %q", first.session.Name)
-	}
-	menu := newModel(fakeTmuxController{}, first.session.Name).(model)
-	menu.sessions = []session{{Name: first.session.Name, Label: first.label, Temporary: true, Instance: "instance-1"}}
-	if got := menu.sessionLabel(first.session.Name); got != "code" {
-		t.Fatalf("sidebar label = %q, want code", got)
-	}
-	for _, created := range []sessionCreatedMsg{first, second} {
-		if created.label != "code" {
-			t.Fatalf("visible label = %q, want code", created.label)
-		}
 	}
 }
 
