@@ -80,6 +80,27 @@ creates the stored internal tmux session ID in the project's working
 directory, restores its project and label markers, and then switches the
 originating client to it. It does not mutate persistent state.
 
+Tmux prefix followed by `h` and `l` switches to the previous and next
+session, respectively. Navigation wraps within the same context and uses the
+same order as the sidebar: persistent-session order for the active project,
+or tmux list order for volatile sessions owned by the current instance. It
+never crosses projects or tflow instances. A missing persistent target is
+materialized lazily as for sidebar selection. Navigation is client-scoped and
+does not perform sidebar-only exited-session cleanup.
+
+The top status bar shows the previous, active, and next contextual sessions;
+when there is only one, it shows the active session alone. tflow maintains
+only the selected target's session-scoped, derived status metadata. That
+metadata is not persistent state and does not require a daemon or a refresh
+loop.
+
+Every session has a visual type chip. Terminal sessions use blue `>_ CODE`,
+git sessions use teal `⎇ GIT`, and agent sessions use yellow `✦ AGENT`.
+The same chips appear in the sidebar and the top bar. A selected row retains
+its type chip, so selection color never replaces type identity. The teal
+`live` state and the red attention state are separate indicators and may
+appear with any type chip.
+
 tflow enables tmux mouse reporting only for wheel-scroll: the wheel pages a pane's history via copy-mode like a normal terminal's scrollback, while every other mouse interaction (click, drag, double/triple-click, middle/right-click) is unbound in the root and copy-mode key tables. Because mouse reporting being on at all puts the terminal into mouse-tracking mode, text selection still requires the terminal's own override modifier (e.g. Shift in Alacritty).
 
 ## Projects and sessions
@@ -88,6 +109,7 @@ A project contains:
 
 * a unique name
 * a default working directory
+* an optional agent-binary default
 * an ordered list of persistent sessions
 
 Creating a project uses the originating active tmux pane's current directory
@@ -105,6 +127,27 @@ A persistent session contains:
 
 * an internal tmux session ID
 * a user-facing label
+* a type: `terminal`, `git`, or `agent`
+* the agent executable captured for an agent session
+
+Records written before session types existed are terminal sessions. Reading
+such records does not require a store migration or a state rewrite.
+
+An ordinary newly created project receives two lazy persistent records in this
+order: a terminal session labeled `code` and a git session labeled `git`.
+The git session runs `lazygit` in the project workdir when it is materialized.
+The existing `n` action creates normal terminal sessions only. Existing
+projects and projects created by volatile-session promotion retain their
+current sessions and receive no presets.
+
+The project settings editor may set `agent-binary` to one executable name or
+absolute path, with no arguments. Saving a non-empty value adds a lazy agent
+session labeled `agent` when the project has none. Updating the setting updates
+the captured executable for that agent session; a currently running agent
+session continues unchanged. Clearing the setting retains any existing agent
+session and its captured executable, but prevents future automatic agent
+provisioning. A missing `lazygit` or agent executable is a clear,
+non-mutating materialization error.
 
 New project sessions start in the project's working directory. Every volatile session, including a fallback created after project deletion, starts in the active pane's working directory.
 
@@ -119,6 +162,12 @@ Moving a persistent session to another project preserves its tmux session. A mov
 Deleting the final session of a project also deletes the project. Deleting a project removes its persistent sessions and metadata. Deletion must never switch the client into another persistent project: deleting a non-active session or project leaves the client unchanged; deleting the active session selects another session from the same project when one remains; and deleting the final active session or active project creates and switches to a volatile fallback in the active pane's working directory before removal. Project creation, explicit project switching, and session moves retain their existing switching behavior.
 
 When sidebar-switch cleanup removes an exited persistent session, it also removes that session's metadata and removes its project when it becomes empty. Removing an exited volatile session does not change persistent state. Sidebar-switch cleanup always uses the target selected by the user; it does not choose a replacement session or create a fallback.
+
+tflow enables tmux activity monitoring for every managed session. Tmux alert
+hooks set a session-scoped, runtime-only attention indicator when output
+arrives for a session that is not being visited. Any client visit clears that
+indicator. Attention is visible beside the session in the sidebar and top bar,
+is never stored in JSON, and is lost when tmux restarts.
 
 ## Persistent state
 
@@ -137,10 +186,18 @@ Conceptually, the state contains:
     {
       "name": "example",
       "workdir": "/home/user/example",
+      "agentBinary": "codex",
       "sessions": [
         {
           "id": "tflow-p-8f42ac91",
-          "label": "otter"
+          "label": "code",
+          "type": "terminal"
+        },
+        {
+          "id": "tflow-p-96ad4c10",
+          "label": "agent",
+          "type": "agent",
+          "command": "codex"
         }
       ]
     }
@@ -148,7 +205,15 @@ Conceptually, the state contains:
 }
 ```
 
-Malformed or semantically invalid state causes startup to fail with a clear path-qualified error and is not silently normalized or rewritten. Invalid state includes empty or duplicate normalized project names, empty or duplicate session IDs, empty session labels, and duplicate labels within one project. Unknown JSON fields may be ignored.
+`agentBinary` and an agent session's `command` are optional. A session `type`
+is optional only for records written before typed sessions; when present it
+must be `terminal`, `git`, or `agent`. Agent sessions require a non-empty
+executable command and non-agent sessions must not carry one. Malformed or
+semantically invalid state causes startup to fail with a clear path-qualified
+error and is not silently normalized or rewritten. Invalid state includes
+empty or duplicate normalized project names, empty or duplicate session IDs,
+empty session labels, duplicate labels within one project, and duplicate agent
+sessions within one project. Unknown JSON fields may be ignored.
 
 ## State updates
 
@@ -191,7 +256,7 @@ If tmux cannot provide a session list because of an operational error, no metada
 in `$EDITOR`, falling back to `nvim` when `$EDITOR` is unset. The document is a
 temporary internal file, not a persistent user-edited configuration file. When
 the editor exits, tflow removes the temporary file, strictly validates its
-supported settings (currently only `workdir`), rejects unknown keys, and
+supported settings (`workdir` and `agent-binary`), rejects unknown keys, and
 persists valid settings through the existing JSON store mutation path. Editor,
 validation, or persistence failures leave state unchanged and are reported
 when the sidebar resumes.
@@ -220,7 +285,7 @@ Unchanged refreshes must not perform per-session tmux writes.
 
 Project and session metadata are changed only by explicit user operations or startup reconciliation.
 
-An explicit operation updates tmux markers only for sessions it directly creates, promotes, renames, moves, or deletes; it does not rewrite markers for unrelated sessions.
+An explicit operation updates tmux markers only for sessions it directly creates, promotes, renames, moves, or deletes; it does not rewrite markers for unrelated sessions. A switch may refresh derived status metadata for its selected target only.
 
 Performance optimizations should be based on tmux command count or measurements rather than speculative abstractions.
 

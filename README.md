@@ -81,10 +81,4 @@ Press `Ctrl+F` to open the sidebar. From there you can create, rename, move, del
 | `d` | Delete session |
 | `D` | Delete project |
 
-## Future ideas
-
-- diff view
-- ripgrep search
-- repository manager
-
 `tflow` is experimental and intentionally minimal.

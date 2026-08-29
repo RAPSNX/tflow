@@ -38,8 +38,8 @@ Use Go's built-in `testing` package by default.
 - Read `AGENTS.md` before editing.
 - Read `.codex/ARCHITECTURE.md` before changing behavior.
 - Treat `.codex/ARCHITECTURE.md` as the source of truth for intended behavior, including the persistent state path.
-- Use `.codex/TASK.md`, which must be derived from the architecture, as the implementation checklist.
-- After completing implementation work, always check off every verified completed item in `.codex/TASK.md`; leave all other items unchecked.
+- Use `.codex/TASK.md` as the canonical list of unfinished implementation work; every item must be derived from the architecture.
+- After completing implementation work, remove every verified completed item from `.codex/TASK.md`; leave all remaining items unchecked.
 - If the task list conflicts with the architecture, stop and ask.
 - Implementation detail in the task list is allowed when it does not conflict with the architecture.
 - Do not implement features outside the task list unless the user explicitly asks.
