@@ -142,7 +142,9 @@ current sessions and receive no presets.
 
 The project settings editor may set `agent-binary` to one executable name or
 absolute path, with no arguments. Saving a non-empty value adds a lazy agent
-session labeled `agent` when the project has none. Updating the setting updates
+session labeled `agent` when the project has none. If a non-agent session
+already has that exact label, tflow instead uses the first unused exact label
+in the sequence `agent-2`, `agent-3`, and so on. Updating the setting updates
 the captured executable for that agent session; a currently running agent
 session continues unchanged. Clearing the setting retains any existing agent
 session and its captured executable, but prevents future automatic agent

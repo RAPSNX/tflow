@@ -28,7 +28,7 @@ verification are complete.
 * [ ] Keep `n` as normal terminal creation and materialize terminal, `lazygit`, and captured agent-executable sessions in the project workdir.
 * [ ] Fail clearly and without mutation when `lazygit` or an agent executable is unavailable.
 * [ ] Extend the temporary YAML project settings document with executable-only `agent-binary`; save adds or updates the lazy agent session, and clearing the setting retains its captured agent command.
-* [ ] Test old-state compatibility, schema validation, new-project records, promotion preservation, settings updates and clearing, materialization, and executable failures.
+* [ ] Test old-state compatibility, schema validation, new-project records, promotion preservation, settings updates and clearing, agent-label collision suffixes, materialization, and executable failures.
 
 ## P1: Typed visual identity
 
