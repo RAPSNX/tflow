@@ -71,11 +71,12 @@ originating client without changing persistent state.
 
 Ordinary project creation captures the originating pane's directory before
 starting its short-lived worker, then adds two lazy records in order: `code`
-(`terminal`) and `git` (`git`). Git sessions run `lazygit` when materialized.
-The `n` action creates terminal sessions only. Existing projects and projects
-created by volatile-session promotion receive no presets. New project
-sessions use the project workdir; all volatile sessions, including deletion
-fallbacks, use the active pane's directory.
+(`terminal`) and `git` (`git`). The `code` session is materialized and selected
+as the creation target; the originating client switches to it. Git sessions run
+`lazygit` when materialized. The `n` action creates terminal sessions only.
+Existing projects and projects created by volatile-session promotion receive no
+presets. New project sessions use the project workdir; all volatile sessions,
+including deletion fallbacks, use the active pane's directory.
 
 Creating a project from a volatile session promotes every volatile session
 owned by that instance. Promotion preserves labels and order, assigns new
@@ -87,12 +88,12 @@ reported and the sidebar does not claim success.
 
 Project settings accept an agent executable name or absolute path without
 arguments. Saving a non-empty `agent-binary` adds one lazy agent session when
-none exists, using `agent` or the first unused label in `agent-2`, `agent-3`,
-and so on. Later saves update that session's captured executable but not a
-currently running process. Clearing the setting retains the session and
-captured executable while
-disabling future automatic provisioning. Missing `lazygit` or agent binaries
-produce clear, non-mutating materialization errors.
+none exists, using `agent` if the label is free or the first unused label in
+`agent-2`, `agent-3`, and so on. A project holds at most one agent session.
+Later saves update that session's captured executable but not a currently
+running process. Clearing the setting retains the session and captured
+executable while disabling future automatic provisioning. Missing `lazygit` or
+agent binaries produce clear, non-mutating materialization errors.
 
 Moving a persistent session preserves its tmux session and ID, appends it to
 the target project, and switches the originating client to it. A move fails if
@@ -127,10 +128,10 @@ The top bar shows the previous, active, and next contextual sessions, or only
 the active session when it is alone. A switch computes derived, session-scoped
 status metadata for its selected target from post-mutation state. A successful
 rename, non-active deletion, or settings change that alters the originating
-client's displayed context refreshes only its active session. Post-switch
-cleanup that removes an outgoing session refreshes the selected target again.
-Moves and creation use their required target switch; inactive and unrelated
-sessions are never rewritten. Derived metadata is neither persistent nor
+client's displayed context refreshes only its active session. Moves and
+creation use their required target switch; inactive and unrelated sessions are
+never rewritten. Post-switch cleanup that removes an outgoing session refreshes
+the selected target again. Derived metadata is neither persistent nor
 maintained by a daemon or refresh loop.
 
 Every sidebar row and top-bar entry has a type chip: blue `>_ CODE`, teal
