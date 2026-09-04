@@ -12,8 +12,8 @@ Remove each item after implementation and verification.
 
 * [ ] Bind fixed, one-shot `Ctrl+Space` command mode (`h` previous, `l` next, `o` overview), including cancellation, internal workers, and removal of the global `Ctrl+F` binding without expanding public help.
 * [ ] Navigate with wraparound in stored project order or current-instance volatile tmux order; remain client-scoped, never cross contexts, lazily materialize persistent targets, and skip sidebar-only dead-session cleanup.
-* [ ] Maintain target-only derived metadata and render previous/active/next top-bar entries, reducing a one-session context to its active entry.
-* [ ] Test bindings, cancellation, overview, ordering, wraparound, lazy targets, one-session behavior, ownership isolation, and tmux command/write limits.
+* [ ] Maintain target-only derived metadata and render previous/active/next top-bar entries, reducing a one-session context to its active entry; refresh the originating client's active or selected target after context-changing rename, move, creation, settings, deletion, and post-switch cleanup paths without rewriting unrelated sessions.
+* [ ] Test bindings, cancellation, overview, ordering, wraparound, lazy targets, one-session behavior, ownership isolation, mutation and cleanup refreshes, and tmux command/write limits.
 
 ## P1: Typed persistent sessions
 

@@ -124,9 +124,14 @@ persistent targets, remains client-scoped, and does not run sidebar-only
 exited-session cleanup.
 
 The top bar shows the previous, active, and next contextual sessions, or only
-the active session when it is alone. A switch updates derived, session-scoped
-status metadata only for its selected target; this metadata is neither
-persistent nor maintained by a daemon or refresh loop.
+the active session when it is alone. A switch computes derived, session-scoped
+status metadata for its selected target from post-mutation state. A successful
+rename, non-active deletion, or settings change that alters the originating
+client's displayed context refreshes only its active session. Post-switch
+cleanup that removes an outgoing session refreshes the selected target again.
+Moves and creation use their required target switch; inactive and unrelated
+sessions are never rewritten. Derived metadata is neither persistent nor
+maintained by a daemon or refresh loop.
 
 Every sidebar row and top-bar entry has a type chip: blue `>_ CODE`, teal
 `⎇ GIT`, or yellow `✦ AGENT`. Selection never replaces the chip. Teal `live`
