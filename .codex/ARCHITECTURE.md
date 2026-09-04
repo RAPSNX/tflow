@@ -62,7 +62,13 @@ Generated display labels should be readable and unique within their visible scop
 
 The user works directly inside the active tmux session.
 
-`Ctrl+F` toggles a sidebar popup for managing sessions and projects. Successful actions close the popup and return focus to the active terminal.
+`Ctrl+Space` enters tflow command mode. Its next key selects one command:
+`h` switches to the previous contextual session, `l` switches to the next,
+and `o` opens the sidebar overview. The command mode handles one key and then
+returns to normal terminal input; an unrecognized key, `Esc`, or `Ctrl+C`
+cancels it. The leader is fixed, requires no configuration, and uses no timer
+or key replay. `Ctrl+F` is not bound by tflow. Successful sidebar actions
+close the popup and return focus to the active terminal.
 
 `Ctrl+Q` opens confirmation for quitting the current tflow instance and removing its volatile sessions.
 
@@ -80,13 +86,13 @@ creates the stored internal tmux session ID in the project's working
 directory, restores its project and label markers, and then switches the
 originating client to it. It does not mutate persistent state.
 
-Tmux prefix followed by `h` and `l` switches to the previous and next
-session, respectively. Navigation wraps within the same context and uses the
-same order as the sidebar: persistent-session order for the active project,
-or tmux list order for volatile sessions owned by the current instance. It
-never crosses projects or tflow instances. A missing persistent target is
-materialized lazily as for sidebar selection. Navigation is client-scoped and
-does not perform sidebar-only exited-session cleanup.
+The `h` and `l` command-mode actions switch to the previous and next session,
+respectively. Navigation wraps within the same context and uses the same order
+as the sidebar: persistent-session order for the active project, or tmux list
+order for volatile sessions owned by the current instance. It never crosses
+projects or tflow instances. A missing persistent target is materialized
+lazily as for sidebar selection. Navigation is client-scoped and does not
+perform sidebar-only exited-session cleanup.
 
 The top status bar shows the previous, active, and next contextual sessions;
 when there is only one, it shows the active session alone. tflow maintains
@@ -159,7 +165,7 @@ After a successful promotion, tflow switches the client directly to the promoted
 
 Session labels must be unique inside their project. Volatile labels must be unique inside their owning instance.
 
-Moving a persistent session to another project preserves its tmux session. A move fails when the target project already has the session label. Moving the final session out of a project deletes that project. After a successful move, tflow switches the originating client to the moved session in its target project.
+Moving a persistent session to another project preserves its tmux session. A move fails when the target project already has the session label, or when an agent session is moved into a target project that already has an agent session. Moving the final session out of a project deletes that project. After a successful move, tflow switches the originating client to the moved session in its target project.
 
 Deleting the final session of a project also deletes the project. Deleting a project removes its persistent sessions and metadata. Deletion must never switch the client into another persistent project: deleting a non-active session or project leaves the client unchanged; deleting the active session selects another session from the same project when one remains; and deleting the final active session or active project creates and switches to a volatile fallback in the active pane's working directory before removal. Project creation, explicit project switching, and session moves retain their existing switching behavior.
 
