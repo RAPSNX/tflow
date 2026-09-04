@@ -17,7 +17,8 @@ const (
 	instanceMarker        = "@tflow-instance"
 	menuWidth             = "36"
 	menuHeight            = "100%"
-	menuToggleKey         = "C-f"
+	commandKey            = "C-Space"
+	commandTable          = "tflow-command"
 	quitKey               = "C-q"
 	CurrentSessionEnv     = "TFLOW_CURRENT_SESSION"
 	CurrentClientEnv      = "TFLOW_CURRENT_CLIENT"
@@ -45,6 +46,7 @@ type Controller interface {
 	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
+	SetSessionTopBar(name, content string) error
 	AttachCommand(ctx context.Context, name string) (*exec.Cmd, error)
 	KillSession(name string) error
 	SessionPanesAllDead(name string) (bool, error)
@@ -103,4 +105,31 @@ func (p Palette) statusLeft() string {
 
 func (p Palette) statusStyle() string {
 	return fmt.Sprintf("bg=%s,fg=%s", p.Mantle, p.Text)
+}
+
+func (p Palette) FormatTopBar(labels []string, activeIndex int) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	if len(labels) == 1 || activeIndex < 0 || activeIndex >= len(labels) {
+		label := labels[0]
+		if activeIndex >= 0 && activeIndex < len(labels) {
+			label = labels[activeIndex]
+		}
+		return "#[bg=" + p.Surface0 + ",fg=" + p.Subtext + "]" +
+			"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] " + label + " " +
+			"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]"
+	}
+
+	prevIdx := (activeIndex - 1 + len(labels)) % len(labels)
+	nextIdx := (activeIndex + 1) % len(labels)
+	prev := labels[prevIdx]
+	active := labels[activeIndex]
+	next := labels[nextIdx]
+
+	return "#[bg=" + p.Mantle + ",fg=" + p.Subtext + "] " + prev + "  " +
+		"#[bg=" + p.Surface0 + ",fg=" + p.Subtext + "]" +
+		"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] " + active + " " +
+		"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]" +
+		"#[bg=" + p.Mantle + ",fg=" + p.Subtext + "]  " + next + " "
 }

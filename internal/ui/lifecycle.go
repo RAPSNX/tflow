@@ -423,12 +423,15 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 			}
 			return err
 		}
+		refreshMenuTargetTopBar(manager, menu, target)
 		if deletingAfterSwitch {
 			deletePersistentSessionsAfterSwitch(manager, menu)
+			refreshMenuTargetTopBar(manager, menu, target)
 			return nil
 		}
 		if removable {
 			removeDeadOutgoingSession(manager, menu, outgoing)
+			refreshMenuTargetTopBar(manager, menu, target)
 		}
 		return nil
 	case menuExitQuit:
@@ -436,6 +439,23 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 	default:
 		return nil
 	}
+}
+
+func refreshMenuTargetTopBar(manager tmuxController, menu model, target string) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return
+	}
+	path := menu.statePath
+	if strings.TrimSpace(path) == "" {
+		path = appStatePath()
+	}
+	state, err := loadAppState(path)
+	if err != nil {
+		return
+	}
+	project := menu.sessionProjects[target]
+	refreshTargetTopBar(manager, target, project, state, menu.sessions, menu.instanceID)
 }
 
 func outgoingSessionPanesAllDead(manager tmuxController, outgoing string) bool {

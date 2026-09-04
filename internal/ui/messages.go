@@ -133,7 +133,17 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.createVolatileFallback()
 		}
+		sameContext := false
+		currentProject := normalizeProjectName(m.sessionProjects[m.currentSession])
+		if currentProject != "" && currentProject == normalizeProjectName(project) {
+			sameContext = true
+		} else if currentProject == "" && (deleted.Temporary || project == "") {
+			sameContext = true
+		}
 		if !activeSessionDeleted {
+			if sameContext {
+				m.refreshActiveTopBar()
+			}
 			return m, nil
 		}
 		remaining := m.projectSessions(project)
@@ -181,6 +191,7 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.mode = inputNone
 		m.renameTarget = renameTarget{}
+		m.refreshActiveTopBarIfContext(msg.name)
 		// The rename command already wrote this session's label marker
 		// synchronously (see commitRename), and a label rename never
 		// changes project membership, so no further tmux writes are
@@ -230,6 +241,7 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		m.refreshActiveTopBar()
 		m.err = nil
 		m.status = ""
 		return m, m.closeMenuCmd()

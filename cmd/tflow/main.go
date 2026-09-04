@@ -57,6 +57,10 @@ func run(args []string, output io.Writer, start func() error) error {
 			return fmt.Errorf("create-worker requires one payload")
 		}
 		return ui.RunCreateWorker(args[1])
+	case "navigate-prev":
+		return ui.NavigatePrev()
+	case "navigate-next":
+		return ui.NavigateNext()
 	case "cleanup-client":
 		return runtmux.CleanupDetachedClient()
 	default:

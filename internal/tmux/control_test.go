@@ -68,7 +68,13 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"bind-key", "-T", "copy-mode", "WheelDownPane", "send-keys", "-X", "-N", "5", "scroll-down"},
 		{"bind-key", "-T", "copy-mode-vi", "WheelUpPane", "send-keys", "-X", "-N", "5", "scroll-up"},
 		{"bind-key", "-T", "copy-mode-vi", "WheelDownPane", "send-keys", "-X", "-N", "5", "scroll-down"},
-		{"bind-key", "-n", "C-f", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
+		{"unbind-key", "-q", "-n", "C-f"},
+		{"bind-key", "-n", "C-Space", "switch-client", "-T", "tflow-command"},
+		{"bind-key", "-T", "tflow-command", "h", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' navigate-prev"},
+		{"bind-key", "-T", "tflow-command", "l", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' navigate-next"},
+		{"bind-key", "-T", "tflow-command", "o", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
+		{"bind-key", "-T", "tflow-command", "Escape", "switch-client", "-T", "root"},
+		{"bind-key", "-T", "tflow-command", "C-c", "switch-client", "-T", "root"},
 		{"bind-key", "-n", "C-q", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' open-quit"},
 	}
 	for _, want := range wants {
@@ -138,5 +144,88 @@ func TestEnsureControlModeInstallsClientLifecycleHooks(t *testing.T) {
 		if len(call) == 4 && call[0] == "set-hook" && call[2] == "client-attached" {
 			t.Fatalf("client-attached hook must not be installed; instance ID is resolved from the session, not remembered per client: %#v", call)
 		}
+	}
+}
+
+func TestEnsureControlModeDoesNotBindCtrlF(t *testing.T) {
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "", nil
+	}}
+
+	if err := manager.EnsureControlMode("/tmp/tflow", Palette{}); err != nil {
+		t.Fatalf("EnsureControlMode returned error: %v", err)
+	}
+
+	for _, call := range calls {
+		if len(call) >= 4 && call[0] == "bind-key" && call[1] == "-n" && call[2] == "C-f" {
+			t.Fatalf("EnsureControlMode must not bind C-f: %#v", call)
+		}
+	}
+}
+
+func TestSetSessionTopBar(t *testing.T) {
+	var got []string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		got = append([]string(nil), args...)
+		return "", nil
+	}}
+
+	if err := manager.SetSessionTopBar("tflow-p-1", "top-bar-content"); err != nil {
+		t.Fatalf("SetSessionTopBar error: %v", err)
+	}
+	want := []string{"set-option", "-t", "tflow-p-1", "status-left", "top-bar-content"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("call = %#v, want %#v", got, want)
+	}
+
+	if err := manager.SetSessionTopBar("", "content"); err == nil {
+		t.Fatal("expected error for empty session name")
+	}
+}
+
+func TestFormatTopBar(t *testing.T) {
+	p := Palette{
+		Surface0: "#313244",
+		Subtext:  "#a6adc8",
+		Text:     "#cdd6f4",
+		Mantle:   "#181825",
+	}
+
+	// 0 sessions
+	if got := p.FormatTopBar(nil, 0); got != "" {
+		t.Fatalf("FormatTopBar(nil) = %q, want empty", got)
+	}
+
+	// 1 session (alone)
+	single := p.FormatTopBar([]string{"only"}, 0)
+	if !strings.Contains(single, "only") || strings.Contains(single, "prev") {
+		t.Fatalf("single FormatTopBar = %q", single)
+	}
+	if strings.Count(single, "") != 1 || strings.Count(single, "") != 1 {
+		t.Fatalf("single FormatTopBar should have exactly one pill: %q", single)
+	}
+
+	// 3 sessions, middle active
+	three := p.FormatTopBar([]string{"first", "second", "third"}, 1)
+	if !strings.Contains(three, "first") || !strings.Contains(three, "second") || !strings.Contains(three, "third") {
+		t.Fatalf("three FormatTopBar = %q", three)
+	}
+	// Verify previous is "first", active is "second", next is "third"
+	firstIdx := strings.Index(three, "first")
+	secondIdx := strings.Index(three, "second")
+	thirdIdx := strings.Index(three, "third")
+	if !(firstIdx < secondIdx && secondIdx < thirdIdx) {
+		t.Fatalf("expected order first < second < third, got indices: %d, %d, %d in %q", firstIdx, secondIdx, thirdIdx, three)
+	}
+
+	// 3 sessions, first active (wraparound previous is third)
+	wrap := p.FormatTopBar([]string{"first", "second", "third"}, 0)
+	thirdWrapIdx := strings.Index(wrap, "third")
+	firstWrapIdx := strings.Index(wrap, "first")
+	secondWrapIdx := strings.Index(wrap, "second")
+	if !(thirdWrapIdx < firstWrapIdx && firstWrapIdx < secondWrapIdx) {
+		t.Fatalf("expected wraparound third < first < second, got indices: %d, %d, %d in %q", thirdWrapIdx, firstWrapIdx, secondWrapIdx, wrap)
 	}
 }
