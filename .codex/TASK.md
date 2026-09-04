@@ -3,11 +3,6 @@
 Only unfinished work derived from `.codex/ARCHITECTURE.md` belongs here.
 Remove each item after implementation and verification.
 
-## P0: Final-session deletion reliability
-
-* [ ] Reproduce and fix sidebar final-session deletion so a configured volatile fallback is created and selected before persistent sessions or metadata are removed; preserve the active client and original error at every failure boundary.
-* [ ] Cover successful fallback handoff plus creation, configuration, switch, deletion, and metadata-cleanup failures with lifecycle tests.
-
 ## P1: Command mode, contextual navigation, and top bar
 
 * [ ] Bind fixed, one-shot `Ctrl+Space` command mode (`h` previous, `l` next, `o` overview), including cancellation, internal workers, and removal of the global `Ctrl+F` binding without expanding public help.

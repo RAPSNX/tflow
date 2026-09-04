@@ -6,14 +6,22 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/rapsnx/tflow/internal/diag"
 	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
 
-func (m model) finishSessionCreationFollowUpError(err error) (tea.Model, tea.Cmd) {
+func (m model) finishSessionCreationFollowUpError(sessionName string, err error) (tea.Model, tea.Cmd) {
 	m.mode = inputNone
 	m.deferredDelete = nil
+	m.deferredDeleteProject = ""
+	m.fallbackSession = ""
 	m.err = err
 	m.status = err.Error()
+	if strings.TrimSpace(sessionName) != "" {
+		if killErr := ignoreMissingSession(m.tmux.KillSession(sessionName)); killErr != nil {
+			diag.Warnf("kill unconfigured volatile session %q: %v", sessionName, killErr)
+		}
+	}
 	return m, nil
 }
 
@@ -44,9 +52,14 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sessionCreatedMsg:
 		if msg.err != nil {
 			m.deferredDelete = nil
+			m.deferredDeleteProject = ""
+			m.fallbackSession = ""
 			m.err = msg.err
 			m.status = msg.err.Error()
 			return m, nil
+		}
+		if msg.fallback {
+			m.fallbackSession = msg.session.Name
 		}
 		if !containsSessionName(m.sessions, msg.session.Name) {
 			msg.session.Temporary = msg.volatile
@@ -57,17 +70,13 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.clearSessionMetadata(msg.session.Name) {
 			if err := m.saveState(); err != nil {
-				m.err = err
-				m.status = err.Error()
-				return m.finishSessionCreationFollowUpError(err)
+				return m.finishSessionCreationFollowUpError(msg.session.Name, err)
 			}
 		}
 		m.selectedProject = ""
 		m.selectedSession = msg.session.Name
 		if err := m.syncSessionMarkers(msg.session.Name); err != nil {
-			m.err = err
-			m.status = err.Error()
-			return m.finishSessionCreationFollowUpError(err)
+			return m.finishSessionCreationFollowUpError(msg.session.Name, err)
 		}
 		m.err = nil
 		m.status = ""
@@ -154,9 +163,7 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.clearSessionMetadata(msg.name) {
 				if err := m.saveState(); err != nil {
-					m.err = err
-					m.status = err.Error()
-					return m.finishSessionCreationFollowUpError(err)
+					return m.finishSessionCreationFollowUpError("", err)
 				}
 			}
 		} else {
@@ -240,14 +247,20 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.exitAction = menuExitQuit
 			m.exitSessionName = ""
 			m.exitDeleteSessions = nil
+			m.exitDeleteProject = ""
+			m.exitFallbackSession = ""
 		} else if strings.TrimSpace(msg.switchSession) != "" {
 			m.exitAction = menuExitSwitchSession
 			m.exitSessionName = msg.switchSession
 			m.exitDeleteSessions = append([]string(nil), msg.deleteSessions...)
+			m.exitDeleteProject = msg.deleteProject
+			m.exitFallbackSession = msg.exitFallbackSession
 		} else {
 			m.exitAction = menuExitNone
 			m.exitSessionName = ""
 			m.exitDeleteSessions = nil
+			m.exitDeleteProject = ""
+			m.exitFallbackSession = ""
 		}
 		m.err = nil
 		m.status = ""

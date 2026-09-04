@@ -39,6 +39,7 @@ type sessionCreatedMsg struct {
 	volatile bool
 	project  string
 	label    string
+	fallback bool
 	err      error
 }
 
@@ -66,9 +67,11 @@ type projectDeletedMsg struct {
 }
 
 type menuActionMsg struct {
-	switchSession  string
-	deleteSessions []string
-	quit           bool
+	switchSession       string
+	deleteSessions      []string
+	deleteProject       string
+	exitFallbackSession string
+	quit                bool
 }
 
 type menuExitAction int
@@ -115,14 +118,16 @@ type model struct {
 	selectedSession        string
 	currentSession         string
 
-	input               textinput.Model
-	renameTarget        renameTarget
-	deleteTarget        deleteTarget
-	switchProjectTarget string
-	projectSwitchIndex  int
-	moveTarget          moveTarget
-	moveProjectIndex    int
-	deferredDelete      []string
+	input                 textinput.Model
+	renameTarget          renameTarget
+	deleteTarget          deleteTarget
+	switchProjectTarget   string
+	projectSwitchIndex    int
+	moveTarget            moveTarget
+	moveProjectIndex      int
+	deferredDelete        []string
+	deferredDeleteProject string
+	fallbackSession       string
 
 	cwd           string
 	statePath     string
@@ -130,11 +135,13 @@ type model struct {
 	stateBasePath string
 	stateLockHeld bool
 
-	exitAction         menuExitAction
-	exitSessionName    string
-	exitDeleteSessions []string
-	status             string
-	err                error
+	exitAction          menuExitAction
+	exitSessionName     string
+	exitDeleteSessions  []string
+	exitDeleteProject   string
+	exitFallbackSession string
+	status              string
+	err                 error
 }
 
 const (

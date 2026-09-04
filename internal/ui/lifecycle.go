@@ -413,9 +413,14 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 		// reported as a diagnostic and treated as "not dead" -- it must never
 		// block the switch itself, which is the primary operation here.
 		outgoing := strings.TrimSpace(menu.currentSession)
-		deletingAfterSwitch := len(menu.exitDeleteSessions) > 0
+		deletingAfterSwitch := len(menu.exitDeleteSessions) > 0 || menu.exitDeleteProject != ""
 		removable := !deletingAfterSwitch && outgoing != "" && outgoing != target && outgoingSessionPanesAllDead(manager, outgoing)
 		if err := manager.SwitchClient(target); err != nil {
+			if menu.exitFallbackSession != "" && menu.exitFallbackSession == target {
+				if killErr := ignoreMissingSession(manager.KillSession(target)); killErr != nil {
+					diag.Warnf("kill unused volatile fallback %q after switch failure: %v", target, killErr)
+				}
+			}
 			return err
 		}
 		if deletingAfterSwitch {
@@ -474,24 +479,44 @@ func removeDeadOutgoingSession(manager tmuxController, menu model, outgoing stri
 // diagnostics because the fallback switch is already the completed primary
 // operation.
 func deletePersistentSessionsAfterSwitch(manager tmuxController, menu model) {
+	var killedPersistent []string
 	for _, name := range menu.exitDeleteSessions {
 		if err := ignoreMissingSession(manager.KillSession(name)); err != nil {
 			diag.Warnf("delete session %q after fallback switch: %v", name, err)
-			return
+			continue
 		}
+		if isPersistentSessionName(menu, name) {
+			killedPersistent = append(killedPersistent, name)
+		}
+	}
+	if len(killedPersistent) == 0 && menu.exitDeleteProject == "" {
+		return
 	}
 	path := menu.statePath
 	if strings.TrimSpace(path) == "" {
 		path = appStatePath()
 	}
 	if _, err := mutateAppState(path, func(state appState) (appState, error) {
-		for _, name := range menu.exitDeleteSessions {
+		for _, name := range killedPersistent {
 			state = store.RemoveSession(state, name)
+		}
+		if menu.exitDeleteProject != "" {
+			state = store.RemoveProject(state, menu.exitDeleteProject)
 		}
 		return state, nil
 	}); err != nil {
 		diag.Warnf("remove persistent metadata after fallback switch: %v", err)
 	}
+}
+
+func isPersistentSessionName(menu model, name string) bool {
+	if s, ok := menu.findSession(name); ok {
+		return !s.Temporary
+	}
+	if strings.HasPrefix(name, "tflow-v-") {
+		return false
+	}
+	return true
 }
 
 func unwrapMenuModel(value tea.Model) (model, bool) {
