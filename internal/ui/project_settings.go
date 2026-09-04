@@ -295,6 +295,10 @@ func (m model) handleProjectEditorFinished(msg projectEditorFinishedMsg) (tea.Mo
 		return m, nil
 	}
 
+	if normalizeProjectName(m.sessionProjects[m.currentSession]) == normalizeProjectName(msg.project) {
+		m.refreshActiveTopBar()
+	}
+
 	m.err = nil
 	m.status = ""
 	return m, nil

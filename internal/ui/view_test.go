@@ -125,7 +125,7 @@ func TestRenderHelpListsOneShortcutPerRow(t *testing.T) {
 	m.width = 48
 	m.height = 24
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHelp(), "")
-	for _, want := range []string{"Ctrl+F", "Ctrl+Q", "Ctrl+C", "Esc", "?", "j", "k", "Enter", "n", "N", "p", "r", "R", "d", "D", "e"} {
+	for _, want := range []string{"Ctrl+Space o", "Ctrl+Q", "Ctrl+C", "Esc", "?", "j", "k", "Enter", "n", "N", "p", "r", "R", "d", "D", "e"} {
 		count := 0
 		for _, line := range strings.Split(plain, "\n") {
 			if strings.HasPrefix(strings.TrimSpace(line), want) {

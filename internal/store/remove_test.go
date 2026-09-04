@@ -56,3 +56,40 @@ func TestRemoveSessionIsNoOpForEmptySessionID(t *testing.T) {
 		t.Fatalf("project = %#v, want state unchanged", small)
 	}
 }
+
+func TestRemoveProjectDropsProjectAndSessions(t *testing.T) {
+	state := AppState{Projects: []Project{
+		{Name: "small", Workdir: "/small", Sessions: []PersistentSession{{ID: "tflow-p-1", Label: "otter"}}},
+		{Name: "garden", Workdir: "/garden", Sessions: []PersistentSession{{ID: "tflow-p-2", Label: "bee"}}},
+	}}
+
+	got := RemoveProject(state, "small")
+
+	if len(got.Projects) != 1 || got.Projects[0].Name != "garden" {
+		t.Fatalf("projects = %#v, want only garden left", got.Projects)
+	}
+}
+
+func TestRemoveProjectIsNoOpWhenProjectNotFound(t *testing.T) {
+	state := AppState{Projects: []Project{
+		{Name: "small", Workdir: "/small", Sessions: []PersistentSession{{ID: "tflow-p-1", Label: "otter"}}},
+	}}
+
+	got := RemoveProject(state, "missing")
+
+	if len(got.Projects) != 1 || got.Projects[0].Name != "small" {
+		t.Fatalf("projects = %#v, want state unchanged", got.Projects)
+	}
+}
+
+func TestRemoveProjectIsNoOpForEmptyName(t *testing.T) {
+	state := AppState{Projects: []Project{
+		{Name: "small", Workdir: "/small", Sessions: []PersistentSession{{ID: "tflow-p-1", Label: "otter"}}},
+	}}
+
+	got := RemoveProject(state, "   ")
+
+	if len(got.Projects) != 1 || got.Projects[0].Name != "small" {
+		t.Fatalf("projects = %#v, want state unchanged", got.Projects)
+	}
+}

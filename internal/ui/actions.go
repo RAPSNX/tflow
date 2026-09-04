@@ -33,8 +33,16 @@ func (m model) switchSelectedSession() (tea.Model, tea.Cmd) {
 	if _, ok := m.findSession(name); !ok {
 		return m.materializePersistentSession(name)
 	}
+	deleteSessions := append([]string(nil), m.deferredDelete...)
+	deleteProject := m.deferredDeleteProject
+	fallbackSession := m.fallbackSession
 	return m, func() tea.Msg {
-		return menuActionMsg{switchSession: name, deleteSessions: append([]string(nil), m.deferredDelete...)}
+		return menuActionMsg{
+			switchSession:       name,
+			deleteSessions:      deleteSessions,
+			deleteProject:       deleteProject,
+			exitFallbackSession: fallbackSession,
+		}
 	}
 }
 
@@ -261,8 +269,66 @@ func (m model) confirmDelete() (tea.Model, tea.Cmd) {
 	m.mode = inputNone
 	m.deleteTarget = deleteTarget{}
 	if target.session != "" {
-		if project := normalizeProjectName(m.sessionProjects[target.session]); project != "" && len(m.projectSessions(project)) == 1 {
-			return m.deleteProject(project)
+		if project := normalizeProjectName(m.sessionProjects[target.session]); project != "" {
+			sessions := m.projectSessions(project)
+			if len(sessions) == 1 {
+				return m.deleteProject(project)
+			}
+			isActive := m.currentSession == "" || m.currentSession == target.session
+			if isActive {
+				idx := -1
+				for i, s := range sessions {
+					if s.Name == target.session {
+						idx = i
+						break
+					}
+				}
+				siblingIdx := 0
+				if idx >= 0 && idx < len(sessions)-1 {
+					siblingIdx = idx + 1
+				} else if idx == len(sessions)-1 && len(sessions) > 1 {
+					siblingIdx = idx - 1
+				}
+				m.deferredDelete = []string{target.session}
+				m.deferredDeleteProject = ""
+				m.selectedProject = project
+				m.selectedSession = sessions[siblingIdx].Name
+				return m.switchSelectedSession()
+			}
+			return m.killSession(target.session)
+		}
+		// Volatile session
+		isActive := m.currentSession == "" || m.currentSession == target.session
+		if isActive {
+			var volatileSessions []session
+			for _, s := range m.sessions {
+				if s.Temporary && s.Instance == m.instanceID {
+					volatileSessions = append(volatileSessions, s)
+				}
+			}
+			if len(volatileSessions) > 1 {
+				idx := -1
+				for i, s := range volatileSessions {
+					if s.Name == target.session {
+						idx = i
+						break
+					}
+				}
+				siblingIdx := 0
+				if idx >= 0 && idx < len(volatileSessions)-1 {
+					siblingIdx = idx + 1
+				} else if idx == len(volatileSessions)-1 && len(volatileSessions) > 1 {
+					siblingIdx = idx - 1
+				}
+				m.deferredDelete = []string{target.session}
+				m.deferredDeleteProject = ""
+				m.selectedProject = ""
+				m.selectedSession = volatileSessions[siblingIdx].Name
+				return m.switchSelectedSession()
+			}
+			m.deferredDelete = []string{target.session}
+			m.deferredDeleteProject = ""
+			return m.createVolatileFallback()
 		}
 		return m.killSession(target.session)
 	}
@@ -420,6 +486,8 @@ func (m model) nextProjectAfter(project string, deletingProject bool) string {
 func (m model) createVolatileFallback() (tea.Model, tea.Cmd) {
 	if strings.TrimSpace(m.instanceID) == "" {
 		m.deferredDelete = nil
+		m.deferredDeleteProject = ""
+		m.fallbackSession = ""
 		m.err = fmt.Errorf("tflow instance id is empty")
 		m.status = m.err.Error()
 		return m, nil
@@ -430,6 +498,6 @@ func (m model) createVolatileFallback() (tea.Model, tea.Cmd) {
 		if err != nil {
 			return sessionCreatedMsg{err: fmt.Errorf("create volatile fallback: %w", err)}
 		}
-		return sessionCreatedMsg{session: s, volatile: true, label: label}
+		return sessionCreatedMsg{session: s, volatile: true, label: label, fallback: true}
 	}
 }

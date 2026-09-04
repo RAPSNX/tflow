@@ -58,13 +58,16 @@ tflow
 
 Start `tflow` in a terminal. It opens a volatile session that behaves like a normal terminal; closing that tflow instance closes its volatile sessions too. Projects you create contain persistent sessions that can be revisited later.
 
-Press `Ctrl+F` to open the sidebar. From there you can create, rename, move, delete, and switch projects and sessions. Press `Ctrl+Q` to quit the current tflow instance.
+Press `Ctrl+Space` followed by `o` to open the sidebar. From there you can create, rename, move, delete, and switch projects and sessions. Press `Ctrl+Q` to quit the current tflow instance.
 
 ## Shortcuts
 
 | Key | Action |
 |---|---|
-| `Ctrl+F` | Toggle sidebar |
+| `Ctrl+Space` `h` | Navigate to previous session in current context |
+| `Ctrl+Space` `l` | Navigate to next session in current context |
+| `Ctrl+Space` `o` | Toggle sidebar |
+| `Ctrl+Space` `Esc` / `Ctrl+C` | Cancel command mode |
 | `Ctrl+Q` | Quit the current tflow instance |
 | `Ctrl+C` | Close sidebar, or pass through when the sidebar is closed |
 | `Esc` | Cancel the current prompt or close the sidebar |

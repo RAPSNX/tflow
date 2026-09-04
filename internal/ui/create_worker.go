@@ -87,7 +87,11 @@ func (m *model) createSessionRequest(request createRequest) error {
 		if err != nil {
 			return err
 		}
-		return m.tmux.SwitchClient(s.Name)
+		if err := m.tmux.SwitchClient(s.Name); err != nil {
+			return err
+		}
+		refreshTargetTopBar(m.tmux, s.Name, "", m.currentState(), m.sessions, m.instanceID)
+		return nil
 	}
 	if m.hasSessionLabel(request.Project, request.Label, "") {
 		return fmt.Errorf("session name already exists in this project")
@@ -111,7 +115,11 @@ func (m *model) createSessionRequest(request createRequest) error {
 	if err := m.tmux.SetSessionLabel(s.Name, request.Label); err != nil {
 		return err
 	}
-	return m.tmux.SwitchClient(s.Name)
+	if err := m.tmux.SwitchClient(s.Name); err != nil {
+		return err
+	}
+	refreshTargetTopBar(m.tmux, s.Name, request.Project, m.currentState(), m.sessions, m.instanceID)
+	return nil
 }
 
 func (m *model) createProjectRequest(request createRequest) error {
@@ -146,7 +154,11 @@ func (m *model) createProjectRequest(request createRequest) error {
 	if err := m.tmux.SetSessionLabel(s.Name, request.Label); err != nil {
 		return err
 	}
-	return m.tmux.SwitchClient(s.Name)
+	if err := m.tmux.SwitchClient(s.Name); err != nil {
+		return err
+	}
+	refreshTargetTopBar(m.tmux, s.Name, request.Project, m.currentState(), m.sessions, m.instanceID)
+	return nil
 }
 
 // promotedSession records a volatile-to-persistent rename performed during
@@ -222,5 +234,9 @@ func (m *model) promoteVolatileSessions(project, workdir, current string) error 
 			return err
 		}
 	}
-	return m.tmux.SwitchClient(active)
+	if err := m.tmux.SwitchClient(active); err != nil {
+		return err
+	}
+	refreshTargetTopBar(m.tmux, active, project, m.currentState(), m.sessions, m.instanceID)
+	return nil
 }

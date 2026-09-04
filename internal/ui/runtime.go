@@ -26,6 +26,7 @@ type tmuxController interface {
 	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
+	SetSessionTopBar(name, content string) error
 	AttachCommand(ctx context.Context, name string) (*exec.Cmd, error)
 	KillSession(name string) error
 	SessionPanesAllDead(name string) (bool, error)
@@ -82,6 +83,10 @@ func (m sessionManager) SetSessionLabel(name, label string) error {
 	return m.inner.SetSessionLabel(name, label)
 }
 
+func (m sessionManager) SetSessionTopBar(name, content string) error {
+	return m.inner.SetSessionTopBar(name, content)
+}
+
 func (m sessionManager) AttachCommand(ctx context.Context, name string) (*exec.Cmd, error) {
 	return m.inner.AttachCommand(ctx, name)
 }
@@ -99,15 +104,19 @@ func (m sessionManager) SwitchClient(name string) error {
 }
 
 func (m sessionManager) EnsureControlMode(binaryPath string) error {
+	return m.inner.EnsureControlMode(binaryPath, catppuccinTmuxPalette())
+}
+
+func catppuccinTmuxPalette() runtmux.Palette {
 	palette := catppuccinPalette()
-	return m.inner.EnsureControlMode(binaryPath, runtmux.Palette{
+	return runtmux.Palette{
 		Surface0: palette.Surface0,
 		Subtext:  palette.Subtext,
 		Text:     palette.Text,
 		Blue:     palette.Blue,
 		Mantle:   palette.Mantle,
 		Teal:     palette.Teal,
-	})
+	}
 }
 
 func (m sessionManager) ToggleMenu(binaryPath string) error {
