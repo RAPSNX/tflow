@@ -1,49 +1,37 @@
 # tflow open implementation checklist
 
-This checklist contains only unfinished work derived from
-`.codex/ARCHITECTURE.md`. Remove an item after its implementation and
-verification are complete.
+Only unfinished work derived from `.codex/ARCHITECTURE.md` belongs here.
+Remove each item after implementation and verification.
 
 ## P0: Final-session deletion reliability
 
-* [ ] Reproduce the documented sidebar `d` final-session deletion flow with the full fallback handoff.
-* [ ] Keep the fallback configured and switch the originating client to it before killing the deleted persistent sessions or removing their metadata.
-* [ ] Preserve the active client and report the original error when fallback creation, switching, deletion, or metadata cleanup fails.
-* [ ] Add lifecycle tests for successful fallback handoff and each failure boundary.
+* [ ] Reproduce and fix sidebar final-session deletion so a configured volatile fallback is created and selected before persistent sessions or metadata are removed; preserve the active client and original error at every failure boundary.
+* [ ] Cover successful fallback handoff plus creation, configuration, switch, deletion, and metadata-cleanup failures with lifecycle tests.
 
-## P1: Tflow command mode, contextual navigation, and top bar
+## P1: Command mode, contextual navigation, and top bar
 
-* [ ] Bind `Ctrl+Space` to a one-command tmux key table: `h` and `l` invoke internal previous/next session workers and `o` opens the sidebar overview, without expanding public CLI help.
-* [ ] Remove the global `Ctrl+F` binding during control setup; keep the leader fixed and add no timer, key replay, configuration, or command UI.
-* [ ] Navigate with wraparound in the sidebar's current context: ordered persistent sessions in the active project, or volatile sessions of the current instance.
-* [ ] Keep navigation client-scoped, prevent cross-project and foreign-instance targets, lazily materialize missing persistent targets, and skip sidebar-only dead-session cleanup.
-* [ ] Maintain target-only derived tmux metadata for previous, active, and next top-bar entries without JSON writes or a background refresher.
-* [ ] Render the top bar with contextual previous/active/next entries, showing only the active entry for a one-session context.
-* [ ] Test command-table bindings and cancellation, removal of `Ctrl+F`, overview opening, ordering, wraparound, one-session behavior, lazy targets, client ownership, and command/write limits.
+* [ ] Bind fixed, one-shot `Ctrl+Space` command mode (`h` previous, `l` next, `o` overview), including cancellation, internal workers, and removal of the global `Ctrl+F` binding without expanding public help.
+* [ ] Navigate with wraparound in stored project order or current-instance volatile tmux order; remain client-scoped, never cross contexts, lazily materialize persistent targets, and skip sidebar-only dead-session cleanup.
+* [ ] Maintain target-only derived metadata and render previous/active/next top-bar entries, reducing a one-session context to its active entry.
+* [ ] Test bindings, cancellation, overview, ordering, wraparound, lazy targets, one-session behavior, ownership isolation, and tmux command/write limits.
 
 ## P1: Typed persistent sessions
 
-* [ ] Extend persistent project and session state with optional `agentBinary`, session `type`, and agent `command`; interpret records without a type as terminal sessions without forcing a migration.
-* [ ] Validate allowed types, agent-command requirements, one agent session per project, exact-label uniqueness, and rejection of agent moves into a project that already has an agent session, while preserving unknown-field compatibility.
-* [ ] Create ordinary new projects with lazy `code` terminal and `git` sessions in that order; preserve existing projects and volatile-session promotions without presets.
-* [ ] Keep `n` as normal terminal creation and materialize terminal, `lazygit`, and captured agent-executable sessions in the project workdir.
-* [ ] Fail clearly and without mutation when `lazygit` or an agent executable is unavailable.
-* [ ] Extend the temporary YAML project settings document with executable-only `agent-binary`; save adds or updates the lazy agent session, and clearing the setting retains its captured agent command.
-* [ ] Test old-state compatibility, schema validation, new-project records, promotion preservation, settings updates and clearing, agent-label collision suffixes, agent-move conflicts, materialization, and executable failures.
+* [ ] Add optional project `agentBinary`, session `type`, and agent `command`; treat legacy untyped records as terminal and validate types, commands, one agent per project, exact label uniqueness, and agent-move conflicts.
+* [ ] Give ordinary new projects lazy `code` terminal and `git` sessions in order; keep promotions and existing projects unchanged, keep `n` terminal-only, and materialize each type in the project workdir.
+* [ ] Add executable-only `agent-binary` to temporary project settings, including agent creation/update, collision suffixes, clearing semantics, and non-mutating executable failures.
+* [ ] Test legacy and unknown-field compatibility, schema validation, presets, promotion preservation, settings updates and clearing, label suffixes, move conflicts, materialization, and missing executables.
 
 ## P1: Typed visual identity
 
-* [ ] Render blue `>_ CODE`, teal `⎇ GIT`, and yellow `✦ AGENT` chips in every sidebar row and top-bar session entry.
-* [ ] Keep type chips visible in selected rows; render independent teal live and red attention indicators without overwriting type identity.
-* [ ] Test chip text, color/style selection, selected rows, active rows, attention rows, and top-bar consistency.
+* [ ] Render blue `>_ CODE`, teal `⎇ GIT`, and yellow `✦ AGENT` chips in sidebar and top bar without selection, live, or attention states replacing them.
+* [ ] Test chip content and styling across selected, active, live, attention, sidebar, and top-bar states.
 
 ## P1: Session attention
 
-* [ ] Enable tmux activity monitoring for every managed session and install internal alert and client-session-change hooks.
-* [ ] Set attention only for output in a session not being visited, clear it when any client visits that session, and show it in the sidebar and top bar.
-* [ ] Keep attention session-scoped and runtime-only: never write it to JSON and allow it to disappear after a tmux restart.
-* [ ] Test hook commands, inactive activity, visit clearing, indicator rendering, and persistence isolation.
+* [ ] Install tmux activity and client-visit hooks that set attention only for unvisited output and clear it on any visit; display the runtime-only marker in sidebar and top bar without JSON writes.
+* [ ] Test hook commands, inactive activity, visit clearing, rendering, and persistence isolation.
 
 ## P1: Published-module verification
 
-* [ ] Install `github.com/rapsnx/tflow/cmd/tflow@latest` through the module proxy into a temporary location and verify `tflow version` matches the current published release.
+* [ ] Install `github.com/rapsnx/tflow/cmd/tflow@latest` through the module proxy in a temporary location and verify `tflow version` matches the published release.

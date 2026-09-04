@@ -56,7 +56,7 @@ tflow
 
 ## Use tflow
 
-Start `tflow` in a terminal. It opens with a default empty project and a volatile session. This behaves like a normal terminal: closing that tflow instance closes the terminals inside it too. Projects you create contain persistent sessions that can be revisited later.
+Start `tflow` in a terminal. It opens a volatile session that behaves like a normal terminal; closing that tflow instance closes its volatile sessions too. Projects you create contain persistent sessions that can be revisited later.
 
 Press `Ctrl+F` to open the sidebar. From there you can create, rename, move, delete, and switch projects and sessions. Press `Ctrl+Q` to quit the current tflow instance.
 
