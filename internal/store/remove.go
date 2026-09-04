@@ -40,3 +40,29 @@ func RemoveSession(state AppState, sessionID string) AppState {
 	}
 	return NormalizeAppState(next)
 }
+
+// RemoveProject removes the project identified by projectName and all its
+// sessions from state. It is a pure state transformation.
+// It is a no-op, returning state unchanged, when projectName is empty or does
+// not exist.
+func RemoveProject(state AppState, projectName string) AppState {
+	projectName = NormalizeProjectName(projectName)
+	if projectName == "" {
+		return state
+	}
+	state = NormalizeAppState(state)
+
+	found := false
+	next := AppState{Projects: make([]Project, 0, len(state.Projects))}
+	for _, project := range state.Projects {
+		if NormalizeProjectName(project.Name) == projectName {
+			found = true
+			continue
+		}
+		next.Projects = append(next.Projects, project)
+	}
+	if !found {
+		return state
+	}
+	return NormalizeAppState(next)
+}
