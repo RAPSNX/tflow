@@ -1943,3 +1943,182 @@ func TestFinalSessionDeletion_MarkerSyncFailureKillsFallback(t *testing.T) {
 		t.Fatalf("got.err = %v, want sync label failed", got.err)
 	}
 }
+
+func TestDeletePersistentSessionsAfterSwitchRetainsProjectWhenTmuxDeletionFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{
+			{ID: "tflow-p-1", Label: "one"},
+			{ID: "tflow-p-2", Label: "two"},
+		},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-fallback",
+		exitDeleteProject:  "small",
+		exitDeleteSessions: []string{"tflow-p-1", "tflow-p-2"},
+		currentSession:     "tflow-p-1",
+		statePath:          path,
+		sessions: []session{
+			{Name: "tflow-p-1"},
+			{Name: "tflow-p-2"},
+			{Name: "tflow-v-fallback", Temporary: true},
+		},
+	}
+	manager := fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		killSession: func(name string) error {
+			if name == "tflow-p-2" {
+				return errors.New("cannot kill tflow-p-2")
+			}
+			return nil
+		},
+	}
+	err := runMenuExitAction(manager, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 1 {
+		t.Fatalf("persisted projects count = %d, want 1 project retained", len(persisted.Projects))
+	}
+	if persisted.Projects[0].Name != "small" {
+		t.Fatalf("retained project = %q, want small", persisted.Projects[0].Name)
+	}
+	if len(persisted.Projects[0].Sessions) != 1 || persisted.Projects[0].Sessions[0].ID != "tflow-p-2" {
+		t.Fatalf("retained sessions = %#v, want only tflow-p-2 retained", persisted.Projects[0].Sessions)
+	}
+}
+
+func TestDeletePersistentSessionsAfterSwitchRetainsSingleSessionProjectWhenKillFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "one"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-fallback",
+		exitDeleteProject:  "small",
+		exitDeleteSessions: []string{"tflow-p-1"},
+		currentSession:     "tflow-p-1",
+		statePath:          path,
+		sessions: []session{
+			{Name: "tflow-p-1"},
+			{Name: "tflow-v-fallback", Temporary: true},
+		},
+	}
+	manager := fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		killSession: func(name string) error {
+			return errors.New("kill failed")
+		},
+	}
+	err := runMenuExitAction(manager, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 1 || len(persisted.Projects[0].Sessions) != 1 {
+		t.Fatalf("persisted state = %#v, want project and session retained", persisted)
+	}
+}
+
+func TestRunMenuExitActionExcludesDeletedVolatileSessionFromRefreshedBar(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	var topBarUpdates []string
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-inst1-sibling",
+		exitDeleteSessions: []string{"tflow-v-inst1-active"},
+		currentSession:     "tflow-v-inst1-active",
+		instanceID:         "inst1",
+		statePath:          path,
+		sessions: []session{
+			{Name: "tflow-v-inst1-active", Label: "first", Temporary: true, Instance: "inst1"},
+			{Name: "tflow-v-inst1-sibling", Label: "second", Temporary: true, Instance: "inst1"},
+		},
+	}
+	manager := fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		killSession:  func(name string) error { return nil },
+		setSessionTopBar: func(name, content string) error {
+			if name == "tflow-v-inst1-sibling" {
+				topBarUpdates = append(topBarUpdates, content)
+			}
+			return nil
+		},
+	}
+	err := runMenuExitAction(manager, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if len(topBarUpdates) < 2 {
+		t.Fatalf("topBarUpdates count = %d, want at least 2 updates (before and after cleanup)", len(topBarUpdates))
+	}
+	finalUpdate := topBarUpdates[len(topBarUpdates)-1]
+	if strings.Contains(finalUpdate, "first") {
+		t.Fatalf("final top bar content %q should not contain deleted volatile session 'first'", finalUpdate)
+	}
+	if !strings.Contains(finalUpdate, "second") {
+		t.Fatalf("final top bar content %q must contain remaining volatile session 'second'", finalUpdate)
+	}
+}
+
+func TestRunMenuExitActionExcludesDeadVolatileSessionFromRefreshedBar(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	var topBarUpdates []string
+	menu := model{
+		exitAction:      menuExitSwitchSession,
+		exitSessionName: "tflow-v-inst1-sibling",
+		currentSession:  "tflow-v-inst1-dead",
+		instanceID:      "inst1",
+		statePath:       path,
+		sessions: []session{
+			{Name: "tflow-v-inst1-dead", Label: "dead", Temporary: true, Instance: "inst1"},
+			{Name: "tflow-v-inst1-sibling", Label: "alive", Temporary: true, Instance: "inst1"},
+		},
+	}
+	manager := fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		sessionPanesAllDead: func(name string) (bool, error) {
+			return name == "tflow-v-inst1-dead", nil
+		},
+		killSession: func(name string) error { return nil },
+		setSessionTopBar: func(name, content string) error {
+			if name == "tflow-v-inst1-sibling" {
+				topBarUpdates = append(topBarUpdates, content)
+			}
+			return nil
+		},
+	}
+	err := runMenuExitAction(manager, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if len(topBarUpdates) < 2 {
+		t.Fatalf("topBarUpdates count = %d, want at least 2 updates", len(topBarUpdates))
+	}
+	finalUpdate := topBarUpdates[len(topBarUpdates)-1]
+	if strings.Contains(finalUpdate, "dead") {
+		t.Fatalf("final top bar %q should not contain dead volatile session", finalUpdate)
+	}
+	if !strings.Contains(finalUpdate, "alive") {
+		t.Fatalf("final top bar %q must contain alive session", finalUpdate)
+	}
+}

@@ -87,6 +87,7 @@ func (m *model) createSessionRequest(request createRequest) error {
 		if err != nil {
 			return err
 		}
+		m.sessions = append(m.sessions, s)
 		if err := m.tmux.SwitchClient(s.Name); err != nil {
 			return err
 		}

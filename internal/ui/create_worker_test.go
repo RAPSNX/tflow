@@ -509,3 +509,46 @@ func TestProjectCreateKeepsFormOpenWhenActivePaneDirectoryFails(t *testing.T) {
 		t.Fatalf("closeMenu = %v, submitted = %t, mode = %v, status = %q", closeMenu, submitted, got.mode, got.status)
 	}
 }
+
+func TestRunCreateWorkerVolatileSessionRefreshesTopBar(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var topBarSession, topBarContent string
+	var created session
+	manager := fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			created = session{Name: name}
+			return created, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			created.Temporary, created.Instance = temporary, instanceID
+			return nil
+		},
+		setSessionLabel: func(name, label string) error {
+			created.Label = label
+			return nil
+		},
+		switchClient: func(name string) error {
+			return nil
+		},
+		setSessionTopBar: func(name, content string) error {
+			topBarSession = name
+			topBarContent = content
+			return nil
+		},
+	}
+	err := runCreateWorker(manager, createRequest{
+		Kind:     "session",
+		Label:    "shell",
+		Instance: "inst-1",
+		Workdir:  "/tmp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if topBarSession != created.Name {
+		t.Fatalf("topBarSession = %q, want created session %q", topBarSession, created.Name)
+	}
+	if !strings.Contains(topBarContent, "shell") {
+		t.Fatalf("topBarContent = %q, want to contain 'shell'", topBarContent)
+	}
+}
