@@ -116,6 +116,7 @@ func catppuccinTmuxPalette() runtmux.Palette {
 		Blue:     palette.Blue,
 		Mantle:   palette.Mantle,
 		Teal:     palette.Teal,
+		Yellow:   palette.Yellow,
 	}
 }
 

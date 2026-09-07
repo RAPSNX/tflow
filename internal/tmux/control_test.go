@@ -23,6 +23,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		Blue:     "#89b4fa",
 		Mantle:   "#181825",
 		Teal:     "#94e2d5",
+		Yellow:   "#f9e2af",
 	}); err != nil {
 		t.Fatalf("EnsureControlMode returned error: %v", err)
 	}
@@ -34,7 +35,10 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"set-option", "-g", "default-terminal", "tmux-256color"},
 		{"set-option", "-g", "terminal-overrides", ",*:Tc"},
 		{"set-option", "-g", "terminal-features", "xterm-256color:RGB,screen-256color:RGB,tmux-256color:RGB"},
+		{"set-option", "-g", "status-left-length", "120"},
+		{"set-option", "-g", "status-right-length", "30"},
 		{"set-option", "-g", "status-left", "#[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] project #[fg=#89b4fa]#{@tflow-project} #[bg=#181825,fg=#313244,nobold]  #[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] session #[fg=#94e2d5]#{?@tflow-session-label,#{@tflow-session-label},#S} #[bg=#181825,fg=#313244,nobold]"},
+		{"set-option", "-g", "status-right", "#{?#{==:#{client_key_table},tflow-command},#[fg=#f9e2af]#[bg=#181825]#[bg=#f9e2af]#[fg=#181825]#[bold] COMMAND #[nobold]#[fg=#f9e2af]#[bg=#181825]#[default],}"},
 		{"set-option", "-g", "window-status-format", ""},
 		{"set-option", "-g", "window-status-current-format", ""},
 		{"set-window-option", "-g", "remain-on-exit", "on"},
@@ -70,9 +74,11 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"bind-key", "-T", "copy-mode-vi", "WheelDownPane", "send-keys", "-X", "-N", "5", "scroll-down"},
 		{"unbind-key", "-q", "-n", "C-f"},
 		{"bind-key", "-n", "C-Space", "switch-client", "-T", "tflow-command"},
+		{"bind-key", "-T", "tflow-command", "Space", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
+		{"bind-key", "-T", "tflow-command", "Enter", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
+		{"bind-key", "-T", "tflow-command", "o", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
 		{"bind-key", "-T", "tflow-command", "h", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' navigate-prev"},
 		{"bind-key", "-T", "tflow-command", "l", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' navigate-next"},
-		{"bind-key", "-T", "tflow-command", "o", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
 		{"bind-key", "-T", "tflow-command", "Escape", "switch-client", "-T", "root"},
 		{"bind-key", "-T", "tflow-command", "C-c", "switch-client", "-T", "root"},
 		{"bind-key", "-n", "C-q", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' open-quit"},
@@ -200,32 +206,67 @@ func TestFormatTopBar(t *testing.T) {
 
 	// 1 session (alone)
 	single := p.FormatTopBar([]string{"only"}, 0)
-	if !strings.Contains(single, "only") || strings.Contains(single, "prev") {
+	if !strings.Contains(single, "only") {
 		t.Fatalf("single FormatTopBar = %q", single)
+	}
+	if strings.Count(single, "only") != 1 {
+		t.Fatalf("expected single label to appear exactly once, got: %q", single)
 	}
 	if strings.Count(single, "") != 1 || strings.Count(single, "") != 1 {
 		t.Fatalf("single FormatTopBar should have exactly one pill: %q", single)
 	}
 
-	// 3 sessions, middle active
-	three := p.FormatTopBar([]string{"first", "second", "third"}, 1)
-	if !strings.Contains(three, "first") || !strings.Contains(three, "second") || !strings.Contains(three, "third") {
-		t.Fatalf("three FormatTopBar = %q", three)
+	// 2 sessions, first active: each section appears once
+	twoFirst := p.FormatTopBar([]string{"first", "second"}, 0)
+	if strings.Count(twoFirst, "first") != 1 || strings.Count(twoFirst, "second") != 1 {
+		t.Fatalf("2 sessions (first active) should each appear once: %q", twoFirst)
 	}
-	// Verify previous is "first", active is "second", next is "third"
-	firstIdx := strings.Index(three, "first")
-	secondIdx := strings.Index(three, "second")
-	thirdIdx := strings.Index(three, "third")
-	if !(firstIdx < secondIdx && secondIdx < thirdIdx) {
-		t.Fatalf("expected order first < second < third, got indices: %d, %d, %d in %q", firstIdx, secondIdx, thirdIdx, three)
+	firstIdx := strings.Index(twoFirst, "first")
+	secondIdx := strings.Index(twoFirst, "second")
+	if !(firstIdx < secondIdx) {
+		t.Fatalf("expected first < second, got: %q", twoFirst)
+	}
+	if !strings.Contains(twoFirst, "#[bg=#313244,fg=#cdd6f4,bold] first #[bg=#181825,fg=#313244,nobold]") {
+		t.Fatalf("first should be formatted as active pill: %q", twoFirst)
 	}
 
-	// 3 sessions, first active (wraparound previous is third)
-	wrap := p.FormatTopBar([]string{"first", "second", "third"}, 0)
-	thirdWrapIdx := strings.Index(wrap, "third")
-	firstWrapIdx := strings.Index(wrap, "first")
-	secondWrapIdx := strings.Index(wrap, "second")
-	if !(thirdWrapIdx < firstWrapIdx && firstWrapIdx < secondWrapIdx) {
-		t.Fatalf("expected wraparound third < first < second, got indices: %d, %d, %d in %q", thirdWrapIdx, firstWrapIdx, secondWrapIdx, wrap)
+	// 2 sessions, second active: each section appears once
+	twoSecond := p.FormatTopBar([]string{"first", "second"}, 1)
+	if strings.Count(twoSecond, "first") != 1 || strings.Count(twoSecond, "second") != 1 {
+		t.Fatalf("2 sessions (second active) should each appear once: %q", twoSecond)
+	}
+	firstIdx = strings.Index(twoSecond, "first")
+	secondIdx = strings.Index(twoSecond, "second")
+	if !(firstIdx < secondIdx) {
+		t.Fatalf("expected first < second, got: %q", twoSecond)
+	}
+	if !strings.Contains(twoSecond, "#[bg=#313244,fg=#cdd6f4,bold] second #[bg=#181825,fg=#313244,nobold]") {
+		t.Fatalf("second should be formatted as active pill: %q", twoSecond)
+	}
+
+	// 3 sessions, middle active
+	three := p.FormatTopBar([]string{"first", "second", "third"}, 1)
+	if strings.Count(three, "first") != 1 || strings.Count(three, "second") != 1 || strings.Count(three, "third") != 1 {
+		t.Fatalf("three FormatTopBar should contain each session once: %q", three)
+	}
+	firstIdx = strings.Index(three, "first")
+	secondIdx = strings.Index(three, "second")
+	thirdIdx := strings.Index(three, "third")
+	if !(firstIdx < secondIdx && secondIdx < thirdIdx) {
+		t.Fatalf("expected order first < second < third, got: %q", three)
+	}
+	if !strings.Contains(three, "#[bg=#313244,fg=#cdd6f4,bold] second #[bg=#181825,fg=#313244,nobold]") {
+		t.Fatalf("second should be formatted as active pill: %q", three)
+	}
+
+	// 4 sessions, end active
+	four := p.FormatTopBar([]string{"s1", "s2", "s3", "s4"}, 3)
+	for _, s := range []string{"s1", "s2", "s3", "s4"} {
+		if strings.Count(four, s) != 1 {
+			t.Fatalf("session %q should appear exactly once in %q", s, four)
+		}
+	}
+	if !strings.Contains(four, "#[bg=#313244,fg=#cdd6f4,bold] s4 #[bg=#181825,fg=#313244,nobold]") {
+		t.Fatalf("s4 should be active pill: %q", four)
 	}
 }

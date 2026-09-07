@@ -44,19 +44,31 @@ func TestTopBarFormatting(t *testing.T) {
 		t.Fatalf("expected exactly 1 instance of Alone, got: %q", gotSolo)
 	}
 
-	// 2 sessions: target d1 -> prev is Second, active is First, next is Second
+	// 2 sessions: target d1 -> First is active pill, Second is inactive text; each appears once
 	gotDuo := computeTargetTopBar("d1", "duo", state, nil, "")
 	if !strings.Contains(gotDuo, "First") || !strings.Contains(gotDuo, "Second") {
 		t.Fatalf("duo top bar missing labels: %q", gotDuo)
 	}
-	if strings.Count(gotDuo, "Second") != 2 {
-		t.Fatalf("expected Second as both prev and next, got: %q", gotDuo)
+	if strings.Count(gotDuo, "First") != 1 || strings.Count(gotDuo, "Second") != 1 {
+		t.Fatalf("expected each session to appear exactly once, got: %q", gotDuo)
+	}
+	if strings.Index(gotDuo, "First") >= strings.Index(gotDuo, "Second") {
+		t.Fatalf("expected First < Second, got: %q", gotDuo)
 	}
 
-	// 3 sessions: target t2 -> prev is One, active is Two, next is t3 (fallback to ID)
+	// 3 sessions: target t2 -> One is inactive, Two is active pill, t3 is inactive; each appears once in order
 	gotTrio := computeTargetTopBar("t2", "trio", state, nil, "")
 	if !strings.Contains(gotTrio, "One") || !strings.Contains(gotTrio, "Two") || !strings.Contains(gotTrio, "t3") {
 		t.Fatalf("trio top bar missing labels or fallback ID: %q", gotTrio)
+	}
+	if strings.Count(gotTrio, "One") != 1 || strings.Count(gotTrio, "Two") != 1 || strings.Count(gotTrio, "t3") != 1 {
+		t.Fatalf("expected each session to appear once in trio, got: %q", gotTrio)
+	}
+	oneIdx := strings.Index(gotTrio, "One")
+	twoIdx := strings.Index(gotTrio, "Two")
+	threeIdx := strings.Index(gotTrio, "t3")
+	if !(oneIdx < twoIdx && twoIdx < threeIdx) {
+		t.Fatalf("expected order One < Two < t3, got indices: %d, %d, %d in %q", oneIdx, twoIdx, threeIdx, gotTrio)
 	}
 }
 

@@ -8,12 +8,12 @@ import (
 	"github.com/rapsnx/tflow/internal/store"
 )
 
-// NavigatePrev switches the current client to the previous contextual session with wraparound.
+// NavigatePrev switches the current client to the previous contextual session.
 func NavigatePrev() error {
 	return navigateWithManager(newSessionManager(), -1)
 }
 
-// NavigateNext switches the current client to the next contextual session with wraparound.
+// NavigateNext switches the current client to the next contextual session.
 func NavigateNext() error {
 	return navigateWithManager(newSessionManager(), 1)
 }
@@ -135,7 +135,12 @@ func navigateWithManager(manager tmuxController, direction int) error {
 		return nil
 	}
 
-	targetIdx := (currentIdx + direction + len(contextSessions)) % len(contextSessions)
+	targetIdx := currentIdx + direction
+	if targetIdx < 0 || targetIdx >= len(contextSessions) {
+		// Bounded navigation: halts at start or end without wrapping.
+		refreshTargetTopBar(manager, currentSession, project, state, sessions, instanceID)
+		return nil
+	}
 	target := contextSessions[targetIdx]
 
 	// Lazily materialize if target is a persistent session that is not running in tmux

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestNavigateWraparoundPersistentContext(t *testing.T) {
+func TestNavigateBoundedPersistentContext(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	statePath := appStatePath()
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
@@ -61,6 +61,20 @@ func TestNavigateWraparoundPersistentContext(t *testing.T) {
 		},
 	}
 
+	// s1 -> prev (at start boundary: no-op, no switch)
+	t.Setenv(menuCurrentEnv, "s1")
+	switchedTo = ""
+	topBarCalls = make(map[string]string)
+	if err := navigateWithManager(fake, -1); err != nil {
+		t.Fatalf("navigate prev from s1: %v", err)
+	}
+	if switchedTo != "" {
+		t.Fatalf("switched to %q at start boundary, want no-op", switchedTo)
+	}
+	if _, ok := topBarCalls["s1"]; !ok {
+		t.Fatalf("top bar should be refreshed for s1 on boundary halt")
+	}
+
 	// s1 -> next (s2)
 	t.Setenv(menuCurrentEnv, "s1")
 	switchedTo = ""
@@ -78,36 +92,44 @@ func TestNavigateWraparoundPersistentContext(t *testing.T) {
 		t.Fatalf("top bar set for %d sessions, want 1", len(topBarCalls))
 	}
 
-	// s3 -> next (wraparound to s1)
+	// s2 -> next (s3)
+	t.Setenv(menuCurrentEnv, "s2")
+	switchedTo = ""
+	topBarCalls = make(map[string]string)
+	if err := navigateWithManager(fake, 1); err != nil {
+		t.Fatalf("navigate next from s2: %v", err)
+	}
+	if switchedTo != "s3" {
+		t.Fatalf("switched to %q, want s3", switchedTo)
+	}
+
+	// s3 -> next (at end boundary: no-op, no switch)
 	t.Setenv(menuCurrentEnv, "s3")
 	switchedTo = ""
 	topBarCalls = make(map[string]string)
 	if err := navigateWithManager(fake, 1); err != nil {
 		t.Fatalf("navigate next from s3: %v", err)
 	}
-	if switchedTo != "s1" {
-		t.Fatalf("switched to %q, want s1 (wraparound)", switchedTo)
+	if switchedTo != "" {
+		t.Fatalf("switched to %q at end boundary, want no-op", switchedTo)
 	}
-	if _, ok := topBarCalls["s1"]; !ok {
-		t.Fatalf("top bar not set for target s1")
+	if _, ok := topBarCalls["s3"]; !ok {
+		t.Fatalf("top bar should be refreshed for s3 on boundary halt")
 	}
 
-	// s1 -> prev (wraparound to s3)
-	t.Setenv(menuCurrentEnv, "s1")
+	// s3 -> prev (s2)
+	t.Setenv(menuCurrentEnv, "s3")
 	switchedTo = ""
 	topBarCalls = make(map[string]string)
 	if err := navigateWithManager(fake, -1); err != nil {
-		t.Fatalf("navigate prev from s1: %v", err)
+		t.Fatalf("navigate prev from s3: %v", err)
 	}
-	if switchedTo != "s3" {
-		t.Fatalf("switched to %q, want s3 (wraparound)", switchedTo)
-	}
-	if _, ok := topBarCalls["s3"]; !ok {
-		t.Fatalf("top bar not set for target s3")
+	if switchedTo != "s2" {
+		t.Fatalf("switched to %q, want s2", switchedTo)
 	}
 }
 
-func TestNavigateWraparoundVolatileContext(t *testing.T) {
+func TestNavigateBoundedVolatileContext(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	statePath := appStatePath()
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
@@ -143,6 +165,17 @@ func TestNavigateWraparoundVolatileContext(t *testing.T) {
 
 	t.Setenv(menuInstanceEnv, "inst-1")
 
+	// tflow-v-1 -> prev (at start boundary: no-op)
+	t.Setenv(menuCurrentEnv, "tflow-v-1")
+	switchedTo = ""
+	topBarCalls = make(map[string]string)
+	if err := navigateWithManager(fake, -1); err != nil {
+		t.Fatalf("navigate prev from tflow-v-1: %v", err)
+	}
+	if switchedTo != "" {
+		t.Fatalf("switched to %q at start boundary, want no-op", switchedTo)
+	}
+
 	// tflow-v-1 -> next (tflow-v-2)
 	t.Setenv(menuCurrentEnv, "tflow-v-1")
 	switchedTo = ""
@@ -157,26 +190,114 @@ func TestNavigateWraparoundVolatileContext(t *testing.T) {
 		t.Fatalf("top bar not set for target tflow-v-2")
 	}
 
-	// tflow-v-3 -> next (wraparound to tflow-v-1, skipping other instances)
+	// tflow-v-3 -> next (at end boundary: no-op)
 	t.Setenv(menuCurrentEnv, "tflow-v-3")
 	switchedTo = ""
 	topBarCalls = make(map[string]string)
 	if err := navigateWithManager(fake, 1); err != nil {
 		t.Fatalf("navigate next from tflow-v-3: %v", err)
 	}
-	if switchedTo != "tflow-v-1" {
-		t.Fatalf("switched to %q, want tflow-v-1", switchedTo)
+	if switchedTo != "" {
+		t.Fatalf("switched to %q at end boundary, want no-op", switchedTo)
 	}
 
-	// tflow-v-1 -> prev (wraparound to tflow-v-3)
-	t.Setenv(menuCurrentEnv, "tflow-v-1")
+	// tflow-v-3 -> prev (tflow-v-2)
+	t.Setenv(menuCurrentEnv, "tflow-v-3")
 	switchedTo = ""
 	topBarCalls = make(map[string]string)
 	if err := navigateWithManager(fake, -1); err != nil {
-		t.Fatalf("navigate prev from tflow-v-1: %v", err)
+		t.Fatalf("navigate prev from tflow-v-3: %v", err)
 	}
-	if switchedTo != "tflow-v-3" {
-		t.Fatalf("switched to %q, want tflow-v-3", switchedTo)
+	if switchedTo != "tflow-v-2" {
+		t.Fatalf("switched to %q, want tflow-v-2", switchedTo)
+	}
+}
+
+func TestNavigateTwoSessionsBoundedBackAndForth(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	statePath := appStatePath()
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	state := appState{
+		Projects: []storedProject{
+			{
+				Name:    "pair",
+				Workdir: "/tmp/pair",
+				Sessions: []persistentSession{
+					{ID: "p1", Label: "First"},
+					{ID: "p2", Label: "Second"},
+				},
+			},
+		},
+	}
+	if err := saveAppState(statePath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions := []session{
+		{Name: "p1", Label: "First"},
+		{Name: "p2", Label: "Second"},
+	}
+
+	var switchedTo string
+	topBarCalls := make(map[string]string)
+
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return sessions, nil
+		},
+		switchClient: func(name string) error {
+			switchedTo = name
+			return nil
+		},
+		setSessionTopBar: func(name, content string) error {
+			topBarCalls[name] = content
+			return nil
+		},
+	}
+
+	// At p1 (first session):
+	// h (prev) halts at start boundary -> no-op
+	t.Setenv(menuCurrentEnv, "p1")
+	switchedTo = ""
+	if err := navigateWithManager(fake, -1); err != nil {
+		t.Fatalf("navigate prev at p1: %v", err)
+	}
+	if switchedTo != "" {
+		t.Fatalf("switchedTo = %q, want empty (boundary halt)", switchedTo)
+	}
+
+	// l (next) advances from p1 to p2
+	t.Setenv(menuCurrentEnv, "p1")
+	switchedTo = ""
+	if err := navigateWithManager(fake, 1); err != nil {
+		t.Fatalf("navigate next from p1: %v", err)
+	}
+	if switchedTo != "p2" {
+		t.Fatalf("switchedTo = %q, want p2", switchedTo)
+	}
+
+	// At p2 (second session):
+	// l (next) halts at end boundary -> no-op
+	t.Setenv(menuCurrentEnv, "p2")
+	switchedTo = ""
+	if err := navigateWithManager(fake, 1); err != nil {
+		t.Fatalf("navigate next at p2: %v", err)
+	}
+	if switchedTo != "" {
+		t.Fatalf("switchedTo = %q, want empty (boundary halt)", switchedTo)
+	}
+
+	// h (prev) goes back from p2 to p1
+	t.Setenv(menuCurrentEnv, "p2")
+	switchedTo = ""
+	if err := navigateWithManager(fake, -1); err != nil {
+		t.Fatalf("navigate prev from p2: %v", err)
+	}
+	if switchedTo != "p1" {
+		t.Fatalf("switchedTo = %q, want p1", switchedTo)
 	}
 }
 
