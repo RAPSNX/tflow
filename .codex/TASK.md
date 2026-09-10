@@ -12,8 +12,8 @@ Remove each item after implementation and verification.
 
 ## P1: Typed visual identity
 
-* [ ] Render blue `>_ CODE`, teal `⎇ GIT`, and yellow `✦ AGENT` chips in sidebar and top bar without selection, live, or attention states replacing them.
-* [ ] Test chip content and styling across selected, active, live, attention, sidebar, and top-bar states.
+* [ ] Render blue `>_ CODE`, teal `⎇ GIT`, and yellow `✦ AGENT` chips in sidebar rows, and the icon and colour alone in top-bar entries, without selection, live, or attention states replacing them.
+* [ ] Test chip content and styling across selected, active, live, attention, sidebar, and top-bar states, including that the top bar renders no worded chip.
 
 ## P1: Session attention
 

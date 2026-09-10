@@ -18,7 +18,7 @@
 
 A typical repository needs more than one terminal: an IDE, a shell for tests, an agent, and sometimes a shell for checking a Kubernetes cluster. Once two or three projects are open, those terminals quickly become difficult to follow.
 
-tflow gives each project its own context. Its sessions stay together, and a small sidebar lets you move between them without losing your place.
+tflow gives each project its own context. Its sessions stay together, and a top bar keeps the project and its sessions in view so you can move between them without losing your place.
 
 It is intentionally focused. tflow uses tmux to manage ordinary terminal sessions and tries to preserve normal terminal behavior. It is not a full terminal multiplexer or an IDE; it is a lightweight way to organize and revisit project sessions.
 
@@ -58,7 +58,9 @@ tflow
 
 Start `tflow` in a terminal. It opens a volatile session that behaves like a normal terminal; closing that tflow instance closes its volatile sessions too. Projects you create contain persistent sessions that can be revisited later.
 
-Press `Ctrl+Space` to open the command sidebar. While it is open, press `h` or `l` to move to the previous or next session; the sidebar then closes. From the sidebar you can also create, rename, move, delete, and switch projects and sessions. Press `Ctrl+Q` to quit the current tflow instance.
+The top bar shows the current project and every session in it, with the active one highlighted.
+
+Press `Ctrl+Space` to open the command sidebar; it opens below the top bar, so the bar stays visible while you choose. While it is open, press `h` or `l` to move to the previous or next session; the sidebar then closes. From the sidebar you can also create, rename, move, delete, and switch projects and sessions. Press `Ctrl+Q` to quit the current tflow instance.
 
 ## Shortcuts
 

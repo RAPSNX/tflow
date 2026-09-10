@@ -17,16 +17,20 @@ const (
 	tempMarker            = "@tflow-temp"
 	instanceMarker        = "@tflow-instance"
 	menuWidth             = "36"
-	menuHeight            = "100%"
-	commandKey            = "C-Space"
-	commandTable          = "tflow-command"
-	quitKey               = "C-q"
-	CurrentSessionEnv     = "TFLOW_CURRENT_SESSION"
-	CurrentClientEnv      = "TFLOW_CURRENT_CLIENT"
-	CurrentInstanceEnv    = "TFLOW_INSTANCE_ID"
-	MenuModeEnv           = "TFLOW_MENU_MODE"
-	MenuModeCommand       = "command"
-	MenuModeQuit          = "quit"
+	// menuHeight stays below 100% so the popup fits under the status line.
+	// tmux resolves a popup that would overflow by moving it back up rather
+	// than shrinking it, so a full-height popup lands on the status line and
+	// hides the top bar. Percentages are floored, so this always leaves a row.
+	menuHeight         = "95%"
+	commandKey         = "C-Space"
+	commandTable       = "tflow-command"
+	quitKey            = "C-q"
+	CurrentSessionEnv  = "TFLOW_CURRENT_SESSION"
+	CurrentClientEnv   = "TFLOW_CURRENT_CLIENT"
+	CurrentInstanceEnv = "TFLOW_INSTANCE_ID"
+	MenuModeEnv        = "TFLOW_MENU_MODE"
+	MenuModeCommand    = "command"
+	MenuModeQuit       = "quit"
 )
 
 type Session struct {
@@ -131,7 +135,7 @@ func (p Palette) statusRight() string {
 	return "#{?#{==:#{client_key_table}," + commandTable + "},#[fg=" + yellow + "]#[bg=" + mantle + "]#[bg=" + yellow + "]#[fg=" + mantle + "]#[bold] COMMAND #[nobold]#[fg=" + yellow + "]#[bg=" + mantle + "]#[default],}"
 }
 
-func (p Palette) FormatTopBar(labels []string, activeIndex int) string {
+func (p Palette) FormatTopBar(project string, labels []string, activeIndex int) string {
 	if len(labels) == 0 {
 		return ""
 	}
@@ -139,11 +143,10 @@ func (p Palette) FormatTopBar(labels []string, activeIndex int) string {
 		activeIndex = 0
 	}
 	var b strings.Builder
+	b.WriteString(p.projectSection(project))
 	for i, label := range labels {
 		label = escapeTmuxFormatLiteral(label)
-		if i == 0 && i != activeIndex {
-			b.WriteString("#[bg=" + p.Mantle + ",fg=" + p.Subtext + "] ")
-		} else if i > 0 {
+		if i > 0 {
 			b.WriteString("  ")
 		}
 		if i == activeIndex {
@@ -155,6 +158,17 @@ func (p Palette) FormatTopBar(labels []string, activeIndex int) string {
 		}
 	}
 	return b.String()
+}
+
+// projectSection renders the leading project pill and the arrow dividing it
+// from the session section. A volatile context has no project and renders an
+// empty pill rather than nothing, so the bar keeps its shape in every context.
+func (p Palette) projectSection(project string) string {
+	project = escapeTmuxFormatLiteral(strings.TrimSpace(project))
+	return "#[bg=" + p.Mantle + ",fg=" + p.Surface0 + "]" +
+		"#[bg=" + p.Surface0 + ",fg=" + p.Blue + ",bold] " + project + " " +
+		"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]" +
+		"  "
 }
 
 func escapeTmuxFormatLiteral(value string) string {

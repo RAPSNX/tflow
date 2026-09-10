@@ -85,7 +85,7 @@ func computeTargetTopBar(targetSession, project string, state appState, sessions
 	}
 
 	palette := catppuccinTmuxPalette()
-	return palette.FormatTopBar(labels, activeIdx)
+	return palette.FormatTopBar(project, labels, activeIdx)
 }
 
 func (m model) topBarState() appState {

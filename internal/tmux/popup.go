@@ -82,7 +82,7 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 		"-w", menuWidth,
 		"-h", menuHeight,
 		"-x", "0",
-		"-y", "C",
+		"-y", "S",
 		"-e", fmt.Sprintf("%s=%s", CurrentSessionEnv, currentSession),
 		"-e", fmt.Sprintf("%s=%s", CurrentClientEnv, currentClient),
 	}

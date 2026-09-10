@@ -24,7 +24,7 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		{"set-option", "-g", "default-terminal", "tmux-256color"},
 		{"set-option", "-g", "terminal-overrides", ",*:Tc"},
 		{"set-option", "-g", "terminal-features", "xterm-256color:RGB,screen-256color:RGB,tmux-256color:RGB"},
-		{"set-option", "-g", "status-left-length", "120"},
+		{"set-option", "-g", "status-left-length", "200"},
 		{"set-option", "-g", "status-right-length", "30"},
 		{"set-option", "-g", "status-left", palette.statusLeft()},
 		{"set-option", "-g", "status-right", palette.statusRight()},

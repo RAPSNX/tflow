@@ -72,6 +72,44 @@ func TestTopBarFormatting(t *testing.T) {
 	}
 }
 
+func TestTopBarOpensWithProjectSection(t *testing.T) {
+	state := appState{
+		Projects: []storedProject{
+			{
+				Name: "solo",
+				Sessions: []persistentSession{
+					{ID: "s1", Label: "Alone"},
+				},
+			},
+		},
+	}
+
+	got := computeTargetTopBar("s1", "solo", state, nil, "")
+	if !strings.Contains(got, "solo") {
+		t.Fatalf("expected project name in top bar, got: %q", got)
+	}
+	if strings.Index(got, "solo") >= strings.Index(got, "Alone") {
+		t.Fatalf("expected project section before its sessions, got: %q", got)
+	}
+	if !strings.Contains(got, "\ue0b0") {
+		t.Fatalf("expected section split arrow, got: %q", got)
+	}
+}
+
+func TestTopBarKeepsProjectSectionInVolatileContext(t *testing.T) {
+	sessions := []session{
+		{Name: "tflow-v-1", Temporary: true, Instance: "inst-A", Label: "Alpha"},
+	}
+
+	got := computeTargetTopBar("tflow-v-1", "", appState{}, sessions, "inst-A")
+	if !strings.Contains(got, "\ue0b0") {
+		t.Fatalf("volatile top bar should still render the project section, got: %q", got)
+	}
+	if strings.Index(got, "\ue0b0") >= strings.Index(got, "Alpha") {
+		t.Fatalf("expected empty project section before the sessions, got: %q", got)
+	}
+}
+
 func TestTopBarVolatileFormatting(t *testing.T) {
 	sessions := []session{
 		{Name: "tflow-v-1", Temporary: true, Instance: "inst-A", Label: "Alpha"},

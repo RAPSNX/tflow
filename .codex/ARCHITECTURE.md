@@ -117,8 +117,11 @@ previous contextual session and `l` selects the next; either action closes the
 sidebar and returns the client to normal input. A second `Ctrl+Space`, `Esc`, or
 `Ctrl+C` closes the command sidebar without navigating. Other sidebar shortcuts
 keep their normal behavior. No configuration, timer, or key replay is involved,
-and tflow does not bind `Ctrl+F`. `Ctrl+Q` opens confirmation for quitting the current instance and
-removing its volatile sessions.
+and tflow does not bind `Ctrl+F`. `Ctrl+Q` opens confirmation for quitting the
+current instance and removing its volatile sessions.
+
+The command sidebar never covers the status line, so the top bar stays readable
+while command mode is active.
 
 Navigation moves through the same order shown by the sidebar: stored order in
 the active project or tmux list order for the current instance's volatile
@@ -127,19 +130,27 @@ without wrapping. It never crosses projects or instances, lazily materializes
 missing persistent targets, remains client-scoped, and does not run
 sidebar-only exited-session cleanup.
 
-The top bar displays all contextual sessions in their exact order, showing each
-session once and highlighting the active session as a pill. A switch computes
-derived, session-scoped status metadata for its selected target from
-post-mutation state. A successful rename, non-active deletion, or settings
-change that alters the originating client's displayed context refreshes only its
-active session. Moves and creation use their required target switch; inactive
-and unrelated sessions are never rewritten. Post-switch cleanup that removes an
-outgoing session refreshes the selected target again. Derived metadata is
-neither persistent nor maintained by a daemon or refresh loop.
+The top bar is tflow's primary state view. It opens with a project section,
+then a solid arrow marking the section split, then all contextual sessions in
+their exact order, showing each session once and highlighting the active
+session as a pill. The project section is always present: it names the active
+project, and in a volatile context it renders as an empty pill rather than
+being omitted, so the bar keeps the same shape in every context.
 
-Every sidebar row and top-bar entry has a type chip: blue `>_ CODE`, teal
-`⎇ GIT`, or yellow `✦ AGENT`. Selection never replaces the chip. Teal `live`
-and red attention indicators remain independent of type and selection.
+A switch computes derived, session-scoped status metadata for its selected
+target from post-mutation state. A successful rename, non-active deletion, or
+settings change that alters the originating client's displayed context
+refreshes only its active session. Moves and creation use their required target
+switch; inactive and unrelated sessions are never rewritten. Post-switch
+cleanup that removes an outgoing session refreshes the selected target again.
+Derived metadata is neither persistent nor maintained by a daemon or refresh
+loop.
+
+Every session carries a type identity: blue code, teal git, or yellow agent.
+Sidebar rows render it as a full chip, `>_ CODE`, `⎇ GIT`, or `✦ AGENT`, while
+top-bar entries render the icon and colour alone to keep the line short.
+Selection never replaces the type identity. Teal `live` and red attention
+indicators remain independent of type and selection.
 
 Tmux owns popup lifetime. Successful actions close the sidebar and return
 focus to the terminal. Valid session and project creation closes it once tmux
