@@ -3,23 +3,16 @@
 Only unfinished work derived from `.codex/ARCHITECTURE.md` belongs here.
 Remove each item after implementation and verification.
 
-## P1: Typed persistent sessions
-
-* [ ] Add optional project `agentBinary`, session `type`, and agent `command`; treat legacy untyped records as terminal and validate types, commands, one agent per project, exact label uniqueness, and agent-move conflicts.
-* [ ] Give ordinary new projects lazy `code` terminal and `git` sessions in order; keep promotions and existing projects unchanged, keep `n` terminal-only, and materialize each type in the project workdir.
-* [ ] Add executable-only `agent-binary` to temporary project settings, including agent creation/update, collision suffixes, clearing semantics, and non-mutating executable failures.
-* [ ] Test legacy and unknown-field compatibility, schema validation, presets, promotion preservation, settings updates and clearing, label suffixes, move conflicts, materialization, and missing executables.
-
-## P1: Typed visual identity
-
-* [ ] Render blue `>_ CODE`, teal `⎇ GIT`, and yellow `✦ AGENT` chips in sidebar rows, and the icon and colour alone in top-bar entries, without selection, live, or attention states replacing them.
-* [ ] Test chip content and styling across selected, active, live, attention, sidebar, and top-bar states, including that the top bar renders no worded chip.
-
 ## P1: Session attention
 
-* [ ] Install tmux activity and client-visit hooks that set attention only for unvisited output and clear it on any visit; display the runtime-only marker in sidebar and top bar without JSON writes.
-* [ ] Test hook commands, inactive activity, visit clearing, rendering, and persistence isolation.
-
-## P1: Published-module verification
-
-* [ ] Install `github.com/rapsnx/tflow/cmd/tflow@latest` through the module proxy in a temporary location and verify `tflow version` matches the published release.
+* [ ] Verify the `alert-activity` hook actually invokes `session-activity` in a
+  real interactive tmux session. Manual testing on this development machine
+  (tmux 3.7c) found the hook's registered `run-shell` command does not appear
+  to execute, even a trivial one, while the identical mechanism reliably fires
+  for `client-session-changed` on the same server -- confirmed via tmux's own
+  `-vv` server trace, which showed the window-activity flag transitioning
+  correctly with no observable effect from the hook. This may be specific to
+  that tmux build; retest on the target release environment, and if it
+  reproduces, find a working alternative trigger for "unvisited session
+  produced output" before considering this done. The clearing half
+  (`client-session-changed` → `session-visited`) was verified live and works.

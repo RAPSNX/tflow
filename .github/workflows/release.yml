@@ -29,3 +29,38 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  verify-published-module:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install the published module from the proxy
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+        run: |
+          # The module proxy indexes a new tag shortly after the GitHub
+          # Release is published, not necessarily instantly, so retry for a
+          # few minutes rather than failing on the first miss.
+          for attempt in $(seq 1 10); do
+            if GOBIN="$RUNNER_TEMP/bin" go install github.com/rapsnx/tflow/cmd/tflow@latest; then
+              break
+            fi
+            if [ "$attempt" -eq 10 ]; then
+              echo "go install did not succeed after $attempt attempts" >&2
+              exit 1
+            fi
+            sleep 30
+          done
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Verify the installed version matches this release tag
+        run: |
+          got="$(tflow version)"
+          want="tflow ${GITHUB_REF_NAME}"
+          echo "installed: $got"
+          echo "expected:  $want"
+          test "$got" = "$want"
