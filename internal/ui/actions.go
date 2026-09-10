@@ -30,9 +30,28 @@ func (m model) switchSelectedSession() (tea.Model, tea.Cmd) {
 		m.status = "No session selected."
 		return m, nil
 	}
-	if _, ok := m.findSession(name); !ok {
+	project := normalizeProjectName(m.sessionProjects[name])
+	revalidate := false
+	if project != "" && len(m.deferredDelete) > 0 && m.stateBasePath == m.statePath {
+		for _, storedProject := range m.stateBase.Projects {
+			if normalizeProjectName(storedProject.Name) != project {
+				continue
+			}
+			for _, storedSession := range storedProject.Sessions {
+				if storedSession.ID == name {
+					revalidate = true
+					break
+				}
+			}
+		}
+	}
+	if _, ok := m.findSession(name); !ok || revalidate {
 		return m.materializePersistentSession(name)
 	}
+	return m.switchSelectedSessionAfterValidation(name)
+}
+
+func (m model) switchSelectedSessionAfterValidation(name string) (tea.Model, tea.Cmd) {
 	deleteSessions := append([]string(nil), m.deferredDelete...)
 	deleteProject := m.deferredDeleteProject
 	fallbackSession := m.fallbackSession
@@ -105,7 +124,7 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 		existing.Instance = ""
 		m.setSessionLabel(name, label)
 		m.sessions = append(m.sessions, existing)
-		return m.switchSelectedSession()
+		return m.switchSelectedSessionAfterValidation(name)
 	}
 
 	created, err := m.tmux.CreateSession(name, workdir, "")
@@ -137,7 +156,7 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 	created.Instance = ""
 	m.setSessionLabel(name, label)
 	m.sessions = append(m.sessions, created)
-	return m.switchSelectedSession()
+	return m.switchSelectedSessionAfterValidation(name)
 }
 
 func (m *model) beginProjectSwitch() (tea.Model, tea.Cmd) {
