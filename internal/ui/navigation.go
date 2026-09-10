@@ -61,20 +61,19 @@ func navigateWithManager(manager tmuxController, direction int) error {
 		}
 	}
 
-	instanceID := ""
-	if currentInfo != nil {
-		instanceID = strings.TrimSpace(currentInfo.Instance)
-	}
-	if instanceID == "" {
-		instanceID = strings.TrimSpace(os.Getenv(menuInstanceEnv))
-	}
-
 	// Determine if current session is volatile or belongs to a project
 	isVolatile := false
 	if currentInfo != nil && (currentInfo.Temporary || strings.HasPrefix(currentInfo.Name, "tflow-v-")) {
 		isVolatile = true
 	} else if strings.HasPrefix(currentSession, "tflow-v-") {
 		isVolatile = true
+	}
+	instanceID := ""
+	if isVolatile && currentInfo != nil {
+		instanceID = strings.TrimSpace(currentInfo.Instance)
+	}
+	if isVolatile && instanceID == "" {
+		return nil
 	}
 
 	state := appState{}
@@ -90,7 +89,7 @@ func navigateWithManager(manager tmuxController, direction int) error {
 
 	if isVolatile {
 		for _, s := range sessions {
-			if s.Temporary && (instanceID == "" || s.Instance == instanceID) {
+			if s.Temporary && s.Instance == instanceID {
 				contextSessions = append(contextSessions, s)
 			}
 		}

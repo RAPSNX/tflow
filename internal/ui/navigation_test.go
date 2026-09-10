@@ -246,6 +246,37 @@ func TestNavigatePrefersCurrentSessionInstanceOverAmbientEnvironment(t *testing.
 	}
 }
 
+func TestNavigateRequiresCurrentVolatileSessionInstance(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{}); err != nil {
+		t.Fatal(err)
+	}
+
+	var switchedTo string
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{
+				{Name: "tflow-v-unmarked", Temporary: true, Label: "current"},
+				{Name: "tflow-v-foreign", Temporary: true, Instance: "foreign", Label: "foreign"},
+			}, nil
+		},
+		switchClient: func(name string) error {
+			switchedTo = name
+			return nil
+		},
+	}
+	t.Setenv(menuCurrentEnv, "tflow-v-unmarked")
+	t.Setenv(menuInstanceEnv, "foreign")
+
+	if err := navigateWithManager(manager, 1); err != nil {
+		t.Fatalf("navigate next: %v", err)
+	}
+	if switchedTo != "" {
+		t.Fatalf("switched to %q without proven current-session ownership", switchedTo)
+	}
+}
+
 func TestNavigateTwoSessionsBoundedBackAndForth(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	statePath := appStatePath()
