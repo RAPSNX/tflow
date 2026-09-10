@@ -38,8 +38,47 @@ func (m *model) clearSessionMetadata(names ...string) bool {
 			delete(m.sessionLabels, name)
 			changed = true
 		}
+		if _, ok := m.sessionTypes[name]; ok {
+			delete(m.sessionTypes, name)
+			changed = true
+		}
+		if _, ok := m.sessionCommands[name]; ok {
+			delete(m.sessionCommands, name)
+			changed = true
+		}
 	}
 	return changed
+}
+
+// sessionType returns the persisted type of a persistent session, or
+// store.SessionTypeTerminal for a volatile session, an unset (legacy)
+// record, or one this model does not know about.
+func (m model) sessionType(name string) string {
+	if s, ok := m.findSession(name); ok && s.Temporary {
+		return sessionTypeTerminal
+	}
+	if t := strings.TrimSpace(m.sessionTypes[name]); t != "" {
+		return t
+	}
+	return sessionTypeTerminal
+}
+
+func (m *model) setSessionType(name, sessionType string) {
+	if m.sessionTypes == nil {
+		m.sessionTypes = map[string]string{}
+	}
+	m.sessionTypes[name] = strings.TrimSpace(sessionType)
+}
+
+func (m model) sessionCommand(name string) string {
+	return strings.TrimSpace(m.sessionCommands[name])
+}
+
+func (m *model) setSessionCommand(name, command string) {
+	if m.sessionCommands == nil {
+		m.sessionCommands = map[string]string{}
+	}
+	m.sessionCommands[name] = strings.TrimSpace(command)
 }
 
 func (m model) hasSessionLabel(project, label string, exceptName string) bool {

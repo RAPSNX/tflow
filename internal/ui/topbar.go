@@ -42,17 +42,20 @@ func computeTargetTopBar(targetSession, project string, state appState, sessions
 	}
 
 	var labels []string
+	var types []string
 	activeIdx := -1
 
 	if project != "" {
 		for _, p := range state.Projects {
 			if normalizeProjectName(p.Name) == project {
 				labels = make([]string, len(p.Sessions))
+				types = make([]string, len(p.Sessions))
 				for i, s := range p.Sessions {
 					labels[i] = strings.TrimSpace(s.Label)
 					if labels[i] == "" {
 						labels[i] = s.ID
 					}
+					types[i] = strings.TrimSpace(s.Type)
 					if s.ID == targetSession {
 						activeIdx = i
 					}
@@ -69,6 +72,7 @@ func computeTargetTopBar(targetSession, project string, state appState, sessions
 			}
 		}
 		labels = make([]string, len(volatile))
+		types = make([]string, len(volatile))
 		for i, s := range volatile {
 			labels[i] = strings.TrimSpace(s.Label)
 			if labels[i] == "" {
@@ -85,7 +89,7 @@ func computeTargetTopBar(targetSession, project string, state appState, sessions
 	}
 
 	palette := catppuccinTmuxPalette()
-	return palette.FormatTopBar(project, labels, activeIdx)
+	return palette.FormatTopBar(project, labels, types, activeIdx)
 }
 
 func (m model) topBarState() appState {

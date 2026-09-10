@@ -36,6 +36,45 @@ func TestRenderSessionRowUsesDisplayLabel(t *testing.T) {
 	}
 }
 
+func TestRenderSessionRowShowsTypeChipAcrossStates(t *testing.T) {
+	strip := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	m := newMenu().(model)
+	m.width = 48
+	m.selectedProject = "small"
+	m.sessions = []session{{Name: "s1"}, {Name: "s2"}, {Name: "s3"}}
+	m.sessionProjects = map[string]string{"s1": "small", "s2": "small", "s3": "small"}
+	m.sessionLabels = map[string]string{"s1": "code", "s2": "git", "s3": "agent"}
+	m.sessionTypes = map[string]string{"s2": sessionTypeGit, "s3": sessionTypeAgent}
+
+	cases := []struct {
+		index   int
+		want    string
+		exclude []string
+	}{
+		{0, ">_ CODE", []string{"⎇ GIT", "✦ AGENT"}},
+		{1, "⎇ GIT", []string{">_ CODE", "✦ AGENT"}},
+		{2, "✦ AGENT", []string{">_ CODE", "⎇ GIT"}},
+	}
+	for _, tc := range cases {
+		plain := strip.ReplaceAllString(m.renderSessionRow(tc.index, tc.index, m.sessions[tc.index]), "")
+		if !strings.Contains(plain, tc.want) {
+			t.Fatalf("row %d missing chip %q: %q", tc.index, tc.want, plain)
+		}
+		for _, excluded := range tc.exclude {
+			if strings.Contains(plain, excluded) {
+				t.Fatalf("row %d unexpectedly contains %q: %q", tc.index, excluded, plain)
+			}
+		}
+	}
+
+	// Selection, live, and attention states never replace the chip.
+	m.currentSession = "s2"
+	live := strip.ReplaceAllString(m.renderSessionRow(1, 1, m.sessions[1]), "")
+	if !strings.Contains(live, "⎇ GIT") || !strings.Contains(live, "live") {
+		t.Fatalf("selected+live git row lost its chip or live badge: %q", live)
+	}
+}
+
 func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 	m := newMenu().(model)
 	m.width = 48

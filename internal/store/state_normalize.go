@@ -23,6 +23,7 @@ func ValidateAppState(state AppState) error {
 		}
 		seenProjects[name] = struct{}{}
 		seenLabels := map[string]struct{}{}
+		seenAgent := false
 		for si, session := range project.Sessions {
 			id := strings.TrimSpace(session.ID)
 			if id == "" {
@@ -40,9 +41,34 @@ func ValidateAppState(state AppState) error {
 				return fmt.Errorf("invalid state: projects[%d] (%q).sessions[%d] (%q): duplicate label %q", pi, name, si, id, label)
 			}
 			seenLabels[label] = struct{}{}
+
+			sessionType := strings.TrimSpace(session.Type)
+			switch sessionType {
+			case "", SessionTypeTerminal, SessionTypeGit:
+				if strings.TrimSpace(session.Command) != "" {
+					return fmt.Errorf("invalid state: projects[%d] (%q).sessions[%d] (%q): type %q must not have a command", pi, name, si, id, fallbackType(sessionType))
+				}
+			case SessionTypeAgent:
+				if strings.TrimSpace(session.Command) == "" {
+					return fmt.Errorf("invalid state: projects[%d] (%q).sessions[%d] (%q): agent session requires a command", pi, name, si, id)
+				}
+				if seenAgent {
+					return fmt.Errorf("invalid state: projects[%d] (%q): duplicate agent session", pi, name)
+				}
+				seenAgent = true
+			default:
+				return fmt.Errorf("invalid state: projects[%d] (%q).sessions[%d] (%q): unknown session type %q", pi, name, si, id, sessionType)
+			}
 		}
 	}
 	return nil
+}
+
+func fallbackType(sessionType string) string {
+	if sessionType == "" {
+		return SessionTypeTerminal
+	}
+	return sessionType
 }
 
 func NormalizeAppState(state AppState) AppState {
@@ -58,7 +84,7 @@ func NormalizeAppState(state AppState) AppState {
 			continue
 		}
 		seenProjects[name] = struct{}{}
-		normalizedProject := Project{Name: name, Workdir: strings.TrimSpace(project.Workdir), Sessions: make([]PersistentSession, 0, len(project.Sessions))}
+		normalizedProject := Project{Name: name, Workdir: strings.TrimSpace(project.Workdir), AgentBinary: strings.TrimSpace(project.AgentBinary), Sessions: make([]PersistentSession, 0, len(project.Sessions))}
 		for _, session := range project.Sessions {
 			id := strings.TrimSpace(session.ID)
 			if id == "" {
@@ -72,7 +98,12 @@ func NormalizeAppState(state AppState) AppState {
 			if label == "" {
 				label = sessionLabelFromKey(id, name)
 			}
-			normalizedProject.Sessions = append(normalizedProject.Sessions, PersistentSession{ID: id, Label: label})
+			sessionType := strings.TrimSpace(session.Type)
+			command := strings.TrimSpace(session.Command)
+			if sessionType != SessionTypeAgent {
+				command = ""
+			}
+			normalizedProject.Sessions = append(normalizedProject.Sessions, PersistentSession{ID: id, Label: label, Type: sessionType, Command: command})
 		}
 		normalized.Projects = append(normalized.Projects, normalizedProject)
 	}

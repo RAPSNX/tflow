@@ -71,13 +71,15 @@ func (m model) renderSessionRow(index, selectedIndex int, s session) string {
 	project := normalizeProjectName(m.sessionProjects[s.Name])
 	selected := index == selectedIndex
 	style := m.rowStyle(selected, project)
-	content := label
+	chip := sessionTypeChip(m.sessionType(s.Name))
+	content := chip + " " + label
 	if s.Name == m.currentSession {
-		content = currentBadgeStyle.Render("live") + " " + label
+		content = chip + " " + currentBadgeStyle.Render("live") + " " + label
 		if selected {
-			// The live badge resets terminal styles after rendering. Reapply the
-			// selected row style so the label stays highlighted beside the badge.
-			content = currentBadgeStyle.Render("live") + selectedSessionStyle.Padding(0).Render(" "+label)
+			// The chip and live badge reset terminal styles after rendering.
+			// Reapply the selected row style so the label stays highlighted
+			// beside them.
+			content = chip + " " + currentBadgeStyle.Render("live") + selectedSessionStyle.Padding(0).Render(" "+label)
 		}
 	}
 	return style.Width(max(16, m.width-12)).Render(content)

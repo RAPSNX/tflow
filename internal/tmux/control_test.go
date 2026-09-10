@@ -199,12 +199,12 @@ func TestFormatTopBar(t *testing.T) {
 	p := topBarPalette()
 
 	// 0 sessions
-	if got := p.FormatTopBar("demo", nil, 0); got != "" {
+	if got := p.FormatTopBar("demo", nil, nil, 0); got != "" {
 		t.Fatalf("FormatTopBar(nil) = %q, want empty", got)
 	}
 
 	// 1 session (alone)
-	single := p.FormatTopBar("demo", []string{"only"}, 0)
+	single := p.FormatTopBar("demo", []string{"only"}, nil, 0)
 	if !strings.Contains(single, "only") {
 		t.Fatalf("single FormatTopBar = %q", single)
 	}
@@ -216,7 +216,7 @@ func TestFormatTopBar(t *testing.T) {
 	}
 
 	// 2 sessions, first active: each section appears once
-	twoFirst := p.FormatTopBar("demo", []string{"first", "second"}, 0)
+	twoFirst := p.FormatTopBar("demo", []string{"first", "second"}, nil, 0)
 	if strings.Count(twoFirst, "first") != 1 || strings.Count(twoFirst, "second") != 1 {
 		t.Fatalf("2 sessions (first active) should each appear once: %q", twoFirst)
 	}
@@ -225,12 +225,12 @@ func TestFormatTopBar(t *testing.T) {
 	if !(firstIdx < secondIdx) {
 		t.Fatalf("expected first < second, got: %q", twoFirst)
 	}
-	if !strings.Contains(twoFirst, "#[bg=#313244,fg=#cdd6f4,bold] first #[bg=#181825,fg=#313244,nobold]") {
+	if !strings.Contains(twoFirst, "#[bg=#313244,fg=#cdd6f4,bold] #[fg=#89b4fa]>_#[fg=#a6adc8] first #[bg=#181825,fg=#313244,nobold]") {
 		t.Fatalf("first should be formatted as active pill: %q", twoFirst)
 	}
 
 	// 2 sessions, second active: each section appears once
-	twoSecond := p.FormatTopBar("demo", []string{"first", "second"}, 1)
+	twoSecond := p.FormatTopBar("demo", []string{"first", "second"}, nil, 1)
 	if strings.Count(twoSecond, "first") != 1 || strings.Count(twoSecond, "second") != 1 {
 		t.Fatalf("2 sessions (second active) should each appear once: %q", twoSecond)
 	}
@@ -239,12 +239,12 @@ func TestFormatTopBar(t *testing.T) {
 	if !(firstIdx < secondIdx) {
 		t.Fatalf("expected first < second, got: %q", twoSecond)
 	}
-	if !strings.Contains(twoSecond, "#[bg=#313244,fg=#cdd6f4,bold] second #[bg=#181825,fg=#313244,nobold]") {
+	if !strings.Contains(twoSecond, "#[bg=#313244,fg=#cdd6f4,bold] #[fg=#89b4fa]>_#[fg=#a6adc8] second #[bg=#181825,fg=#313244,nobold]") {
 		t.Fatalf("second should be formatted as active pill: %q", twoSecond)
 	}
 
 	// 3 sessions, middle active
-	three := p.FormatTopBar("demo", []string{"first", "second", "third"}, 1)
+	three := p.FormatTopBar("demo", []string{"first", "second", "third"}, nil, 1)
 	if strings.Count(three, "first") != 1 || strings.Count(three, "second") != 1 || strings.Count(three, "third") != 1 {
 		t.Fatalf("three FormatTopBar should contain each session once: %q", three)
 	}
@@ -254,18 +254,18 @@ func TestFormatTopBar(t *testing.T) {
 	if !(firstIdx < secondIdx && secondIdx < thirdIdx) {
 		t.Fatalf("expected order first < second < third, got: %q", three)
 	}
-	if !strings.Contains(three, "#[bg=#313244,fg=#cdd6f4,bold] second #[bg=#181825,fg=#313244,nobold]") {
+	if !strings.Contains(three, "#[bg=#313244,fg=#cdd6f4,bold] #[fg=#89b4fa]>_#[fg=#a6adc8] second #[bg=#181825,fg=#313244,nobold]") {
 		t.Fatalf("second should be formatted as active pill: %q", three)
 	}
 
 	// 4 sessions, end active
-	four := p.FormatTopBar("demo", []string{"s1", "s2", "s3", "s4"}, 3)
+	four := p.FormatTopBar("demo", []string{"s1", "s2", "s3", "s4"}, nil, 3)
 	for _, s := range []string{"s1", "s2", "s3", "s4"} {
 		if strings.Count(four, s) != 1 {
 			t.Fatalf("session %q should appear exactly once in %q", s, four)
 		}
 	}
-	if !strings.Contains(four, "#[bg=#313244,fg=#cdd6f4,bold] s4 #[bg=#181825,fg=#313244,nobold]") {
+	if !strings.Contains(four, "#[bg=#313244,fg=#cdd6f4,bold] #[fg=#89b4fa]>_#[fg=#a6adc8] s4 #[bg=#181825,fg=#313244,nobold]") {
 		t.Fatalf("s4 should be active pill: %q", four)
 	}
 }
@@ -273,7 +273,7 @@ func TestFormatTopBar(t *testing.T) {
 func TestFormatTopBarRendersProjectSectionBeforeSessions(t *testing.T) {
 	p := topBarPalette()
 
-	got := p.FormatTopBar("demo", []string{"code", "git"}, 0)
+	got := p.FormatTopBar("demo", []string{"code", "git"}, nil, 0)
 	want := "#[bg=#313244,fg=#89b4fa,bold] demo #[bg=#181825,fg=#313244,nobold]\ue0b0"
 	if !strings.Contains(got, want) {
 		t.Fatalf("FormatTopBar() = %q, want project section %q", got, want)
@@ -286,17 +286,35 @@ func TestFormatTopBarRendersProjectSectionBeforeSessions(t *testing.T) {
 func TestFormatTopBarRendersEmptyProjectSectionWithoutProject(t *testing.T) {
 	p := topBarPalette()
 
-	got := p.FormatTopBar("", []string{"scratch"}, 0)
+	got := p.FormatTopBar("", []string{"scratch"}, nil, 0)
 	want := "#[bg=#313244,fg=#89b4fa,bold]  #[bg=#181825,fg=#313244,nobold]\ue0b0"
 	if !strings.Contains(got, want) {
 		t.Fatalf("FormatTopBar() = %q, want empty project section %q", got, want)
 	}
 }
 
+func TestFormatTopBarRendersTypeIconsWithoutWordedChip(t *testing.T) {
+	p := Palette{Surface0: "#313244", Subtext: "#a6adc8", Text: "#cdd6f4", Blue: "#89b4fa", Teal: "#94e2d5", Yellow: "#f9e2af", Mantle: "#181825"}
+
+	got := p.FormatTopBar("demo", []string{"code", "git", "agent"}, []string{"", "git", "agent"}, 0)
+	if !strings.Contains(got, "#[fg=#89b4fa]>_#[fg=#a6adc8]") {
+		t.Fatalf("missing terminal icon: %q", got)
+	}
+	if !strings.Contains(got, "#[fg=#94e2d5]\u2387#[fg=#a6adc8]") {
+		t.Fatalf("missing git icon: %q", got)
+	}
+	if !strings.Contains(got, "#[fg=#f9e2af]\u2726#[fg=#a6adc8]") {
+		t.Fatalf("missing agent icon: %q", got)
+	}
+	if strings.Contains(got, "CODE") || strings.Contains(got, "GIT") || strings.Contains(got, "AGENT") {
+		t.Fatalf("top bar must not carry the worded sidebar chip: %q", got)
+	}
+}
+
 func TestFormatTopBarEscapesTmuxFormatSyntaxInLabels(t *testing.T) {
 	p := topBarPalette()
 
-	got := p.FormatTopBar("demo", []string{"#(touch /tmp/tflow-review) #[fg=red]"}, 0)
+	got := p.FormatTopBar("demo", []string{"#(touch /tmp/tflow-review) #[fg=red]"}, nil, 0)
 	want := "##(touch /tmp/tflow-review) ##[fg=red]"
 	if !strings.Contains(got, want) {
 		t.Fatalf("FormatTopBar() = %q, want escaped label %q", got, want)
@@ -306,7 +324,7 @@ func TestFormatTopBarEscapesTmuxFormatSyntaxInLabels(t *testing.T) {
 func TestFormatTopBarEscapesTmuxFormatSyntaxInProject(t *testing.T) {
 	p := topBarPalette()
 
-	got := p.FormatTopBar("#(touch /tmp/tflow-review)", []string{"only"}, 0)
+	got := p.FormatTopBar("#(touch /tmp/tflow-review)", []string{"only"}, nil, 0)
 	if !strings.Contains(got, "##(touch /tmp/tflow-review)") {
 		t.Fatalf("FormatTopBar() = %q, want escaped project name", got)
 	}

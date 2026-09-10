@@ -66,6 +66,9 @@ func MoveSession(state AppState, sessionID, targetProject string) (AppState, err
 			if session.Label == moved.Label {
 				return AppState{}, fmt.Errorf("session name already exists in project %q", targetProject)
 			}
+			if moved.Type == SessionTypeAgent && session.Type == SessionTypeAgent {
+				return AppState{}, fmt.Errorf("project %q already has an agent session", targetProject)
+			}
 		}
 	}
 	if !targetExists {

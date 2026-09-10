@@ -53,9 +53,14 @@ func (m *model) currentState() appState {
 			continue
 		}
 		cfg := normalizeProjectConfig(m.projectConfig(name))
-		project := storedProject{Name: name, Workdir: cfg.Workdir, Sessions: []persistentSession{}}
+		project := storedProject{Name: name, Workdir: cfg.Workdir, AgentBinary: cfg.AgentBinary, Sessions: []persistentSession{}}
 		for _, session := range m.projectSessions(name) {
-			project.Sessions = append(project.Sessions, persistentSession{ID: session.Name, Label: m.sessionLabel(session.Name)})
+			project.Sessions = append(project.Sessions, persistentSession{
+				ID:      session.Name,
+				Label:   m.sessionLabel(session.Name),
+				Type:    strings.TrimSpace(m.sessionTypes[session.Name]),
+				Command: m.sessionCommand(session.Name),
+			})
 		}
 		state.Projects = append(state.Projects, project)
 	}
@@ -63,8 +68,10 @@ func (m *model) currentState() appState {
 }
 
 type stateSession struct {
-	project string
-	label   string
+	project     string
+	label       string
+	sessionType string
+	command     string
 }
 
 func mergeAppStates(latest, base, desired appState) appState {
@@ -85,7 +92,7 @@ func mergeAppStates(latest, base, desired appState) appState {
 			ensureStateProject(&latest, project)
 			continue
 		}
-		if project.Workdir != baseProject.Workdir {
+		if project.Workdir != baseProject.Workdir || project.AgentBinary != baseProject.AgentBinary {
 			ensureStateProject(&latest, project)
 		}
 	}
@@ -100,7 +107,7 @@ func mergeAppStates(latest, base, desired appState) appState {
 	for _, project := range desired.Projects {
 		for _, desiredSession := range project.Sessions {
 			id := desiredSession.ID
-			session := stateSession{project: project.Name, label: desiredSession.Label}
+			session := stateSession{project: project.Name, label: desiredSession.Label, sessionType: desiredSession.Type, command: desiredSession.Command}
 			baseSession, existed := baseSessions[id]
 			if existed && baseSession == session {
 				continue
@@ -109,7 +116,7 @@ func mergeAppStates(latest, base, desired appState) appState {
 			removeStateSession(&latest, id)
 			for index := range latest.Projects {
 				if latest.Projects[index].Name == session.project {
-					latest.Projects[index].Sessions = append(latest.Projects[index].Sessions, persistentSession{ID: id, Label: session.label})
+					latest.Projects[index].Sessions = append(latest.Projects[index].Sessions, persistentSession{ID: id, Label: session.label, Type: session.sessionType, Command: session.command})
 					break
 				}
 			}
@@ -157,7 +164,7 @@ func stateSessions(state appState) map[string]stateSession {
 	sessions := map[string]stateSession{}
 	for _, project := range state.Projects {
 		for _, session := range project.Sessions {
-			sessions[session.ID] = stateSession{project: project.Name, label: session.Label}
+			sessions[session.ID] = stateSession{project: project.Name, label: session.Label, sessionType: session.Type, command: session.Command}
 		}
 	}
 	return sessions
@@ -167,10 +174,11 @@ func ensureStateProject(state *appState, project storedProject) {
 	for index := range state.Projects {
 		if state.Projects[index].Name == project.Name {
 			state.Projects[index].Workdir = project.Workdir
+			state.Projects[index].AgentBinary = project.AgentBinary
 			return
 		}
 	}
-	state.Projects = append(state.Projects, storedProject{Name: project.Name, Workdir: project.Workdir, Sessions: []persistentSession{}})
+	state.Projects = append(state.Projects, storedProject{Name: project.Name, Workdir: project.Workdir, AgentBinary: project.AgentBinary, Sessions: []persistentSession{}})
 }
 
 func ensureStateProjectExists(state *appState, project storedProject) {
@@ -179,7 +187,7 @@ func ensureStateProjectExists(state *appState, project storedProject) {
 			return
 		}
 	}
-	state.Projects = append(state.Projects, storedProject{Name: project.Name, Workdir: project.Workdir, Sessions: []persistentSession{}})
+	state.Projects = append(state.Projects, storedProject{Name: project.Name, Workdir: project.Workdir, AgentBinary: project.AgentBinary, Sessions: []persistentSession{}})
 }
 
 func removeStateProject(projects []storedProject, name string) []storedProject {

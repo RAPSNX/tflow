@@ -116,6 +116,8 @@ type model struct {
 	persistentSessionOrder map[string][]string
 	sessionProjects        map[string]string
 	sessionLabels          map[string]string
+	sessionTypes           map[string]string
+	sessionCommands        map[string]string
 	projectConfigs         map[string]projectConfig
 	selectedProject        string
 	selectedSession        string
@@ -187,14 +189,18 @@ func buildModel(manager tmuxController, current string) (model, error) {
 	persistentSessionOrder := map[string][]string{}
 	sessionProjects := map[string]string{}
 	sessionLabels := map[string]string{}
+	sessionTypes := map[string]string{}
+	sessionCommands := map[string]string{}
 	projectConfigs := map[string]projectConfig{}
 	for _, project := range state.Projects {
 		projects = append(projects, project.Name)
-		projectConfigs[project.Name] = projectConfig{Name: project.Name, Workdir: project.Workdir}
+		projectConfigs[project.Name] = projectConfig{Name: project.Name, Workdir: project.Workdir, AgentBinary: project.AgentBinary}
 		for _, session := range project.Sessions {
 			persistentSessionOrder[project.Name] = append(persistentSessionOrder[project.Name], session.ID)
 			sessionProjects[session.ID] = project.Name
 			sessionLabels[session.ID] = session.Label
+			sessionTypes[session.ID] = session.Type
+			sessionCommands[session.ID] = session.Command
 		}
 	}
 	return model{
@@ -205,6 +211,8 @@ func buildModel(manager tmuxController, current string) (model, error) {
 		persistentSessionOrder: persistentSessionOrder,
 		sessionProjects:        sessionProjects,
 		sessionLabels:          sessionLabels,
+		sessionTypes:           sessionTypes,
+		sessionCommands:        sessionCommands,
 		projectConfigs:         projectConfigs,
 		selectedProject:        "",
 		currentSession:         current,

@@ -110,6 +110,31 @@ func TestTopBarKeepsProjectSectionInVolatileContext(t *testing.T) {
 	}
 }
 
+func TestTopBarThreadsSessionTypeIconsThrough(t *testing.T) {
+	state := appState{
+		Projects: []storedProject{
+			{
+				Name: "demo",
+				Sessions: []persistentSession{
+					{ID: "s1", Label: "code"},
+					{ID: "s2", Label: "git", Type: sessionTypeGit},
+					{ID: "s3", Label: "agent", Type: sessionTypeAgent, Command: "codex"},
+				},
+			},
+		},
+	}
+
+	got := computeTargetTopBar("s2", "demo", state, nil, "")
+	if !strings.Contains(got, "\ue0b6") {
+		t.Fatalf("expected pill glyphs present, got: %q", got)
+	}
+	// The active pill (git) must carry the git icon color/glyph, not the
+	// default terminal one.
+	if !strings.Contains(got, "\u2387") {
+		t.Fatalf("expected git icon in top bar, got: %q", got)
+	}
+}
+
 func TestTopBarVolatileFormatting(t *testing.T) {
 	sessions := []session{
 		{Name: "tflow-v-1", Temporary: true, Instance: "inst-A", Label: "Alpha"},

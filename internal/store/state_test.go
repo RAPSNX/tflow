@@ -404,6 +404,26 @@ func TestLoadAppStateRejectsSemanticallyInvalidState(t *testing.T) {
 			name: "duplicate label within one project",
 			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter"},{"id":"tflow-p-2","label":"otter"}]}]}`,
 		},
+		{
+			name: "unknown session type",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"otter","type":"bogus"}]}]}`,
+		},
+		{
+			name: "agent session without a command",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"agent","type":"agent"}]}]}`,
+		},
+		{
+			name: "terminal session with a command",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"code","command":"codex"}]}]}`,
+		},
+		{
+			name: "git session with a command",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"git","type":"git","command":"lazygit"}]}]}`,
+		},
+		{
+			name: "duplicate agent session within one project",
+			data: `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"agent","type":"agent","command":"codex"},{"id":"tflow-p-2","label":"agent-2","type":"agent","command":"codex"}]}]}`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -415,6 +435,71 @@ func TestLoadAppStateRejectsSemanticallyInvalidState(t *testing.T) {
 				t.Fatalf("error = %v, want invalid state error", err)
 			}
 		})
+	}
+}
+
+func TestLoadAppStateTreatsLegacyUntypedSessionAsTerminal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	data := `{"projects":[{"name":"small","workdir":"/tmp","sessions":[{"id":"tflow-p-1","label":"code"}]}]}`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state, err := LoadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := state.Projects[0].Sessions[0].Type; got != "" {
+		t.Fatalf("legacy session type = %q, want empty (terminal)", got)
+	}
+}
+
+func TestLoadAppStateAcceptsTypedSessionsAndAgentBinary(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	data := `{"projects":[{"name":"small","workdir":"/tmp","agentBinary":"codex","sessions":[` +
+		`{"id":"tflow-p-1","label":"code"},` +
+		`{"id":"tflow-p-2","label":"git","type":"git"},` +
+		`{"id":"tflow-p-3","label":"agent","type":"agent","command":"codex"}]}]}`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state, err := LoadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := state.Projects[0]
+	if project.AgentBinary != "codex" {
+		t.Fatalf("agentBinary = %q, want codex", project.AgentBinary)
+	}
+	if project.Sessions[1].Type != SessionTypeGit {
+		t.Fatalf("session[1].Type = %q, want git", project.Sessions[1].Type)
+	}
+	if project.Sessions[2].Type != SessionTypeAgent || project.Sessions[2].Command != "codex" {
+		t.Fatalf("session[2] = %#v, want agent session with command codex", project.Sessions[2])
+	}
+
+	if err := SaveAppState(path, state); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := LoadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(reloaded, state) {
+		t.Fatalf("round-tripped state = %#v, want %#v", reloaded, state)
+	}
+}
+
+func TestMoveSessionRejectsSecondAgentSessionInTargetProject(t *testing.T) {
+	state := AppState{Projects: []Project{
+		{Name: "source", Sessions: []PersistentSession{
+			{ID: "tflow-p-1", Label: "agent", Type: SessionTypeAgent, Command: "codex"},
+		}},
+		{Name: "target", Sessions: []PersistentSession{
+			{ID: "tflow-p-2", Label: "agent-2", Type: SessionTypeAgent, Command: "codex"},
+		}},
+	}}
+	if _, err := MoveSession(state, "tflow-p-1", "target"); err == nil || !strings.Contains(err.Error(), "agent session") {
+		t.Fatalf("error = %v, want agent-session conflict error", err)
 	}
 }
 

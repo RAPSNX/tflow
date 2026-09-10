@@ -2,6 +2,12 @@ package ui
 
 import "github.com/rapsnx/tflow/internal/store"
 
+const (
+	sessionTypeTerminal = store.SessionTypeTerminal
+	sessionTypeGit      = store.SessionTypeGit
+	sessionTypeAgent    = store.SessionTypeAgent
+)
+
 type appState = store.AppState
 type storedProject = store.Project
 type persistentSession = store.PersistentSession

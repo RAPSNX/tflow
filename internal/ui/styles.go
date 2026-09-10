@@ -55,6 +55,9 @@ var (
 	dialogInputStyle       lipgloss.Style
 	keycapStyle            lipgloss.Style
 	destructiveKeycapStyle lipgloss.Style
+	codeChipStyle          lipgloss.Style
+	gitChipStyle           lipgloss.Style
+	agentChipStyle         lipgloss.Style
 )
 
 func init() {
@@ -175,4 +178,22 @@ func applyTheme(p themePalette) {
 	dialogInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(tealColor).Padding(0, 1)
 	keycapStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(tealColor).Padding(0, 1)
 	destructiveKeycapStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(redColor).Padding(0, 1)
+	codeChipStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(blueColor).Padding(0, 1)
+	gitChipStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(tealColor).Padding(0, 1)
+	agentChipStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(yellowColor).Padding(0, 1)
+}
+
+// sessionTypeChip renders the full worded type chip for a sidebar row: blue
+// ">_ CODE" for terminal sessions (including legacy untyped records), teal
+// "⏇ GIT", or yellow "✦ AGENT". Selection, live, and attention states never
+// replace it -- callers append it alongside those, not instead of it.
+func sessionTypeChip(sessionType string) string {
+	switch sessionType {
+	case sessionTypeGit:
+		return gitChipStyle.Render("⎇ GIT")
+	case sessionTypeAgent:
+		return agentChipStyle.Render("✦ AGENT")
+	default:
+		return codeChipStyle.Render(">_ CODE")
+	}
 }

@@ -135,7 +135,7 @@ func (p Palette) statusRight() string {
 	return "#{?#{==:#{client_key_table}," + commandTable + "},#[fg=" + yellow + "]#[bg=" + mantle + "]#[bg=" + yellow + "]#[fg=" + mantle + "]#[bold] COMMAND #[nobold]#[fg=" + yellow + "]#[bg=" + mantle + "]#[default],}"
 }
 
-func (p Palette) FormatTopBar(project string, labels []string, activeIndex int) string {
+func (p Palette) FormatTopBar(project string, labels []string, types []string, activeIndex int) string {
 	if len(labels) == 0 {
 		return ""
 	}
@@ -146,18 +146,37 @@ func (p Palette) FormatTopBar(project string, labels []string, activeIndex int) 
 	b.WriteString(p.projectSection(project))
 	for i, label := range labels {
 		label = escapeTmuxFormatLiteral(label)
+		sessionType := ""
+		if i < len(types) {
+			sessionType = types[i]
+		}
+		icon := p.sessionTypeIcon(sessionType)
 		if i > 0 {
 			b.WriteString("  ")
 		}
 		if i == activeIndex {
 			b.WriteString("#[bg=" + p.Surface0 + ",fg=" + p.Subtext + "]" +
-				"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] " + label + " " +
+				"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] " + icon + " " + label + " " +
 				"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]")
 		} else {
-			b.WriteString("#[bg=" + p.Mantle + ",fg=" + p.Subtext + "]" + label)
+			b.WriteString("#[bg=" + p.Mantle + ",fg=" + p.Subtext + "]" + icon + " " + label)
 		}
 	}
 	return b.String()
+}
+
+// sessionTypeIcon renders a session's type icon colored with its accent,
+// reverting back to the surrounding subtext color afterward so the label
+// that follows keeps its own active/inactive styling untouched.
+func (p Palette) sessionTypeIcon(sessionType string) string {
+	switch sessionType {
+	case "git":
+		return "#[fg=" + p.Teal + "]⎇#[fg=" + p.Subtext + "]"
+	case "agent":
+		return "#[fg=" + p.Yellow + "]✦#[fg=" + p.Subtext + "]"
+	default:
+		return "#[fg=" + p.Blue + "]>_#[fg=" + p.Subtext + "]"
+	}
 }
 
 // projectSection renders the leading project pill and the arrow dividing it
