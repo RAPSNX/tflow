@@ -20,6 +20,17 @@ func NavigateNext() error {
 }
 
 func navigateWithManager(manager tmuxController, direction int) error {
+	path := appStatePath()
+	unlock, err := lockAppState(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release state lock %q after navigation: %v", path, unlockErr)
+		}
+	}()
+
 	currentSession := strings.TrimSpace(os.Getenv(menuCurrentEnv))
 	sessions, err := manager.ListSessions()
 	if err != nil {
@@ -73,16 +84,6 @@ func navigateWithManager(manager tmuxController, direction int) error {
 
 	state := appState{}
 	if !isVolatile {
-		path := appStatePath()
-		unlock, err := lockAppState(path)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if unlockErr := unlock(); unlockErr != nil {
-				diag.Warnf("release state lock %q after navigation: %v", path, unlockErr)
-			}
-		}()
 		state, err = loadAppState(path)
 		if err != nil {
 			return err
@@ -170,13 +171,19 @@ func navigateWithManager(manager tmuxController, direction int) error {
 		if err != nil {
 			return fmt.Errorf("materialize target session %q: %w", target.Name, err)
 		}
+		cleanup := func(operation string, setupErr error) error {
+			if killErr := ignoreMissingSession(manager.KillSession(target.Name)); killErr != nil {
+				diag.Warnf("kill lazily materialized session %q after %s failure: %v", target.Name, operation, killErr)
+			}
+			return fmt.Errorf("%s materialized target session %q: %w", operation, target.Name, setupErr)
+		}
 		if err := manager.SetSessionProject(target.Name, project); err != nil {
-			return err
+			return cleanup("project marker setup", err)
 		}
 		label := strings.TrimSpace(target.Label)
 		if label != "" {
 			if err := manager.SetSessionLabel(target.Name, label); err != nil {
-				return err
+				return cleanup("label marker setup", err)
 			}
 		}
 		sessions = append(sessions, newS)

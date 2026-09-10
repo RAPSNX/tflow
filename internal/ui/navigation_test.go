@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -577,6 +578,9 @@ func TestNavigateHoldsStateLockThroughLazyMaterialization(t *testing.T) {
 
 	manager := fakeTmuxController{
 		listSessions: func() ([]session, error) {
+			if !locked {
+				t.Fatal("state lock was not held while listing tmux sessions")
+			}
 			return []session{{Name: "s1", Label: "Current"}}, nil
 		},
 		createSession: func(name, cwd, command string) (session, error) {
@@ -592,5 +596,73 @@ func TestNavigateHoldsStateLockThroughLazyMaterialization(t *testing.T) {
 	}
 	if locked {
 		t.Fatal("state lock was not released after navigation")
+	}
+}
+
+func TestNavigateCleansUpLazySessionWhenMarkerSetupFails(t *testing.T) {
+	tests := []struct {
+		name        string
+		failProject bool
+	}{
+		{name: "project marker", failProject: true},
+		{name: "label marker"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			path := appStatePath()
+			if err := saveAppState(path, appState{Projects: []storedProject{{
+				Name: "alpha", Workdir: "/project/alpha",
+				Sessions: []persistentSession{
+					{ID: "s1", Label: "Current"},
+					{ID: "s2", Label: "Lazy"},
+				},
+			}}}); err != nil {
+				t.Fatal(err)
+			}
+
+			setupErr := errors.New("marker setup failed")
+			var killed []string
+			switched := 0
+			manager := fakeTmuxController{
+				listSessions: func() ([]session, error) {
+					return []session{{Name: "s1", Label: "Current"}}, nil
+				},
+				createSession: func(name, cwd, command string) (session, error) {
+					return session{Name: name}, nil
+				},
+				setSessionProject: func(name, project string) error {
+					if tc.failProject {
+						return setupErr
+					}
+					return nil
+				},
+				setSessionLabel: func(name, label string) error {
+					if !tc.failProject {
+						return setupErr
+					}
+					return nil
+				},
+				killSession: func(name string) error {
+					killed = append(killed, name)
+					return nil
+				},
+				switchClient: func(name string) error {
+					switched++
+					return nil
+				},
+			}
+			t.Setenv(menuCurrentEnv, "s1")
+			err := navigateWithManager(manager, 1)
+			if !errors.Is(err, setupErr) {
+				t.Fatalf("navigate error = %v, want marker setup error", err)
+			}
+			if len(killed) != 1 || killed[0] != "s2" {
+				t.Fatalf("killed sessions = %#v, want s2", killed)
+			}
+			if switched != 0 {
+				t.Fatalf("switch calls = %d, want 0 after marker failure", switched)
+			}
+		})
 	}
 }
