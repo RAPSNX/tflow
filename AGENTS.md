@@ -44,6 +44,14 @@ Commands:
 * Keep changes focused, end them in a meaningful commit, push the branch, and
   open or update a published pull request.
 * Run `go test ./...` before finishing.
+* Before finishing any change that touches tmux control mode, key bindings,
+  the popup, or the status bar, verify it by hand in a real-like environment:
+  build the binary, run it under a dedicated tmux socket other than the
+  default (e.g. `sed -i` a throwaway `socketName` locally, or set
+  `TMUX_TMPDIR`), attach it under `script` or a real terminal, and drive it
+  with `tmux -L <socket> send-keys` / `capture-pane`. Never run a manual
+  verification build against the default `tflow` socket; it collides with any
+  real tflow instance already running on the machine.
 * There is a review agent that reviews released PRs, so always check for reviews on a released upstream PR. Always spawn a sub-agent called the "review-checker" which does:
     * Sleep 30sec
     * Check for upstream unresolved comments

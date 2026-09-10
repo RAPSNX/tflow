@@ -66,6 +66,7 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		{"set-hook", "-g", "client-detached", "run-shell " + ShellQuote(cleanupClientShell)},
 		{"unbind-key", "-q", "-n", "C-f"},
 		{"bind-key", "-n", commandKey, "run-shell", toggleCommandShell},
+		{"bind-key", "-T", commandTable, "Escape", "switch-client", "-T", "root"},
 		{"bind-key", "-n", quitKey, "run-shell", quitShell},
 	}
 	for _, args := range commands {
