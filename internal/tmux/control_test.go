@@ -73,14 +73,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"bind-key", "-T", "copy-mode-vi", "WheelUpPane", "send-keys", "-X", "-N", "5", "scroll-up"},
 		{"bind-key", "-T", "copy-mode-vi", "WheelDownPane", "send-keys", "-X", "-N", "5", "scroll-down"},
 		{"unbind-key", "-q", "-n", "C-f"},
-		{"bind-key", "-n", "C-Space", "switch-client", "-T", "tflow-command"},
-		{"bind-key", "-T", "tflow-command", "Space", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
-		{"bind-key", "-T", "tflow-command", "Enter", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
-		{"bind-key", "-T", "tflow-command", "o", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-menu"},
-		{"bind-key", "-T", "tflow-command", "h", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' navigate-prev"},
-		{"bind-key", "-T", "tflow-command", "l", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' navigate-next"},
-		{"bind-key", "-T", "tflow-command", "Escape", "switch-client", "-T", "root"},
-		{"bind-key", "-T", "tflow-command", "C-c", "switch-client", "-T", "root"},
+		{"bind-key", "-n", "C-Space", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-command-menu"},
 		{"bind-key", "-n", "C-q", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' open-quit"},
 	}
 	for _, want := range wants {

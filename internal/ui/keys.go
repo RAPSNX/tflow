@@ -14,6 +14,15 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.closeMenuCmd()
 	}
 
+	if m.commandMode {
+		switch msg.String() {
+		case "h":
+			return m, m.navigateMenuCmd(-1)
+		case "l":
+			return m, m.navigateMenuCmd(1)
+		}
+	}
+
 	if msg.String() == "?" {
 		m.showHelp = !m.showHelp
 		return m, nil

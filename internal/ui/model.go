@@ -71,6 +71,7 @@ type menuActionMsg struct {
 	deleteSessions      []string
 	deleteProject       string
 	exitFallbackSession string
+	navigateDirection   int
 	quit                bool
 }
 
@@ -79,6 +80,7 @@ type menuExitAction int
 const (
 	menuExitNone menuExitAction = iota
 	menuExitSwitchSession
+	menuExitNavigate
 	menuExitQuit
 )
 
@@ -106,7 +108,8 @@ type model struct {
 
 	mode inputMode
 
-	showHelp bool
+	showHelp    bool
+	commandMode bool
 
 	sessions               []session
 	projects               []string
@@ -135,13 +138,14 @@ type model struct {
 	stateBasePath string
 	stateLockHeld bool
 
-	exitAction          menuExitAction
-	exitSessionName     string
-	exitDeleteSessions  []string
-	exitDeleteProject   string
-	exitFallbackSession string
-	status              string
-	err                 error
+	exitAction            menuExitAction
+	exitSessionName       string
+	exitNavigateDirection int
+	exitDeleteSessions    []string
+	exitDeleteProject     string
+	exitFallbackSession   string
+	status                string
+	err                   error
 }
 
 const (
@@ -209,6 +213,7 @@ func buildModel(manager tmuxController, current string) (model, error) {
 		statePath:              statePath,
 		stateBase:              state,
 		stateBasePath:          statePath,
+		commandMode:            false,
 		status:                 "",
 		err:                    nil,
 	}, nil

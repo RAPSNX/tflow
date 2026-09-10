@@ -360,6 +360,12 @@ func (m model) closeMenuCmd() tea.Cmd {
 	}
 }
 
+func (m model) navigateMenuCmd(direction int) tea.Cmd {
+	return func() tea.Msg {
+		return menuActionMsg{navigateDirection: direction}
+	}
+}
+
 func (m *model) beginQuit() (tea.Model, tea.Cmd) {
 	m.mode = inputConfirmQuit
 	m.input.Blur()

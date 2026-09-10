@@ -289,3 +289,93 @@ func TestToggleMenuFromPersistentSessionRetainsClientOwnedInstance(t *testing.T)
 		t.Fatalf("third popup command = %q, want instance-1 retained via the client-scoped slot after switching to a persistent session", got)
 	}
 }
+
+func TestToggleCommandMenuOpensAndClosesCommandSidebar(t *testing.T) {
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	t.Setenv(CurrentClientEnv, "@2")
+
+	popupVisible := false
+	var popupArgs []string
+	var keyTables []string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		switch args[0] {
+		case "show-environment":
+			if popupVisible {
+				return popupEnvKey("@2") + "=1\n", nil
+			}
+			return "", nil
+		case "show-options":
+			return "instance-1", nil
+		case "set-environment":
+			if args[1] == "-gh" {
+				popupVisible = true
+			}
+			if args[1] == "-gu" {
+				popupVisible = false
+			}
+			return "", nil
+		case "switch-client":
+			keyTables = append(keyTables, args[len(args)-1])
+			return "", nil
+		case "display-popup":
+			if len(args) > 1 && args[1] == "-C" {
+				popupVisible = false
+				return "", nil
+			}
+			popupArgs = append([]string(nil), args...)
+			return "", nil
+		default:
+			return "", fmt.Errorf("unexpected command: %v", args)
+		}
+	}}
+
+	if err := manager.ToggleCommandMenu("/tmp/tflow"); err != nil {
+		t.Fatalf("ToggleCommandMenu open: %v", err)
+	}
+	if got := strings.Join(popupArgs, " "); !strings.Contains(got, "-e "+MenuModeEnv+"="+MenuModeCommand) {
+		t.Fatalf("popup command = %q, want command mode", got)
+	} else if !strings.Contains(got, "switch-client") || !strings.Contains(got, "root") {
+		t.Fatalf("popup command = %q, want root-table cleanup", got)
+	}
+	if got := strings.Join(keyTables, ","); got != commandTable {
+		t.Fatalf("key tables after open = %q, want %q", got, commandTable)
+	}
+
+	if err := manager.ToggleCommandMenu("/tmp/tflow"); err != nil {
+		t.Fatalf("ToggleCommandMenu close: %v", err)
+	}
+	if got := strings.Join(keyTables, ","); got != commandTable+",root" {
+		t.Fatalf("key tables after close = %q, want %q", got, commandTable+",root")
+	}
+}
+
+func TestToggleCommandMenuResetsKeyTableAfterPopupOpenFailure(t *testing.T) {
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	t.Setenv(CurrentClientEnv, "@2")
+
+	var keyTables []string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		switch args[0] {
+		case "show-environment":
+			return "", nil
+		case "show-options":
+			return "instance-1", nil
+		case "set-environment":
+			return "", nil
+		case "switch-client":
+			keyTables = append(keyTables, args[len(args)-1])
+			return "", nil
+		case "display-popup":
+			return "", fmt.Errorf("popup failed")
+		default:
+			return "", fmt.Errorf("unexpected command: %v", args)
+		}
+	}}
+
+	if err := manager.ToggleCommandMenu("/tmp/tflow"); err == nil {
+		t.Fatal("ToggleCommandMenu returned nil error after popup failure")
+	}
+	if got := strings.Join(keyTables, ","); got != commandTable+",root" {
+		t.Fatalf("key tables after failed open = %q, want %q", got, commandTable+",root")
+	}
+}

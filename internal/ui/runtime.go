@@ -50,6 +50,10 @@ func ToggleMenu() error {
 	return runtmux.ToggleMenu()
 }
 
+func ToggleCommandMenu() error {
+	return runtmux.ToggleCommandMenu()
+}
+
 func OpenQuit() error {
 	exe, err := os.Executable()
 	if err != nil {
@@ -122,6 +126,10 @@ func catppuccinTmuxPalette() runtmux.Palette {
 
 func (m sessionManager) ToggleMenu(binaryPath string) error {
 	return m.inner.ToggleMenu(binaryPath)
+}
+
+func (m sessionManager) ToggleCommandMenu(binaryPath string) error {
+	return m.inner.ToggleCommandMenu(binaryPath)
 }
 
 func (m sessionManager) CloseMenu() error {

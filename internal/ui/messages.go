@@ -261,17 +261,27 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.quit {
 			m.exitAction = menuExitQuit
 			m.exitSessionName = ""
+			m.exitNavigateDirection = 0
+			m.exitDeleteSessions = nil
+			m.exitDeleteProject = ""
+			m.exitFallbackSession = ""
+		} else if msg.navigateDirection == -1 || msg.navigateDirection == 1 {
+			m.exitAction = menuExitNavigate
+			m.exitNavigateDirection = msg.navigateDirection
+			m.exitSessionName = ""
 			m.exitDeleteSessions = nil
 			m.exitDeleteProject = ""
 			m.exitFallbackSession = ""
 		} else if strings.TrimSpace(msg.switchSession) != "" {
 			m.exitAction = menuExitSwitchSession
+			m.exitNavigateDirection = 0
 			m.exitSessionName = msg.switchSession
 			m.exitDeleteSessions = append([]string(nil), msg.deleteSessions...)
 			m.exitDeleteProject = msg.deleteProject
 			m.exitFallbackSession = msg.exitFallbackSession
 		} else {
 			m.exitAction = menuExitNone
+			m.exitNavigateDirection = 0
 			m.exitSessionName = ""
 			m.exitDeleteSessions = nil
 			m.exitDeleteProject = ""
