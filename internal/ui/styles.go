@@ -58,6 +58,7 @@ var (
 	codeChipStyle          lipgloss.Style
 	gitChipStyle           lipgloss.Style
 	agentChipStyle         lipgloss.Style
+	attentionBadgeStyle    lipgloss.Style
 )
 
 func init() {
@@ -181,6 +182,7 @@ func applyTheme(p themePalette) {
 	codeChipStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(blueColor).Padding(0, 1)
 	gitChipStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(tealColor).Padding(0, 1)
 	agentChipStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(yellowColor).Padding(0, 1)
+	attentionBadgeStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(redColor).Padding(0, 1)
 }
 
 // sessionTypeChip renders the full worded type chip for a sidebar row: blue

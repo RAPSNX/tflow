@@ -17,6 +17,9 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 	toggleCommandShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" toggle-command-menu"), " ")
 	quitShell := strings.Join(append(parts, "exec "+ShellQuote(binaryPath)+" open-quit"), " ")
 	cleanupClientShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" cleanup-client"), " ")
+	sessionOnlyPart := fmt.Sprintf("%s=%s", CurrentSessionEnv, ShellQuote("#{session_name}"))
+	sessionActivityShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " session-activity"
+	sessionVisitedShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " session-visited"
 	commands := [][]string{
 		{"set-option", "-g", "status", "on"},
 		{"set-option", "-g", "status-position", "top"},
@@ -64,6 +67,9 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		{"bind-key", "-T", "copy-mode-vi", "WheelUpPane", "send-keys", "-X", "-N", "5", "scroll-up"},
 		{"bind-key", "-T", "copy-mode-vi", "WheelDownPane", "send-keys", "-X", "-N", "5", "scroll-down"},
 		{"set-hook", "-g", "client-detached", "run-shell " + ShellQuote(cleanupClientShell)},
+		{"set-window-option", "-g", "monitor-activity", "on"},
+		{"set-hook", "-g", "alert-activity", "run-shell " + ShellQuote(sessionActivityShell)},
+		{"set-hook", "-g", "client-session-changed", "run-shell " + ShellQuote(sessionVisitedShell)},
 		{"unbind-key", "-q", "-n", "C-f"},
 		{"bind-key", "-n", commandKey, "run-shell", toggleCommandShell},
 		{"bind-key", "-T", commandTable, "Escape", "switch-client", "-T", "root"},
@@ -83,5 +89,21 @@ func (m Manager) SetSessionTopBar(name, content string) error {
 		return fmt.Errorf("session name is empty")
 	}
 	_, err := m.runner()("set-option", "-t", name, "status-left", content)
+	return err
+}
+
+// SetSessionAttention sets or clears the runtime-only session attention
+// marker. It is never written to JSON and is not expected to survive a
+// tmux restart.
+func (m Manager) SetSessionAttention(name string, attention bool) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("session name is empty")
+	}
+	value := "0"
+	if attention {
+		value = "1"
+	}
+	_, err := m.runner()("set-option", "-t", name, attentionMarker, value)
 	return err
 }

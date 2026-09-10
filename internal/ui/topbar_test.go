@@ -135,6 +135,49 @@ func TestTopBarThreadsSessionTypeIconsThrough(t *testing.T) {
 	}
 }
 
+func TestTopBarShowsAttentionForUnvisitedSessionOnly(t *testing.T) {
+	state := appState{
+		Projects: []storedProject{
+			{
+				Name: "demo",
+				Sessions: []persistentSession{
+					{ID: "s1", Label: "code"},
+					{ID: "s2", Label: "git", Type: sessionTypeGit},
+				},
+			},
+		},
+	}
+	sessions := []session{
+		{Name: "s1"},
+		{Name: "s2", Attention: true},
+	}
+
+	got := computeTargetTopBar("s1", "demo", state, sessions, "")
+	if !strings.Contains(got, "!") {
+		t.Fatalf("expected an attention mark for the flagged session, got: %q", got)
+	}
+}
+
+func TestTopBarShowsNoAttentionWhenNoneFlagged(t *testing.T) {
+	state := appState{
+		Projects: []storedProject{
+			{
+				Name: "demo",
+				Sessions: []persistentSession{
+					{ID: "s1", Label: "code"},
+					{ID: "s2", Label: "git", Type: sessionTypeGit},
+				},
+			},
+		},
+	}
+	sessions := []session{{Name: "s1"}, {Name: "s2"}}
+
+	got := computeTargetTopBar("s1", "demo", state, sessions, "")
+	if strings.Contains(got, "!") {
+		t.Fatalf("expected no attention mark, got: %q", got)
+	}
+}
+
 func TestTopBarVolatileFormatting(t *testing.T) {
 	sessions := []session{
 		{Name: "tflow-v-1", Temporary: true, Instance: "inst-A", Label: "Alpha"},

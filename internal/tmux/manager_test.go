@@ -289,6 +289,28 @@ func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	}
 }
 
+func TestListSessionsIncludesAttentionMarker(t *testing.T) {
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			return "flagged\t1\t0\t0\t\tcode\t1\nquiet\t1\t0\t0\t\tgit\t0\n", nil
+		},
+	}
+
+	sessions, err := manager.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions returned error: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("len(sessions) = %d", len(sessions))
+	}
+	if !sessions[0].Attention {
+		t.Fatal("expected first session to carry the attention marker")
+	}
+	if sessions[1].Attention {
+		t.Fatal("expected second session to have no attention marker")
+	}
+}
+
 func TestListSessionsTreatsAnyAttachedClientCountAsAttached(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {

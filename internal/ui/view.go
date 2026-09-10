@@ -72,14 +72,20 @@ func (m model) renderSessionRow(index, selectedIndex int, s session) string {
 	selected := index == selectedIndex
 	style := m.rowStyle(selected, project)
 	chip := sessionTypeChip(m.sessionType(s.Name))
-	content := chip + " " + label
+	prefix := chip
+	if s.Attention {
+		// Independent of type and selection: never replaces the chip, and
+		// renders whether or not this row is also the live session below.
+		prefix += " " + attentionBadgeStyle.Render("!")
+	}
+	content := prefix + " " + label
 	if s.Name == m.currentSession {
-		content = chip + " " + currentBadgeStyle.Render("live") + " " + label
+		content = prefix + " " + currentBadgeStyle.Render("live") + " " + label
 		if selected {
-			// The chip and live badge reset terminal styles after rendering.
+			// The chip and badges reset terminal styles after rendering.
 			// Reapply the selected row style so the label stays highlighted
 			// beside them.
-			content = chip + " " + currentBadgeStyle.Render("live") + selectedSessionStyle.Padding(0).Render(" "+label)
+			content = prefix + " " + currentBadgeStyle.Render("live") + selectedSessionStyle.Padding(0).Render(" "+label)
 		}
 	}
 	return style.Width(max(16, m.width-12)).Render(content)

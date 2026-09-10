@@ -12,7 +12,7 @@ import (
 )
 
 func (m Manager) ListSessions() ([]Session, error) {
-	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}")
+	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}\t#{"+attentionMarker+"}")
 	if err != nil {
 		if IsNoServer(err) {
 			return nil, nil
@@ -48,6 +48,9 @@ func (m Manager) ListSessions() ([]Session, error) {
 		}
 		if len(parts) > 5 {
 			session.Label = strings.TrimSpace(parts[5])
+		}
+		if len(parts) > 6 {
+			session.Attention = strings.TrimSpace(parts[6]) == "1"
 		}
 		sessions = append(sessions, session)
 	}

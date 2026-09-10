@@ -16,6 +16,7 @@ const (
 	sessionLabelMarker    = "@tflow-session-label"
 	tempMarker            = "@tflow-temp"
 	instanceMarker        = "@tflow-instance"
+	attentionMarker       = "@tflow-attention"
 	menuWidth             = "36"
 	// menuHeight stays below 100% so the popup fits under the status line.
 	// tmux resolves a popup that would overflow by moving it back up rather
@@ -40,6 +41,7 @@ type Session struct {
 	Attached  bool
 	Temporary bool
 	Instance  string
+	Attention bool
 }
 
 type Controller interface {
@@ -52,6 +54,7 @@ type Controller interface {
 	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
+	SetSessionAttention(name string, attention bool) error
 	SetSessionTopBar(name, content string) error
 	AttachCommand(ctx context.Context, name string) (*exec.Cmd, error)
 	KillSession(name string) error
@@ -81,6 +84,7 @@ type Palette struct {
 	Mantle   string
 	Teal     string
 	Yellow   string
+	Red      string
 }
 
 func New() Controller {
@@ -135,7 +139,7 @@ func (p Palette) statusRight() string {
 	return "#{?#{==:#{client_key_table}," + commandTable + "},#[fg=" + yellow + "]#[bg=" + mantle + "]#[bg=" + yellow + "]#[fg=" + mantle + "]#[bold] COMMAND #[nobold]#[fg=" + yellow + "]#[bg=" + mantle + "]#[default],}"
 }
 
-func (p Palette) FormatTopBar(project string, labels []string, types []string, activeIndex int) string {
+func (p Palette) FormatTopBar(project string, labels []string, types []string, attentions []bool, activeIndex int) string {
 	if len(labels) == 0 {
 		return ""
 	}
@@ -151,18 +155,29 @@ func (p Palette) FormatTopBar(project string, labels []string, types []string, a
 			sessionType = types[i]
 		}
 		icon := p.sessionTypeIcon(sessionType)
+		attention := i < len(attentions) && attentions[i]
 		if i > 0 {
 			b.WriteString("  ")
 		}
 		if i == activeIndex {
 			b.WriteString("#[bg=" + p.Surface0 + ",fg=" + p.Subtext + "]" +
-				"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] " + icon + " " + label + " " +
+				"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] " + icon + " " + p.attentionMark(attention) + label + " " +
 				"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]")
 		} else {
-			b.WriteString("#[bg=" + p.Mantle + ",fg=" + p.Subtext + "]" + icon + " " + label)
+			b.WriteString("#[bg=" + p.Mantle + ",fg=" + p.Subtext + "]" + icon + " " + p.attentionMark(attention) + label)
 		}
 	}
 	return b.String()
+}
+
+// attentionMark renders a red marker ahead of a session's label when its
+// runtime-only attention flag is set, independent of its type and whether it
+// is the active pill.
+func (p Palette) attentionMark(attention bool) string {
+	if !attention {
+		return ""
+	}
+	return "#[fg=" + p.Red + "]!#[fg=" + p.Subtext + "] "
 }
 
 // sessionTypeIcon renders a session's type icon colored with its accent,

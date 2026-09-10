@@ -75,6 +75,34 @@ func TestRenderSessionRowShowsTypeChipAcrossStates(t *testing.T) {
 	}
 }
 
+func TestRenderSessionRowShowsAttentionIndependentOfTypeAndSelection(t *testing.T) {
+	strip := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	m := newMenu().(model)
+	m.width = 48
+	m.selectedProject = "small"
+	m.sessions = []session{{Name: "s1", Attention: true}, {Name: "s2"}}
+	m.sessionProjects = map[string]string{"s1": "small", "s2": "small"}
+	m.sessionLabels = map[string]string{"s1": "flagged", "s2": "quiet"}
+	m.sessionTypes = map[string]string{"s1": sessionTypeGit}
+
+	flagged := strip.ReplaceAllString(m.renderSessionRow(0, 0, m.sessions[0]), "")
+	if !strings.Contains(flagged, "!") || !strings.Contains(flagged, "⎇ GIT") {
+		t.Fatalf("flagged git row missing attention mark or type chip: %q", flagged)
+	}
+
+	quiet := strip.ReplaceAllString(m.renderSessionRow(1, 1, m.sessions[1]), "")
+	if strings.Contains(quiet, "!") {
+		t.Fatalf("unflagged row unexpectedly shows attention mark: %q", quiet)
+	}
+
+	// Attention survives alongside the live badge too.
+	m.currentSession = "s1"
+	live := strip.ReplaceAllString(m.renderSessionRow(0, 0, m.sessions[0]), "")
+	if !strings.Contains(live, "!") || !strings.Contains(live, "live") {
+		t.Fatalf("flagged+live row lost its attention mark or live badge: %q", live)
+	}
+}
+
 func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 	m := newMenu().(model)
 	m.width = 48

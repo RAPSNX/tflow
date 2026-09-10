@@ -72,6 +72,9 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"bind-key", "-T", "copy-mode", "WheelDownPane", "send-keys", "-X", "-N", "5", "scroll-down"},
 		{"bind-key", "-T", "copy-mode-vi", "WheelUpPane", "send-keys", "-X", "-N", "5", "scroll-up"},
 		{"bind-key", "-T", "copy-mode-vi", "WheelDownPane", "send-keys", "-X", "-N", "5", "scroll-down"},
+		{"set-window-option", "-g", "monitor-activity", "on"},
+		{"set-hook", "-g", "alert-activity", "run-shell " + ShellQuote("TFLOW_CURRENT_SESSION='#{session_name}' exec '/tmp/tflow' session-activity")},
+		{"set-hook", "-g", "client-session-changed", "run-shell " + ShellQuote("TFLOW_CURRENT_SESSION='#{session_name}' exec '/tmp/tflow' session-visited")},
 		{"unbind-key", "-q", "-n", "C-f"},
 		{"bind-key", "-n", "C-Space", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-command-menu"},
 		{"bind-key", "-T", "tflow-command", "Escape", "switch-client", "-T", "root"},
@@ -147,6 +150,46 @@ func TestEnsureControlModeInstallsClientLifecycleHooks(t *testing.T) {
 	}
 }
 
+func TestEnsureControlModeInstallsAttentionHooks(t *testing.T) {
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "", nil
+	}}
+
+	if err := manager.EnsureControlMode("/tmp/tflow", Palette{}); err != nil {
+		t.Fatalf("EnsureControlMode returned error: %v", err)
+	}
+
+	monitorOn := false
+	for _, call := range calls {
+		if len(call) == 4 && call[0] == "set-window-option" && call[1] == "-g" && call[2] == "monitor-activity" && call[3] == "on" {
+			monitorOn = true
+		}
+	}
+	if !monitorOn {
+		t.Fatalf("missing global monitor-activity on in %#v", calls)
+	}
+
+	hasHook := func(name, subcommand string) bool {
+		for _, call := range calls {
+			if len(call) != 4 || call[0] != "set-hook" || call[1] != "-g" || call[2] != name {
+				continue
+			}
+			if strings.Contains(call[3], "run-shell") && strings.Contains(call[3], CurrentSessionEnv) && strings.Contains(call[3], subcommand) {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasHook("alert-activity", "session-activity") {
+		t.Fatalf("missing alert-activity hook for session-activity in %#v", calls)
+	}
+	if !hasHook("client-session-changed", "session-visited") {
+		t.Fatalf("missing client-session-changed hook for session-visited in %#v", calls)
+	}
+}
+
 func TestEnsureControlModeDoesNotBindCtrlF(t *testing.T) {
 	var calls [][]string
 	manager := Manager{Run: func(args ...string) (string, error) {
@@ -185,6 +228,34 @@ func TestSetSessionTopBar(t *testing.T) {
 	}
 }
 
+func TestSetSessionAttention(t *testing.T) {
+	var got []string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		got = append([]string(nil), args...)
+		return "", nil
+	}}
+
+	if err := manager.SetSessionAttention("tflow-p-1", true); err != nil {
+		t.Fatalf("SetSessionAttention error: %v", err)
+	}
+	want := []string{"set-option", "-t", "tflow-p-1", "@tflow-attention", "1"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("call = %#v, want %#v", got, want)
+	}
+
+	if err := manager.SetSessionAttention("tflow-p-1", false); err != nil {
+		t.Fatalf("SetSessionAttention error: %v", err)
+	}
+	want = []string{"set-option", "-t", "tflow-p-1", "@tflow-attention", "0"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("call = %#v, want %#v", got, want)
+	}
+
+	if err := manager.SetSessionAttention("", true); err == nil {
+		t.Fatal("expected error for empty session name")
+	}
+}
+
 func topBarPalette() Palette {
 	return Palette{
 		Surface0: "#313244",
@@ -199,12 +270,12 @@ func TestFormatTopBar(t *testing.T) {
 	p := topBarPalette()
 
 	// 0 sessions
-	if got := p.FormatTopBar("demo", nil, nil, 0); got != "" {
+	if got := p.FormatTopBar("demo", nil, nil, nil, 0); got != "" {
 		t.Fatalf("FormatTopBar(nil) = %q, want empty", got)
 	}
 
 	// 1 session (alone)
-	single := p.FormatTopBar("demo", []string{"only"}, nil, 0)
+	single := p.FormatTopBar("demo", []string{"only"}, nil, nil, 0)
 	if !strings.Contains(single, "only") {
 		t.Fatalf("single FormatTopBar = %q", single)
 	}
@@ -216,7 +287,7 @@ func TestFormatTopBar(t *testing.T) {
 	}
 
 	// 2 sessions, first active: each section appears once
-	twoFirst := p.FormatTopBar("demo", []string{"first", "second"}, nil, 0)
+	twoFirst := p.FormatTopBar("demo", []string{"first", "second"}, nil, nil, 0)
 	if strings.Count(twoFirst, "first") != 1 || strings.Count(twoFirst, "second") != 1 {
 		t.Fatalf("2 sessions (first active) should each appear once: %q", twoFirst)
 	}
@@ -230,7 +301,7 @@ func TestFormatTopBar(t *testing.T) {
 	}
 
 	// 2 sessions, second active: each section appears once
-	twoSecond := p.FormatTopBar("demo", []string{"first", "second"}, nil, 1)
+	twoSecond := p.FormatTopBar("demo", []string{"first", "second"}, nil, nil, 1)
 	if strings.Count(twoSecond, "first") != 1 || strings.Count(twoSecond, "second") != 1 {
 		t.Fatalf("2 sessions (second active) should each appear once: %q", twoSecond)
 	}
@@ -244,7 +315,7 @@ func TestFormatTopBar(t *testing.T) {
 	}
 
 	// 3 sessions, middle active
-	three := p.FormatTopBar("demo", []string{"first", "second", "third"}, nil, 1)
+	three := p.FormatTopBar("demo", []string{"first", "second", "third"}, nil, nil, 1)
 	if strings.Count(three, "first") != 1 || strings.Count(three, "second") != 1 || strings.Count(three, "third") != 1 {
 		t.Fatalf("three FormatTopBar should contain each session once: %q", three)
 	}
@@ -259,7 +330,7 @@ func TestFormatTopBar(t *testing.T) {
 	}
 
 	// 4 sessions, end active
-	four := p.FormatTopBar("demo", []string{"s1", "s2", "s3", "s4"}, nil, 3)
+	four := p.FormatTopBar("demo", []string{"s1", "s2", "s3", "s4"}, nil, nil, 3)
 	for _, s := range []string{"s1", "s2", "s3", "s4"} {
 		if strings.Count(four, s) != 1 {
 			t.Fatalf("session %q should appear exactly once in %q", s, four)
@@ -273,7 +344,7 @@ func TestFormatTopBar(t *testing.T) {
 func TestFormatTopBarRendersProjectSectionBeforeSessions(t *testing.T) {
 	p := topBarPalette()
 
-	got := p.FormatTopBar("demo", []string{"code", "git"}, nil, 0)
+	got := p.FormatTopBar("demo", []string{"code", "git"}, nil, nil, 0)
 	want := "#[bg=#313244,fg=#89b4fa,bold] demo #[bg=#181825,fg=#313244,nobold]\ue0b0"
 	if !strings.Contains(got, want) {
 		t.Fatalf("FormatTopBar() = %q, want project section %q", got, want)
@@ -286,7 +357,7 @@ func TestFormatTopBarRendersProjectSectionBeforeSessions(t *testing.T) {
 func TestFormatTopBarRendersEmptyProjectSectionWithoutProject(t *testing.T) {
 	p := topBarPalette()
 
-	got := p.FormatTopBar("", []string{"scratch"}, nil, 0)
+	got := p.FormatTopBar("", []string{"scratch"}, nil, nil, 0)
 	want := "#[bg=#313244,fg=#89b4fa,bold]  #[bg=#181825,fg=#313244,nobold]\ue0b0"
 	if !strings.Contains(got, want) {
 		t.Fatalf("FormatTopBar() = %q, want empty project section %q", got, want)
@@ -296,7 +367,7 @@ func TestFormatTopBarRendersEmptyProjectSectionWithoutProject(t *testing.T) {
 func TestFormatTopBarRendersTypeIconsWithoutWordedChip(t *testing.T) {
 	p := Palette{Surface0: "#313244", Subtext: "#a6adc8", Text: "#cdd6f4", Blue: "#89b4fa", Teal: "#94e2d5", Yellow: "#f9e2af", Mantle: "#181825"}
 
-	got := p.FormatTopBar("demo", []string{"code", "git", "agent"}, []string{"", "git", "agent"}, 0)
+	got := p.FormatTopBar("demo", []string{"code", "git", "agent"}, []string{"", "git", "agent"}, nil, 0)
 	if !strings.Contains(got, "#[fg=#89b4fa]>_#[fg=#a6adc8]") {
 		t.Fatalf("missing terminal icon: %q", got)
 	}
@@ -311,10 +382,32 @@ func TestFormatTopBarRendersTypeIconsWithoutWordedChip(t *testing.T) {
 	}
 }
 
+func TestFormatTopBarRendersAttentionIndependentOfActiveAndType(t *testing.T) {
+	p := topBarPalette()
+	p.Red = "#f38ba8"
+
+	got := p.FormatTopBar("demo", []string{"code", "git"}, []string{"", "git"}, []bool{false, true}, 0)
+	if !strings.Contains(got, "#[fg=#f38ba8]!") {
+		t.Fatalf("expected a red attention mark for the inactive git session, got: %q", got)
+	}
+
+	// Attention on the active pill too: independent of selection.
+	got = p.FormatTopBar("demo", []string{"code", "git"}, []string{"", "git"}, []bool{true, false}, 0)
+	if !strings.Contains(got, "#[fg=#f38ba8]!") {
+		t.Fatalf("expected a red attention mark on the active session, got: %q", got)
+	}
+
+	// No attention anywhere: no red marks at all.
+	got = p.FormatTopBar("demo", []string{"code", "git"}, []string{"", "git"}, []bool{false, false}, 0)
+	if strings.Contains(got, "#f38ba8") {
+		t.Fatalf("expected no attention mark, got: %q", got)
+	}
+}
+
 func TestFormatTopBarEscapesTmuxFormatSyntaxInLabels(t *testing.T) {
 	p := topBarPalette()
 
-	got := p.FormatTopBar("demo", []string{"#(touch /tmp/tflow-review) #[fg=red]"}, nil, 0)
+	got := p.FormatTopBar("demo", []string{"#(touch /tmp/tflow-review) #[fg=red]"}, nil, nil, 0)
 	want := "##(touch /tmp/tflow-review) ##[fg=red]"
 	if !strings.Contains(got, want) {
 		t.Fatalf("FormatTopBar() = %q, want escaped label %q", got, want)
@@ -324,7 +417,7 @@ func TestFormatTopBarEscapesTmuxFormatSyntaxInLabels(t *testing.T) {
 func TestFormatTopBarEscapesTmuxFormatSyntaxInProject(t *testing.T) {
 	p := topBarPalette()
 
-	got := p.FormatTopBar("#(touch /tmp/tflow-review)", []string{"only"}, nil, 0)
+	got := p.FormatTopBar("#(touch /tmp/tflow-review)", []string{"only"}, nil, nil, 0)
 	if !strings.Contains(got, "##(touch /tmp/tflow-review)") {
 		t.Fatalf("FormatTopBar() = %q, want escaped project name", got)
 	}

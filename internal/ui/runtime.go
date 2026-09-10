@@ -26,6 +26,7 @@ type tmuxController interface {
 	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
+	SetSessionAttention(name string, attention bool) error
 	SetSessionTopBar(name, content string) error
 	AttachCommand(ctx context.Context, name string) (*exec.Cmd, error)
 	KillSession(name string) error
@@ -87,6 +88,10 @@ func (m sessionManager) SetSessionLabel(name, label string) error {
 	return m.inner.SetSessionLabel(name, label)
 }
 
+func (m sessionManager) SetSessionAttention(name string, attention bool) error {
+	return m.inner.SetSessionAttention(name, attention)
+}
+
 func (m sessionManager) SetSessionTopBar(name, content string) error {
 	return m.inner.SetSessionTopBar(name, content)
 }
@@ -121,6 +126,7 @@ func catppuccinTmuxPalette() runtmux.Palette {
 		Mantle:   palette.Mantle,
 		Teal:     palette.Teal,
 		Yellow:   palette.Yellow,
+		Red:      palette.Red,
 	}
 }
 

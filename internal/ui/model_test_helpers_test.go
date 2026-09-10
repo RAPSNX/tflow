@@ -19,6 +19,7 @@ type fakeTmuxController struct {
 	currentPaneDir      func() (string, error)
 	setSessionTemporary func(name string, temporary bool, instanceID string) error
 	setSessionLabel     func(name, label string) error
+	setSessionAttention func(name string, attention bool) error
 	setSessionTopBar    func(name, content string) error
 	attachCommand       func(ctx context.Context, name string) (*exec.Cmd, error)
 	killSession         func(name string) error
@@ -88,6 +89,13 @@ func (f fakeTmuxController) SetSessionTemporary(name string, temporary bool, ins
 func (f fakeTmuxController) SetSessionLabel(name, label string) error {
 	if f.setSessionLabel != nil {
 		return f.setSessionLabel(name, label)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) SetSessionAttention(name string, attention bool) error {
+	if f.setSessionAttention != nil {
+		return f.setSessionAttention(name, attention)
 	}
 	return nil
 }
