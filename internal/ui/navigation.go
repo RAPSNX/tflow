@@ -61,17 +61,12 @@ func navigateWithManager(manager tmuxController, direction int) error {
 		}
 	}
 
-	instanceID := strings.TrimSpace(os.Getenv(menuInstanceEnv))
-	if instanceID == "" && currentInfo != nil && currentInfo.Instance != "" {
-		instanceID = currentInfo.Instance
+	instanceID := ""
+	if currentInfo != nil {
+		instanceID = strings.TrimSpace(currentInfo.Instance)
 	}
 	if instanceID == "" {
-		for _, s := range sessions {
-			if s.Temporary && s.Instance != "" {
-				instanceID = s.Instance
-				break
-			}
-		}
+		instanceID = strings.TrimSpace(os.Getenv(menuInstanceEnv))
 	}
 
 	// Determine if current session is volatile or belongs to a project

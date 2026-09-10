@@ -214,6 +214,38 @@ func TestNavigateBoundedVolatileContext(t *testing.T) {
 	}
 }
 
+func TestNavigatePrefersCurrentSessionInstanceOverAmbientEnvironment(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{}); err != nil {
+		t.Fatal(err)
+	}
+
+	var switchedTo string
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{
+				{Name: "tflow-v-live-1", Temporary: true, Instance: "live", Label: "one"},
+				{Name: "tflow-v-live-2", Temporary: true, Instance: "live", Label: "two"},
+				{Name: "tflow-v-stale", Temporary: true, Instance: "stale", Label: "stale"},
+			}, nil
+		},
+		switchClient: func(name string) error {
+			switchedTo = name
+			return nil
+		},
+	}
+	t.Setenv(menuCurrentEnv, "tflow-v-live-1")
+	t.Setenv(menuInstanceEnv, "stale")
+
+	if err := navigateWithManager(manager, 1); err != nil {
+		t.Fatalf("navigate next: %v", err)
+	}
+	if switchedTo != "tflow-v-live-2" {
+		t.Fatalf("switched to %q, want current session instance sibling", switchedTo)
+	}
+}
+
 func TestNavigateTwoSessionsBoundedBackAndForth(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	statePath := appStatePath()
