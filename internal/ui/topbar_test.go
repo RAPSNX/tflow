@@ -89,6 +89,41 @@ func TestTopBarVolatileFormatting(t *testing.T) {
 	}
 }
 
+func TestDeletingNonActiveVolatileSessionRefreshesActiveTopBar(t *testing.T) {
+	var updatedName, updatedContent string
+	m := model{
+		currentSession: "tflow-v-inst-active",
+		instanceID:     "inst",
+		tmux: fakeTmuxController{
+			setSessionTopBar: func(name, content string) error {
+				updatedName = name
+				updatedContent = content
+				return nil
+			},
+		},
+		sessions: []session{
+			{Name: "tflow-v-inst-active", Label: "active", Temporary: true, Instance: "inst"},
+			{Name: "tflow-v-inst-deleted", Label: "deleted", Temporary: true, Instance: "inst"},
+		},
+		sessionProjects: map[string]string{},
+	}
+
+	updated, cmd := m.Update(sessionKilledMsg{name: "tflow-v-inst-deleted"})
+	if cmd == nil {
+		t.Fatal("expected close-menu command")
+	}
+	got := updated.(model)
+	if got.err != nil {
+		t.Fatalf("update error: %v", got.err)
+	}
+	if updatedName != "tflow-v-inst-active" {
+		t.Fatalf("updated session = %q, want active volatile session", updatedName)
+	}
+	if !strings.Contains(updatedContent, "active") || strings.Contains(updatedContent, "deleted") {
+		t.Fatalf("updated top bar = %q, want only surviving active session", updatedContent)
+	}
+}
+
 func TestTopBarSwitchUpdatesTargetOnly(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	statePath := appStatePath()

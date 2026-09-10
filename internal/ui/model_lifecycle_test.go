@@ -1505,6 +1505,54 @@ func TestDeletePersistentSessionsAfterSwitchRemovesProjectWhenExplicit(t *testin
 	}
 }
 
+func TestDeletePersistentSessionsAfterSwitchPreservesConcurrentlyAddedSession(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "one"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-fallback",
+		exitDeleteProject:  "small",
+		exitDeleteSessions: []string{"tflow-p-1"},
+		currentSession:     "tflow-p-1",
+		statePath:          path,
+		sessions: []session{
+			{Name: "tflow-p-1"},
+			{Name: "tflow-v-fallback", Temporary: true},
+		},
+	}
+	manager := fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		killSession: func(name string) error {
+			return saveAppState(path, appState{Projects: []storedProject{{
+				Name: "small", Sessions: []persistentSession{
+					{ID: "tflow-p-1", Label: "one"},
+					{ID: "tflow-p-2", Label: "concurrent"},
+				},
+			}}})
+		},
+	}
+	if err := runMenuExitAction(manager, menu); err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 1 || persisted.Projects[0].Name != "small" {
+		t.Fatalf("persisted projects = %#v, want concurrently extended project retained", persisted.Projects)
+	}
+	if len(persisted.Projects[0].Sessions) != 1 || persisted.Projects[0].Sessions[0].ID != "tflow-p-2" {
+		t.Fatalf("persisted sessions = %#v, want only concurrent session retained", persisted.Projects[0].Sessions)
+	}
+}
+
 func TestDeletePersistentSessionsAfterSwitchVolatileDoesNotTouchStore(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	path := appStatePath()

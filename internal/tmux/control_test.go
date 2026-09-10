@@ -270,3 +270,18 @@ func TestFormatTopBar(t *testing.T) {
 		t.Fatalf("s4 should be active pill: %q", four)
 	}
 }
+
+func TestFormatTopBarEscapesTmuxFormatSyntaxInLabels(t *testing.T) {
+	p := Palette{
+		Surface0: "#313244",
+		Subtext:  "#a6adc8",
+		Text:     "#cdd6f4",
+		Mantle:   "#181825",
+	}
+
+	got := p.FormatTopBar([]string{"#(touch /tmp/tflow-review) #[fg=red]"}, 0)
+	want := "##(touch /tmp/tflow-review) ##[fg=red]"
+	if !strings.Contains(got, want) {
+		t.Fatalf("FormatTopBar() = %q, want escaped label %q", got, want)
+	}
+}

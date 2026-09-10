@@ -130,6 +130,7 @@ func (p Palette) FormatTopBar(labels []string, activeIndex int) string {
 	}
 	var b strings.Builder
 	for i, label := range labels {
+		label = escapeTmuxFormatLiteral(label)
 		if i == 0 && i != activeIndex {
 			b.WriteString("#[bg=" + p.Mantle + ",fg=" + p.Subtext + "] ")
 		} else if i > 0 {
@@ -144,4 +145,8 @@ func (p Palette) FormatTopBar(labels []string, activeIndex int) string {
 		}
 	}
 	return b.String()
+}
+
+func escapeTmuxFormatLiteral(value string) string {
+	return strings.ReplaceAll(value, "#", "##")
 }

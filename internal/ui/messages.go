@@ -128,7 +128,10 @@ func (m model) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		if found && deleted.Temporary {
 			m.syncSelection()
-			if _, currentExists := m.currentSessionInfo(); currentExists {
+			if current, currentExists := m.currentSessionInfo(); currentExists {
+				if current.Temporary && current.Instance == deleted.Instance {
+					m.refreshActiveTopBar()
+				}
 				return m, m.closeMenuCmd()
 			}
 			return m.createVolatileFallback()

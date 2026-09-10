@@ -523,11 +523,9 @@ func removeDeadOutgoingSession(manager tmuxController, menu model, outgoing stri
 func deletePersistentSessionsAfterSwitch(manager tmuxController, menu model) []string {
 	var killedPersistent []string
 	var killedAll []string
-	failedKills := false
 	for _, name := range menu.exitDeleteSessions {
 		if err := ignoreMissingSession(manager.KillSession(name)); err != nil {
 			diag.Warnf("delete session %q after fallback switch: %v", name, err)
-			failedKills = true
 			continue
 		}
 		killedAll = append(killedAll, name)
@@ -535,7 +533,7 @@ func deletePersistentSessionsAfterSwitch(manager tmuxController, menu model) []s
 			killedPersistent = append(killedPersistent, name)
 		}
 	}
-	if len(killedPersistent) == 0 && (menu.exitDeleteProject == "" || failedKills) {
+	if len(killedPersistent) == 0 {
 		return killedAll
 	}
 	path := menu.statePath
@@ -545,9 +543,6 @@ func deletePersistentSessionsAfterSwitch(manager tmuxController, menu model) []s
 	if _, err := mutateAppState(path, func(state appState) (appState, error) {
 		for _, name := range killedPersistent {
 			state = store.RemoveSession(state, name)
-		}
-		if menu.exitDeleteProject != "" && !failedKills {
-			state = store.RemoveProject(state, menu.exitDeleteProject)
 		}
 		return state, nil
 	}); err != nil {
