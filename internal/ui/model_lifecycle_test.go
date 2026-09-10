@@ -1349,3 +1349,938 @@ func TestSidebarRefreshUsesOneListQueryAndNoWrites(t *testing.T) {
 		t.Fatalf("selected session = %q, want %q", got, sessionID)
 	}
 }
+
+func TestRunMenuExitActionKillsUnusedFallbackOnSwitchFailure(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{{ID: "tflow-p-old", Label: "old"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var killed []string
+	menu := model{
+		exitAction:          menuExitSwitchSession,
+		exitSessionName:     "tflow-v-fallback",
+		exitFallbackSession: "tflow-v-fallback",
+		exitDeleteSessions:  []string{"tflow-p-old"},
+		currentSession:      "tflow-p-old",
+		statePath:           path,
+		sessions:            []session{{Name: "tflow-p-old"}, {Name: "tflow-v-fallback", Temporary: true}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error { return fmt.Errorf("tmux: switch failed") },
+		killSession:  func(name string) error { killed = append(killed, name); return nil },
+	}, menu)
+	if err == nil || !strings.Contains(err.Error(), "switch failed") {
+		t.Fatalf("runMenuExitAction error = %v, want fallback switch failure", err)
+	}
+	if fmt.Sprint(killed) != fmt.Sprint([]string{"tflow-v-fallback"}) {
+		t.Fatalf("killed = %#v, want unused fallback session killed on switch failure", killed)
+	}
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 1 || len(persisted.Projects[0].Sessions) != 1 {
+		t.Fatalf("persisted state = %#v, want deletion metadata retained", persisted)
+	}
+}
+
+func TestRunMenuExitActionDoesNotKillTargetWhenNotFallbackOnSwitchFailure(t *testing.T) {
+	var killed []string
+	menu := model{
+		exitAction:          menuExitSwitchSession,
+		exitSessionName:     "tflow-p-sibling",
+		exitFallbackSession: "",
+		exitDeleteSessions:  []string{"tflow-p-old"},
+		currentSession:      "tflow-p-old",
+		sessions:            []session{{Name: "tflow-p-old"}, {Name: "tflow-p-sibling"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error { return fmt.Errorf("tmux: switch failed") },
+		killSession:  func(name string) error { killed = append(killed, name); return nil },
+	}, menu)
+	if err == nil || !strings.Contains(err.Error(), "switch failed") {
+		t.Fatalf("runMenuExitAction error = %v, want switch failure", err)
+	}
+	if len(killed) != 0 {
+		t.Fatalf("killed = %#v, want no sessions killed when sibling switch failed", killed)
+	}
+}
+
+func TestDeletePersistentSessionsAfterSwitchPartialKillFailure(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{
+			{ID: "tflow-p-1", Label: "one"},
+			{ID: "tflow-p-2", Label: "two"},
+		},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	original := diag.Output
+	diag.Output = &buf
+	t.Cleanup(func() { diag.Output = original })
+
+	var killed []string
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-fallback",
+		exitDeleteSessions: []string{"tflow-p-1", "tflow-p-2"},
+		currentSession:     "tflow-p-1",
+		statePath:          path,
+		sessions: []session{
+			{Name: "tflow-p-1"},
+			{Name: "tflow-p-2"},
+			{Name: "tflow-v-fallback", Temporary: true},
+		},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		killSession: func(name string) error {
+			if name == "tflow-p-1" {
+				return fmt.Errorf("kill failed for p1")
+			}
+			killed = append(killed, name)
+			return nil
+		},
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if fmt.Sprint(killed) != fmt.Sprint([]string{"tflow-p-2"}) {
+		t.Fatalf("killed = %#v, want tflow-p-2 killed despite tflow-p-1 failure", killed)
+	}
+	if !strings.Contains(buf.String(), "kill failed for p1") {
+		t.Fatalf("diagnostic = %q, want diagnostic for p1 kill failure", buf.String())
+	}
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 1 || len(persisted.Projects[0].Sessions) != 1 || persisted.Projects[0].Sessions[0].ID != "tflow-p-1" {
+		t.Fatalf("persisted state = %#v, want only tflow-p-1 retained", persisted)
+	}
+}
+
+func TestDeletePersistentSessionsAfterSwitchRemovesProjectWhenExplicit(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "one"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-fallback",
+		exitDeleteProject:  "small",
+		exitDeleteSessions: []string{"tflow-p-1"},
+		currentSession:     "tflow-p-1",
+		statePath:          path,
+		sessions: []session{
+			{Name: "tflow-p-1"},
+			{Name: "tflow-v-fallback", Temporary: true},
+		},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		killSession:  func(name string) error { return nil },
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 0 {
+		t.Fatalf("persisted state = %#v, want project removed", persisted)
+	}
+}
+
+func TestDeletePersistentSessionsAfterSwitchPreservesConcurrentlyAddedSession(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "one"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-fallback",
+		exitDeleteProject:  "small",
+		exitDeleteSessions: []string{"tflow-p-1"},
+		currentSession:     "tflow-p-1",
+		statePath:          path,
+		sessions: []session{
+			{Name: "tflow-p-1"},
+			{Name: "tflow-v-fallback", Temporary: true},
+		},
+	}
+	manager := fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		killSession: func(name string) error {
+			return saveAppState(path, appState{Projects: []storedProject{{
+				Name: "small", Sessions: []persistentSession{
+					{ID: "tflow-p-1", Label: "one"},
+					{ID: "tflow-p-2", Label: "concurrent"},
+				},
+			}}})
+		},
+	}
+	if err := runMenuExitAction(manager, menu); err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 1 || persisted.Projects[0].Name != "small" {
+		t.Fatalf("persisted projects = %#v, want concurrently extended project retained", persisted.Projects)
+	}
+	if len(persisted.Projects[0].Sessions) != 1 || persisted.Projects[0].Sessions[0].ID != "tflow-p-2" {
+		t.Fatalf("persisted sessions = %#v, want only concurrent session retained", persisted.Projects[0].Sessions)
+	}
+}
+
+func TestDeletePersistentSessionsAfterSwitchVolatileDoesNotTouchStore(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "one"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var killed []string
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-new",
+		exitDeleteSessions: []string{"tflow-v-old"},
+		currentSession:     "tflow-v-old",
+		statePath:          path,
+		sessions: []session{
+			{Name: "tflow-v-old", Temporary: true},
+			{Name: "tflow-v-new", Temporary: true},
+		},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		killSession:  func(name string) error { killed = append(killed, name); return nil },
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if fmt.Sprint(killed) != fmt.Sprint([]string{"tflow-v-old"}) {
+		t.Fatalf("killed = %#v", killed)
+	}
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 1 || len(persisted.Projects[0].Sessions) != 1 {
+		t.Fatalf("persisted state = %#v, volatile deletion must not touch store", persisted)
+	}
+}
+
+func TestConfirmDeleteActiveNonFinalSessionSwitchesToAdjacentSibling(t *testing.T) {
+	var killed []string
+	m := newModel(fakeTmuxController{
+		killSession: func(name string) error { killed = append(killed, name); return nil },
+	}, "tflow-p-2").(model)
+	m.projects = []string{"small"}
+	m.sessions = []session{
+		{Name: "tflow-p-1"},
+		{Name: "tflow-p-2"},
+		{Name: "tflow-p-3"},
+	}
+	m.sessionProjects = map[string]string{
+		"tflow-p-1": "small",
+		"tflow-p-2": "small",
+		"tflow-p-3": "small",
+	}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-2"
+	m.currentSession = "tflow-p-2"
+
+	m.mode = inputConfirmDelete
+	m.deleteTarget = deleteTarget{session: "tflow-p-2"}
+
+	updated, cmd := m.confirmDelete()
+	got := updated.(model)
+
+	if len(killed) != 0 {
+		t.Fatalf("killed = %#v, active session must not be killed before switch", killed)
+	}
+	if got.selectedSession != "tflow-p-3" {
+		t.Fatalf("selected session = %q, want adjacent sibling tflow-p-3", got.selectedSession)
+	}
+	if fmt.Sprint(got.deferredDelete) != fmt.Sprint([]string{"tflow-p-2"}) {
+		t.Fatalf("deferred delete = %#v, want tflow-p-2 deferred", got.deferredDelete)
+	}
+	if cmd == nil {
+		t.Fatal("expected switch command")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.switchSession != "tflow-p-3" || fmt.Sprint(msg.deleteSessions) != fmt.Sprint([]string{"tflow-p-2"}) {
+		t.Fatalf("menu action msg = %+v", msg)
+	}
+}
+
+func TestConfirmDeleteActiveLastSessionInProjectSwitchesToPreviousSibling(t *testing.T) {
+	var killed []string
+	m := newModel(fakeTmuxController{
+		killSession: func(name string) error { killed = append(killed, name); return nil },
+	}, "tflow-p-2").(model)
+	m.projects = []string{"small"}
+	m.sessions = []session{
+		{Name: "tflow-p-1"},
+		{Name: "tflow-p-2"},
+	}
+	m.sessionProjects = map[string]string{
+		"tflow-p-1": "small",
+		"tflow-p-2": "small",
+	}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-2"
+	m.currentSession = "tflow-p-2"
+
+	m.mode = inputConfirmDelete
+	m.deleteTarget = deleteTarget{session: "tflow-p-2"}
+
+	updated, cmd := m.confirmDelete()
+	got := updated.(model)
+
+	if len(killed) != 0 {
+		t.Fatalf("killed = %#v, active session must not be killed before switch", killed)
+	}
+	if got.selectedSession != "tflow-p-1" {
+		t.Fatalf("selected session = %q, want previous sibling tflow-p-1", got.selectedSession)
+	}
+	if fmt.Sprint(got.deferredDelete) != fmt.Sprint([]string{"tflow-p-2"}) {
+		t.Fatalf("deferred delete = %#v, want tflow-p-2 deferred", got.deferredDelete)
+	}
+	if cmd == nil {
+		t.Fatal("expected switch command")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.switchSession != "tflow-p-1" {
+		t.Fatalf("switch target = %q, want tflow-p-1", msg.switchSession)
+	}
+}
+
+func TestConfirmDeleteActiveSoleVolatileSessionCreatesFallback(t *testing.T) {
+	var created bool
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			created = true
+			return session{Name: name}, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error { return nil },
+		setSessionLabel:     func(name, label string) error { return nil },
+	}, "tflow-v-1").(model)
+	m.instanceID = "inst-1"
+	m.sessions = []session{{Name: "tflow-v-1", Temporary: true, Instance: "inst-1"}}
+	m.selectedSession = "tflow-v-1"
+	m.currentSession = "tflow-v-1"
+
+	m.mode = inputConfirmDelete
+	m.deleteTarget = deleteTarget{session: "tflow-v-1"}
+
+	updated, cmd := m.confirmDelete()
+	got := updated.(model)
+
+	if fmt.Sprint(got.deferredDelete) != fmt.Sprint([]string{"tflow-v-1"}) {
+		t.Fatalf("deferred delete = %#v, want tflow-v-1 deferred", got.deferredDelete)
+	}
+	if cmd == nil {
+		t.Fatal("expected fallback creation command")
+	}
+	res := cmd().(sessionCreatedMsg)
+	if res.err != nil || !res.fallback || !created {
+		t.Fatalf("fallback creation result = %+v, created = %v", res, created)
+	}
+}
+
+func TestConfirmDeleteActiveVolatileSessionWithSiblingSwitchesToSibling(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "tflow-v-1").(model)
+	m.instanceID = "inst-1"
+	m.sessions = []session{
+		{Name: "tflow-v-1", Temporary: true, Instance: "inst-1"},
+		{Name: "tflow-v-2", Temporary: true, Instance: "inst-1"},
+	}
+	m.selectedSession = "tflow-v-1"
+	m.currentSession = "tflow-v-1"
+
+	m.mode = inputConfirmDelete
+	m.deleteTarget = deleteTarget{session: "tflow-v-1"}
+
+	updated, cmd := m.confirmDelete()
+	got := updated.(model)
+
+	if got.selectedSession != "tflow-v-2" {
+		t.Fatalf("selected session = %q, want sibling tflow-v-2", got.selectedSession)
+	}
+	if fmt.Sprint(got.deferredDelete) != fmt.Sprint([]string{"tflow-v-1"}) {
+		t.Fatalf("deferred delete = %#v, want tflow-v-1", got.deferredDelete)
+	}
+	if cmd == nil {
+		t.Fatal("expected switch command")
+	}
+	msg := cmd().(menuActionMsg)
+	if msg.switchSession != "tflow-v-2" {
+		t.Fatalf("switch target = %q, want tflow-v-2", msg.switchSession)
+	}
+}
+
+func TestFinishSessionCreationFollowUpErrorKillsOrphanedFallback(t *testing.T) {
+	var killed []string
+	m := newModel(fakeTmuxController{
+		killSession: func(name string) error { killed = append(killed, name); return nil },
+	}, "tflow-p-old").(model)
+	m.deferredDelete = []string{"tflow-p-old"}
+	m.deferredDeleteProject = "small"
+	m.fallbackSession = "tflow-v-new"
+
+	origErr := fmt.Errorf("marker sync failed")
+	updated, cmd := m.finishSessionCreationFollowUpError("tflow-v-new", origErr)
+	got := updated.(model)
+
+	if cmd != nil {
+		t.Fatalf("expected nil cmd, got %v", cmd)
+	}
+	if fmt.Sprint(killed) != fmt.Sprint([]string{"tflow-v-new"}) {
+		t.Fatalf("killed = %#v, want unconfigured fallback killed", killed)
+	}
+	if len(got.deferredDelete) != 0 || got.deferredDeleteProject != "" || got.fallbackSession != "" {
+		t.Fatalf("deferred fields not reset: deferredDelete=%#v, project=%q, fallback=%q",
+			got.deferredDelete, got.deferredDeleteProject, got.fallbackSession)
+	}
+	if got.err != origErr {
+		t.Fatalf("err = %v, want original error %v", got.err, origErr)
+	}
+}
+
+func TestFinalSessionDeletionSuccessfulHandoffEndToEnd(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{{ID: "tflow-p-old", Label: "old"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var killed []string
+	var switched string
+	controller := fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			return session{Name: name, Windows: 1}, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error { return nil },
+		setSessionLabel:     func(name, label string) error { return nil },
+		switchClient: func(name string) error {
+			switched = name
+			return nil
+		},
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+	}
+
+	m := newModel(controller, "tflow-p-old").(model)
+	m.instanceID = "inst-1"
+	m.statePath = path
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "tflow-p-old"}}
+	m.sessionProjects = map[string]string{"tflow-p-old": "small"}
+	m.sessionLabels = map[string]string{"tflow-p-old": "old"}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-old"
+	m.currentSession = "tflow-p-old"
+
+	// 1. Confirm delete of final session in project
+	m.mode = inputConfirmDelete
+	m.deleteTarget = deleteTarget{session: "tflow-p-old"}
+	updated, cmd := m.confirmDelete()
+	if cmd == nil {
+		t.Fatal("expected fallback creation command")
+	}
+
+	// 2. Fallback creation runs
+	createdMsg := cmd().(sessionCreatedMsg)
+	if createdMsg.err != nil || !createdMsg.fallback {
+		t.Fatalf("createdMsg = %+v", createdMsg)
+	}
+
+	// 3. Fallback message updates model and triggers switch
+	updated, cmd = updated.(model).Update(createdMsg)
+	if cmd == nil {
+		t.Fatal("expected switch command")
+	}
+	actionMsg := cmd().(menuActionMsg)
+	if actionMsg.switchSession != createdMsg.session.Name {
+		t.Fatalf("switch target = %q, want %q", actionMsg.switchSession, createdMsg.session.Name)
+	}
+
+	// 4. Model handles menuActionMsg and prepares for menu exit
+	updated, _ = updated.(model).Update(actionMsg)
+	menuGot := updated.(model)
+	if menuGot.exitAction != menuExitSwitchSession {
+		t.Fatalf("exit action = %v, want menuExitSwitchSession", menuGot.exitAction)
+	}
+
+	// 5. runMenuExitAction switches client to fallback and deletes persistent session
+	err := runMenuExitAction(controller, menuGot)
+	if err != nil {
+		t.Fatalf("runMenuExitAction failed: %v", err)
+	}
+
+	if switched != createdMsg.session.Name {
+		t.Fatalf("switched to %q, want %q", switched, createdMsg.session.Name)
+	}
+	if fmt.Sprint(killed) != fmt.Sprint([]string{"tflow-p-old"}) {
+		t.Fatalf("killed = %#v, want tflow-p-old", killed)
+	}
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 0 {
+		t.Fatalf("persisted state = %#v, want all projects removed", persisted)
+	}
+}
+
+func TestFinalSessionDeletion_FallbackCreationFailure(t *testing.T) {
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			return session{}, fmt.Errorf("tmux server unavailable")
+		},
+	}, "tflow-p-old").(model)
+	m.instanceID = "inst-1"
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "tflow-p-old"}}
+	m.sessionProjects = map[string]string{"tflow-p-old": "small"}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-old"
+	m.currentSession = "tflow-p-old"
+
+	m.mode = inputConfirmDelete
+	m.deleteTarget = deleteTarget{session: "tflow-p-old"}
+
+	updated, cmd := m.confirmDelete()
+	if cmd == nil {
+		t.Fatal("expected fallback creation command")
+	}
+	res := cmd().(sessionCreatedMsg)
+	if res.err == nil || !strings.Contains(res.err.Error(), "tmux server unavailable") {
+		t.Fatalf("res.err = %v, want tmux server unavailable", res.err)
+	}
+
+	updated, followUp := updated.(model).Update(res)
+	if followUp != nil {
+		t.Fatalf("followUp = %v, want nil", followUp)
+	}
+	got := updated.(model)
+	if len(got.deferredDelete) != 0 || got.deferredDeleteProject != "" || got.fallbackSession != "" {
+		t.Fatalf("deferred state not cleared after creation failure: %#v, %q, %q",
+			got.deferredDelete, got.deferredDeleteProject, got.fallbackSession)
+	}
+	if got.err == nil || !strings.Contains(got.err.Error(), "tmux server unavailable") {
+		t.Fatalf("got.err = %v, want creation error preserved", got.err)
+	}
+}
+
+func TestFinalSessionDeletion_FallbackConfigurationFailure(t *testing.T) {
+	var killed []string
+	m := newModel(fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			return session{Name: name}, nil
+		},
+		setSessionTemporary: func(name string, temporary bool, instanceID string) error {
+			return fmt.Errorf("tagging temporary failed")
+		},
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+	}, "tflow-p-old").(model)
+	m.instanceID = "inst-1"
+	m.projects = []string{"small"}
+	m.sessions = []session{{Name: "tflow-p-old"}}
+	m.sessionProjects = map[string]string{"tflow-p-old": "small"}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-old"
+	m.currentSession = "tflow-p-old"
+
+	m.mode = inputConfirmDelete
+	m.deleteTarget = deleteTarget{session: "tflow-p-old"}
+
+	updated, cmd := m.confirmDelete()
+	if cmd == nil {
+		t.Fatal("expected fallback creation command")
+	}
+	res := cmd().(sessionCreatedMsg)
+	if res.err == nil || !strings.Contains(res.err.Error(), "tagging temporary failed") {
+		t.Fatalf("res.err = %v, want tagging temporary failure", res.err)
+	}
+	if len(killed) != 1 {
+		t.Fatalf("killed = %#v, want newly created untagged fallback killed", killed)
+	}
+
+	updated, followUp := updated.(model).Update(res)
+	if followUp != nil {
+		t.Fatalf("followUp = %v, want nil", followUp)
+	}
+	got := updated.(model)
+	if len(got.deferredDelete) != 0 || got.deferredDeleteProject != "" {
+		t.Fatalf("deferred delete not cleared: %#v", got.deferredDelete)
+	}
+	if got.err == nil || !strings.Contains(got.err.Error(), "tagging temporary failed") {
+		t.Fatalf("got.err = %v, want configuration error preserved", got.err)
+	}
+}
+
+func TestFinalSessionDeletion_MarkerSyncFailureKillsFallback(t *testing.T) {
+	var killed []string
+	m := newModel(fakeTmuxController{
+		setSessionLabel: func(name, label string) error {
+			if name == "tflow-v-fallback" {
+				return fmt.Errorf("sync label failed")
+			}
+			return nil
+		},
+		killSession: func(name string) error {
+			killed = append(killed, name)
+			return nil
+		},
+	}, "tflow-p-old").(model)
+	m.instanceID = "inst-1"
+	m.deferredDelete = []string{"tflow-p-old"}
+	m.deferredDeleteProject = "small"
+
+	msg := sessionCreatedMsg{
+		session:  session{Name: "tflow-v-fallback", Temporary: true, Instance: "inst-1"},
+		volatile: true,
+		fallback: true,
+		label:    "scratch",
+	}
+
+	updated, followUp := m.Update(msg)
+	if followUp != nil {
+		t.Fatalf("followUp = %v, want nil", followUp)
+	}
+	got := updated.(model)
+	if fmt.Sprint(killed) != fmt.Sprint([]string{"tflow-v-fallback"}) {
+		t.Fatalf("killed = %#v, want fallback session killed on marker sync failure", killed)
+	}
+	if len(got.deferredDelete) != 0 || got.deferredDeleteProject != "" || got.fallbackSession != "" {
+		t.Fatalf("deferred state not cleared: %#v, %q, %q", got.deferredDelete, got.deferredDeleteProject, got.fallbackSession)
+	}
+	if got.err == nil || !strings.Contains(got.err.Error(), "sync label failed") {
+		t.Fatalf("got.err = %v, want sync label failed", got.err)
+	}
+}
+
+func TestDeletePersistentSessionsAfterSwitchRetainsProjectWhenTmuxDeletionFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{
+			{ID: "tflow-p-1", Label: "one"},
+			{ID: "tflow-p-2", Label: "two"},
+		},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-fallback",
+		exitDeleteProject:  "small",
+		exitDeleteSessions: []string{"tflow-p-1", "tflow-p-2"},
+		currentSession:     "tflow-p-1",
+		statePath:          path,
+		sessions: []session{
+			{Name: "tflow-p-1"},
+			{Name: "tflow-p-2"},
+			{Name: "tflow-v-fallback", Temporary: true},
+		},
+	}
+	manager := fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		killSession: func(name string) error {
+			if name == "tflow-p-2" {
+				return errors.New("cannot kill tflow-p-2")
+			}
+			return nil
+		},
+	}
+	err := runMenuExitAction(manager, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 1 {
+		t.Fatalf("persisted projects count = %d, want 1 project retained", len(persisted.Projects))
+	}
+	if persisted.Projects[0].Name != "small" {
+		t.Fatalf("retained project = %q, want small", persisted.Projects[0].Name)
+	}
+	if len(persisted.Projects[0].Sessions) != 1 || persisted.Projects[0].Sessions[0].ID != "tflow-p-2" {
+		t.Fatalf("retained sessions = %#v, want only tflow-p-2 retained", persisted.Projects[0].Sessions)
+	}
+}
+
+func TestDeletePersistentSessionsAfterSwitchRetainsSingleSessionProjectWhenKillFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{{ID: "tflow-p-1", Label: "one"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-fallback",
+		exitDeleteProject:  "small",
+		exitDeleteSessions: []string{"tflow-p-1"},
+		currentSession:     "tflow-p-1",
+		statePath:          path,
+		sessions: []session{
+			{Name: "tflow-p-1"},
+			{Name: "tflow-v-fallback", Temporary: true},
+		},
+	}
+	manager := fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		killSession: func(name string) error {
+			return errors.New("kill failed")
+		},
+	}
+	err := runMenuExitAction(manager, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	persisted, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Projects) != 1 || len(persisted.Projects[0].Sessions) != 1 {
+		t.Fatalf("persisted state = %#v, want project and session retained", persisted)
+	}
+}
+
+func TestRunMenuExitActionExcludesDeletedVolatileSessionFromRefreshedBar(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	var topBarUpdates []string
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-v-inst1-sibling",
+		exitDeleteSessions: []string{"tflow-v-inst1-active"},
+		currentSession:     "tflow-v-inst1-active",
+		instanceID:         "inst1",
+		statePath:          path,
+		sessions: []session{
+			{Name: "tflow-v-inst1-active", Label: "first", Temporary: true, Instance: "inst1"},
+			{Name: "tflow-v-inst1-sibling", Label: "second", Temporary: true, Instance: "inst1"},
+		},
+	}
+	manager := fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		killSession:  func(name string) error { return nil },
+		setSessionTopBar: func(name, content string) error {
+			if name == "tflow-v-inst1-sibling" {
+				topBarUpdates = append(topBarUpdates, content)
+			}
+			return nil
+		},
+	}
+	err := runMenuExitAction(manager, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if len(topBarUpdates) < 2 {
+		t.Fatalf("topBarUpdates count = %d, want at least 2 updates (before and after cleanup)", len(topBarUpdates))
+	}
+	finalUpdate := topBarUpdates[len(topBarUpdates)-1]
+	if strings.Contains(finalUpdate, "first") {
+		t.Fatalf("final top bar content %q should not contain deleted volatile session 'first'", finalUpdate)
+	}
+	if !strings.Contains(finalUpdate, "second") {
+		t.Fatalf("final top bar content %q must contain remaining volatile session 'second'", finalUpdate)
+	}
+}
+
+func TestRunMenuExitActionExcludesDeadVolatileSessionFromRefreshedBar(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	var topBarUpdates []string
+	menu := model{
+		exitAction:      menuExitSwitchSession,
+		exitSessionName: "tflow-v-inst1-sibling",
+		currentSession:  "tflow-v-inst1-dead",
+		instanceID:      "inst1",
+		statePath:       path,
+		sessions: []session{
+			{Name: "tflow-v-inst1-dead", Label: "dead", Temporary: true, Instance: "inst1"},
+			{Name: "tflow-v-inst1-sibling", Label: "alive", Temporary: true, Instance: "inst1"},
+		},
+	}
+	manager := fakeTmuxController{
+		switchClient: func(name string) error { return nil },
+		sessionPanesAllDead: func(name string) (bool, error) {
+			return name == "tflow-v-inst1-dead", nil
+		},
+		killSession: func(name string) error { return nil },
+		setSessionTopBar: func(name, content string) error {
+			if name == "tflow-v-inst1-sibling" {
+				topBarUpdates = append(topBarUpdates, content)
+			}
+			return nil
+		},
+	}
+	err := runMenuExitAction(manager, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction returned error: %v", err)
+	}
+	if len(topBarUpdates) < 2 {
+		t.Fatalf("topBarUpdates count = %d, want at least 2 updates", len(topBarUpdates))
+	}
+	finalUpdate := topBarUpdates[len(topBarUpdates)-1]
+	if strings.Contains(finalUpdate, "dead") {
+		t.Fatalf("final top bar %q should not contain dead volatile session", finalUpdate)
+	}
+	if !strings.Contains(finalUpdate, "alive") {
+		t.Fatalf("final top bar %q must contain alive session", finalUpdate)
+	}
+}
+
+func TestRunMenuExitActionRevalidatesDeletionTargetBeforeSwitch(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	initial := appState{Projects: []storedProject{
+		{Name: "small", Sessions: []persistentSession{
+			{ID: "tflow-p-active", Label: "active"},
+			{ID: "tflow-p-sibling", Label: "sibling"},
+		}},
+		{Name: "garden", Sessions: []persistentSession{{ID: "tflow-p-garden", Label: "garden"}}},
+	}}
+	if err := saveAppState(path, initial); err != nil {
+		t.Fatal(err)
+	}
+
+	originalLock := lockAppState
+	lockAppState = func(statePath string) (func() error, error) {
+		moved := appState{Projects: []storedProject{
+			{Name: "small", Sessions: []persistentSession{{ID: "tflow-p-active", Label: "active"}}},
+			{Name: "garden", Sessions: []persistentSession{
+				{ID: "tflow-p-garden", Label: "garden"},
+				{ID: "tflow-p-sibling", Label: "sibling"},
+			}},
+		}}
+		if err := saveAppState(statePath, moved); err != nil {
+			return nil, err
+		}
+		return func() error { return nil }, nil
+	}
+	t.Cleanup(func() { lockAppState = originalLock })
+
+	switchCalls := 0
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-p-sibling",
+		exitDeleteSessions: []string{"tflow-p-active"},
+		currentSession:     "tflow-p-active",
+		statePath:          path,
+		sessionProjects: map[string]string{
+			"tflow-p-active":  "small",
+			"tflow-p-sibling": "small",
+		},
+		sessions: []session{{Name: "tflow-p-active"}, {Name: "tflow-p-sibling"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error {
+			switchCalls++
+			return nil
+		},
+	}, menu)
+	if err == nil || !strings.Contains(err.Error(), "no longer in the selected project") {
+		t.Fatalf("runMenuExitAction error = %v", err)
+	}
+	if switchCalls != 0 {
+		t.Fatalf("switch calls = %d, want 0", switchCalls)
+	}
+}
+
+func TestRunMenuExitActionHoldsDeletionTargetLockThroughSwitch(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{
+			{ID: "tflow-p-active", Label: "active"},
+			{ID: "tflow-p-sibling", Label: "sibling"},
+		},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	originalLock := lockAppState
+	locked := false
+	lockAppState = func(string) (func() error, error) {
+		locked = true
+		return func() error {
+			locked = false
+			return nil
+		}, nil
+	}
+	t.Cleanup(func() { lockAppState = originalLock })
+
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-p-sibling",
+		exitDeleteSessions: []string{"tflow-p-active"},
+		currentSession:     "tflow-p-active",
+		statePath:          path,
+		sessionProjects: map[string]string{
+			"tflow-p-active":  "small",
+			"tflow-p-sibling": "small",
+		},
+		sessions: []session{{Name: "tflow-p-active"}, {Name: "tflow-p-sibling"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error {
+			if !locked {
+				t.Fatal("state lock was released before switching to the deletion sibling")
+			}
+			return nil
+		},
+		killSession: func(name string) error {
+			if locked {
+				t.Fatal("state lock remained held while deleting after the switch")
+			}
+			return nil
+		},
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction: %v", err)
+	}
+	if locked {
+		t.Fatal("state lock was not released after switching")
+	}
+}

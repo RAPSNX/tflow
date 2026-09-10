@@ -197,3 +197,28 @@ func TestSessionsLoadedRecoversAttachedVolatileSessionWhenCurrentContextIsStale(
 		t.Fatalf("context sessions = %#v, want recovered live session", sessions)
 	}
 }
+
+func TestPrepareStartupInitializesTopBar(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var topBarSession, topBarContent string
+	manager := fakeTmuxController{
+		createSession: func(name, cwd, command string) (session, error) {
+			return session{Name: name}, nil
+		},
+		setSessionTopBar: func(name, content string) error {
+			topBarSession = name
+			topBarContent = content
+			return nil
+		},
+	}
+	name, err := prepareStartup(manager, "/tmp/tflow", "/tmp/project", "instance-1")
+	if err != nil {
+		t.Fatalf("prepareStartup returned error: %v", err)
+	}
+	if topBarSession != name {
+		t.Fatalf("topBarSession = %q, want startup session %q", topBarSession, name)
+	}
+	if !strings.Contains(topBarContent, "1") {
+		t.Fatalf("topBarContent = %q, want to contain startup session label '1'", topBarContent)
+	}
+}

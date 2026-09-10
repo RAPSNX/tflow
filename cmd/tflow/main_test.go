@@ -75,3 +75,20 @@ func TestRunCreateWorkerRequiresPayload(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 }
+
+func TestPublicHelpExcludesInternalWorkers(t *testing.T) {
+	internalWorkers := []string{
+		"navigate-prev",
+		"navigate-next",
+		"toggle-menu",
+		"create-worker",
+		"cleanup-client",
+		"open-quit",
+		"menu",
+	}
+	for _, worker := range internalWorkers {
+		if strings.Contains(helpText, worker) {
+			t.Fatalf("helpText must not contain internal worker %q", worker)
+		}
+	}
+}

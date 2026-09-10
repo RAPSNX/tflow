@@ -64,6 +64,7 @@ func (m model) deferPersistentDeletion(project string) (tea.Model, tea.Cmd) {
 	for _, session := range sessions {
 		m.deferredDelete = append(m.deferredDelete, session.Name)
 	}
+	m.deferredDeleteProject = project
 	return m.createVolatileFallback()
 }
 

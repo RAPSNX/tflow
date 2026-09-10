@@ -720,3 +720,80 @@ func TestSecondLazyMaterializationReusesSessionCreatedByFirstPopup(t *testing.T)
 	}
 	_ = first
 }
+
+func TestActiveDeletionDoesNotSwitchToSiblingMovedConcurrently(t *testing.T) {
+	statePath := seedLazyProjectState(t,
+		storedProject{Name: "small", Workdir: "/work/small", Sessions: []persistentSession{
+			{ID: "tflow-p-active", Label: "active"},
+			{ID: "tflow-p-sibling", Label: "sibling"},
+		}},
+		storedProject{Name: "garden", Workdir: "/work/garden", Sessions: []persistentSession{{ID: "tflow-p-garden", Label: "garden"}}},
+	)
+
+	var switchCalls int
+	m := newModel(fakeTmuxController{
+		switchClient: func(name string) error {
+			switchCalls++
+			return nil
+		},
+	}, "tflow-p-active").(model)
+	m.statePath = statePath
+	m.stateBase = appState{Projects: []storedProject{
+		{Name: "small", Workdir: "/work/small", Sessions: []persistentSession{
+			{ID: "tflow-p-active", Label: "active"},
+			{ID: "tflow-p-sibling", Label: "sibling"},
+		}},
+		{Name: "garden", Workdir: "/work/garden", Sessions: []persistentSession{{ID: "tflow-p-garden", Label: "garden"}}},
+	}}
+	m.stateBasePath = statePath
+	m.projects = []string{"small", "garden"}
+	m.projectConfigs = map[string]projectConfig{
+		"small":  {Name: "small", Workdir: "/work/small"},
+		"garden": {Name: "garden", Workdir: "/work/garden"},
+	}
+	m.sessions = []session{
+		{Name: "tflow-p-active", Label: "active"},
+		{Name: "tflow-p-sibling", Label: "sibling"},
+		{Name: "tflow-p-garden", Label: "garden"},
+	}
+	m.sessionProjects = map[string]string{
+		"tflow-p-active":  "small",
+		"tflow-p-sibling": "small",
+		"tflow-p-garden":  "garden",
+	}
+	m.sessionLabels = map[string]string{
+		"tflow-p-active":  "active",
+		"tflow-p-sibling": "sibling",
+		"tflow-p-garden":  "garden",
+	}
+	m.persistentSessionOrder = map[string][]string{
+		"small":  {"tflow-p-active", "tflow-p-sibling"},
+		"garden": {"tflow-p-garden"},
+	}
+	m.deleteTarget = deleteTarget{session: "tflow-p-active"}
+
+	if err := saveAppState(statePath, appState{Projects: []storedProject{
+		{Name: "small", Workdir: "/work/small", Sessions: []persistentSession{{ID: "tflow-p-active", Label: "active"}}},
+		{Name: "garden", Workdir: "/work/garden", Sessions: []persistentSession{
+			{ID: "tflow-p-garden", Label: "garden"},
+			{ID: "tflow-p-sibling", Label: "sibling"},
+		}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	updated, cmd := m.confirmDelete()
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("expected no switch command for a sibling moved to another project")
+	}
+	if switchCalls != 0 {
+		t.Fatalf("switch calls = %d, want 0", switchCalls)
+	}
+	if got.status != "Session is no longer in the selected project." {
+		t.Fatalf("status = %q", got.status)
+	}
+	if len(got.deferredDelete) != 1 || got.deferredDelete[0] != "tflow-p-active" {
+		t.Fatalf("deferred deletion = %#v, want active session retained", got.deferredDelete)
+	}
+}

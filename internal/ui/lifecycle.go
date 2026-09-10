@@ -245,12 +245,13 @@ func isCancellationInducedPopupExit(ctx context.Context, err error) bool {
 
 func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) (string, error) {
 	path := appStatePath()
-	if _, err := loadAppState(path); err != nil {
+	state, err := loadAppState(path)
+	if err != nil {
 		return "", fmt.Errorf("load state %q: %w", path, err)
 	}
 
 	var existing []session
-	if _, err := reconcileAppState(path, func() (map[string]struct{}, error) {
+	if modified, err := reconcileAppState(path, func() (map[string]struct{}, error) {
 		var err error
 		existing, err = manager.ListSessions()
 		if err != nil {
@@ -263,6 +264,10 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 		return existingNames, nil
 	}); err != nil {
 		return "", fmt.Errorf("reconcile state %q: %w", path, err)
+	} else if modified {
+		if reloaded, err := loadAppState(path); err == nil {
+			state = reloaded
+		}
 	}
 	repairPersistentSessionMarkers(manager, path, existing)
 	label := nextTempSessionNameForInstance(existing, instanceID)
@@ -307,6 +312,13 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 		}
 		return "", fmt.Errorf("prepare tmux control mode: %w", err)
 	}
+	startupSessions := append(append([]session(nil), existing...), session{
+		Name:      name,
+		Label:     label,
+		Temporary: true,
+		Instance:  instanceID,
+	})
+	refreshTargetTopBar(manager, name, "", state, startupSessions, instanceID)
 	return name, nil
 }
 
@@ -413,17 +425,40 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 		// reported as a diagnostic and treated as "not dead" -- it must never
 		// block the switch itself, which is the primary operation here.
 		outgoing := strings.TrimSpace(menu.currentSession)
-		deletingAfterSwitch := len(menu.exitDeleteSessions) > 0
+		deletingAfterSwitch := len(menu.exitDeleteSessions) > 0 || menu.exitDeleteProject != ""
 		removable := !deletingAfterSwitch && outgoing != "" && outgoing != target && outgoingSessionPanesAllDead(manager, outgoing)
-		if err := manager.SwitchClient(target); err != nil {
-			return err
+		var switchErr error
+		if deletingAfterSwitch && strings.TrimSpace(menu.statePath) != "" && isPersistentSessionName(menu, target) {
+			switchErr = switchClientAfterDeletionTargetValidation(manager, menu, target)
+		} else {
+			switchErr = manager.SwitchClient(target)
 		}
+		if switchErr != nil {
+			if menu.exitFallbackSession != "" && menu.exitFallbackSession == target {
+				if killErr := ignoreMissingSession(manager.KillSession(target)); killErr != nil {
+					diag.Warnf("kill unused volatile fallback %q after switch failure: %v", target, killErr)
+				}
+			}
+			return switchErr
+		}
+		refreshMenuTargetTopBar(manager, menu, target)
 		if deletingAfterSwitch {
-			deletePersistentSessionsAfterSwitch(manager, menu)
+			killed := deletePersistentSessionsAfterSwitch(manager, menu)
+			if len(killed) > 0 {
+				menu.sessions = filterSessions(menu.sessions, func(s session) bool {
+					return !containsString(killed, s.Name)
+				})
+			}
+			refreshMenuTargetTopBar(manager, menu, target)
 			return nil
 		}
 		if removable {
-			removeDeadOutgoingSession(manager, menu, outgoing)
+			if removeDeadOutgoingSession(manager, menu, outgoing) {
+				menu.sessions = filterSessions(menu.sessions, func(s session) bool {
+					return s.Name != outgoing
+				})
+			}
+			refreshMenuTargetTopBar(manager, menu, target)
 		}
 		return nil
 	case menuExitQuit:
@@ -431,6 +466,57 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 	default:
 		return nil
 	}
+}
+
+func switchClientAfterDeletionTargetValidation(manager tmuxController, menu model, target string) error {
+	path := menu.statePath
+	if strings.TrimSpace(path) == "" {
+		path = appStatePath()
+	}
+	unlock, err := lockAppState(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release state lock %q after deletion target validation: %v", path, unlockErr)
+		}
+	}()
+
+	state, err := loadAppState(path)
+	if err != nil {
+		return err
+	}
+	expectedProject := normalizeProjectName(menu.sessionProjects[target])
+	for _, project := range state.Projects {
+		for _, session := range project.Sessions {
+			if session.ID != target {
+				continue
+			}
+			if expectedProject == "" || normalizeProjectName(project.Name) != expectedProject {
+				return fmt.Errorf("selected session %q is no longer in the selected project", target)
+			}
+			return manager.SwitchClient(target)
+		}
+	}
+	return fmt.Errorf("selected session %q no longer exists", target)
+}
+
+func refreshMenuTargetTopBar(manager tmuxController, menu model, target string) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return
+	}
+	path := menu.statePath
+	if strings.TrimSpace(path) == "" {
+		path = appStatePath()
+	}
+	state, err := loadAppState(path)
+	if err != nil {
+		return
+	}
+	project := menu.sessionProjects[target]
+	refreshTargetTopBar(manager, target, project, state, menu.sessions, menu.instanceID)
 }
 
 func outgoingSessionPanesAllDead(manager tmuxController, outgoing string) bool {
@@ -449,16 +535,16 @@ func outgoingSessionPanesAllDead(manager tmuxController, outgoing string) bool {
 // diagnostic and never replaces the fact that the switch itself already
 // succeeded, matching the architecture's "keep the selected target active
 // and report a diagnostic when post-switch cleanup ... fails."
-func removeDeadOutgoingSession(manager tmuxController, menu model, outgoing string) {
+func removeDeadOutgoingSession(manager tmuxController, menu model, outgoing string) bool {
 	if err := manager.KillSession(outgoing); err != nil {
 		diag.Warnf("kill dead outgoing session %q: %v", outgoing, err)
-		return
+		return false
 	}
 	info, found := menu.findSession(outgoing)
 	if !found || info.Temporary {
 		// Volatile sessions carry no persistent metadata to remove; an
 		// unrecognized session is left for the next startup reconciliation.
-		return
+		return true
 	}
 	path := appStatePath()
 	if _, err := mutateAppState(path, func(state appState) (appState, error) {
@@ -466,32 +552,53 @@ func removeDeadOutgoingSession(manager tmuxController, menu model, outgoing stri
 	}); err != nil {
 		diag.Warnf("remove persisted metadata for dead outgoing session %q: %v", outgoing, err)
 	}
+	return true
 }
 
 // deletePersistentSessionsAfterSwitch removes explicit deletion targets only
 // after the fallback client switch succeeded. This keeps the client attached
 // throughout active final-session and active-project deletion. Failures are
 // diagnostics because the fallback switch is already the completed primary
-// operation.
-func deletePersistentSessionsAfterSwitch(manager tmuxController, menu model) {
+// operation. It returns the names of all sessions successfully killed in tmux.
+func deletePersistentSessionsAfterSwitch(manager tmuxController, menu model) []string {
+	var killedPersistent []string
+	var killedAll []string
 	for _, name := range menu.exitDeleteSessions {
 		if err := ignoreMissingSession(manager.KillSession(name)); err != nil {
 			diag.Warnf("delete session %q after fallback switch: %v", name, err)
-			return
+			continue
 		}
+		killedAll = append(killedAll, name)
+		if isPersistentSessionName(menu, name) {
+			killedPersistent = append(killedPersistent, name)
+		}
+	}
+	if len(killedPersistent) == 0 {
+		return killedAll
 	}
 	path := menu.statePath
 	if strings.TrimSpace(path) == "" {
 		path = appStatePath()
 	}
 	if _, err := mutateAppState(path, func(state appState) (appState, error) {
-		for _, name := range menu.exitDeleteSessions {
+		for _, name := range killedPersistent {
 			state = store.RemoveSession(state, name)
 		}
 		return state, nil
 	}); err != nil {
 		diag.Warnf("remove persistent metadata after fallback switch: %v", err)
 	}
+	return killedAll
+}
+
+func isPersistentSessionName(menu model, name string) bool {
+	if s, ok := menu.findSession(name); ok {
+		return !s.Temporary
+	}
+	if strings.HasPrefix(name, "tflow-v-") {
+		return false
+	}
+	return true
 }
 
 func unwrapMenuModel(value tea.Model) (model, bool) {

@@ -94,7 +94,7 @@ func (m model) renderFooter(width int) string {
 func (m model) renderHelp() string {
 	rows := []string{
 		titleStyle.Render("Shortcuts"),
-		"Ctrl+F  Toggle sidebar",
+		"Ctrl+Space o  Toggle sidebar",
 		"Ctrl+Q  Quit tflow",
 		"Ctrl+C  Close sidebar",
 		"Esc     Return to sessions",

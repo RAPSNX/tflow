@@ -111,28 +111,30 @@ Explicit deletion follows these rules:
 
 ## Terminal interface
 
-`Ctrl+Space` enters a fixed, one-command tmux key table: `h` selects the
-previous contextual session, `l` selects the next, and `o` opens the sidebar
-overview. One key returns to normal input; an unknown key, `Esc`, or `Ctrl+C`
-cancels. No configuration, timer, or key replay is involved, and tflow does
-not bind `Ctrl+F`. `Ctrl+Q` opens confirmation for quitting the current
-instance and removing its volatile sessions.
+`Ctrl+Space` enters a fixed, one-command tmux key table with a visible `COMMAND`
+indicator pill in the status bar: `h` selects the previous contextual session,
+`l` selects the next, and `Space`, `Enter`, or `o` opens the sidebar overview.
+One key returns to normal input; an unknown key, `Esc`, or `Ctrl+C` cancels. No
+configuration, timer, or key replay is involved, and tflow does not bind
+`Ctrl+F`. `Ctrl+Q` opens confirmation for quitting the current instance and
+removing its volatile sessions.
 
-Navigation wraps through the same order shown by the sidebar: stored order in
+Navigation moves through the same order shown by the sidebar: stored order in
 the active project or tmux list order for the current instance's volatile
-sessions. It never crosses projects or instances, lazily materializes missing
-persistent targets, remains client-scoped, and does not run sidebar-only
-exited-session cleanup.
+sessions. Navigation is bounded, halting at the start or end of the context
+without wrapping. It never crosses projects or instances, lazily materializes
+missing persistent targets, remains client-scoped, and does not run
+sidebar-only exited-session cleanup.
 
-The top bar shows the previous, active, and next contextual sessions, or only
-the active session when it is alone. A switch computes derived, session-scoped
-status metadata for its selected target from post-mutation state. A successful
-rename, non-active deletion, or settings change that alters the originating
-client's displayed context refreshes only its active session. Moves and
-creation use their required target switch; inactive and unrelated sessions are
-never rewritten. Post-switch cleanup that removes an outgoing session refreshes
-the selected target again. Derived metadata is neither persistent nor
-maintained by a daemon or refresh loop.
+The top bar displays all contextual sessions in their exact order, showing each
+session once and highlighting the active session as a pill. A switch computes
+derived, session-scoped status metadata for its selected target from
+post-mutation state. A successful rename, non-active deletion, or settings
+change that alters the originating client's displayed context refreshes only its
+active session. Moves and creation use their required target switch; inactive
+and unrelated sessions are never rewritten. Post-switch cleanup that removes an
+outgoing session refreshes the selected target again. Derived metadata is
+neither persistent nor maintained by a daemon or refresh loop.
 
 Every sidebar row and top-bar entry has a type chip: blue `>_ CODE`, teal
 `⎇ GIT`, or yellow `✦ AGENT`. Selection never replaces the chip. Teal `live`

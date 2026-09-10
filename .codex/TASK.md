@@ -3,18 +3,6 @@
 Only unfinished work derived from `.codex/ARCHITECTURE.md` belongs here.
 Remove each item after implementation and verification.
 
-## P0: Final-session deletion reliability
-
-* [ ] Reproduce and fix sidebar final-session deletion so a configured volatile fallback is created and selected before persistent sessions or metadata are removed; preserve the active client and original error at every failure boundary.
-* [ ] Cover successful fallback handoff plus creation, configuration, switch, deletion, and metadata-cleanup failures with lifecycle tests.
-
-## P1: Command mode, contextual navigation, and top bar
-
-* [ ] Bind fixed, one-shot `Ctrl+Space` command mode (`h` previous, `l` next, `o` overview), including cancellation, internal workers, and removal of the global `Ctrl+F` binding without expanding public help.
-* [ ] Navigate with wraparound in stored project order or current-instance volatile tmux order; remain client-scoped, never cross contexts, lazily materialize persistent targets, and skip sidebar-only dead-session cleanup.
-* [ ] Maintain target-only derived metadata and render previous/active/next top-bar entries, reducing a one-session context to its active entry; refresh the originating client's active or selected target after context-changing rename, move, creation, settings, deletion, and post-switch cleanup paths without rewriting unrelated sessions.
-* [ ] Test bindings, cancellation, overview, ordering, wraparound, lazy targets, one-session behavior, ownership isolation, mutation and cleanup refreshes, and tmux command/write limits.
-
 ## P1: Typed persistent sessions
 
 * [ ] Add optional project `agentBinary`, session `type`, and agent `command`; treat legacy untyped records as terminal and validate types, commands, one agent per project, exact label uniqueness, and agent-move conflicts.

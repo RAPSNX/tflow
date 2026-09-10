@@ -44,3 +44,7 @@ Commands:
 * Keep changes focused, end them in a meaningful commit, push the branch, and
   open or update a published pull request.
 * Run `go test ./...` before finishing.
+* There is a review agent that reviews released PRs, so always check for reviews on a released upstream PR. Always spawn a sub-agent called the "review-checker" which does:
+    * Sleep 30sec
+    * Check for upstream unresolved comments
+    * Check for reactions on the PR description: 👍 == Review done or 👀 Review in progress or sent.

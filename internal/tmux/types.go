@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 const (
@@ -17,7 +18,8 @@ const (
 	instanceMarker        = "@tflow-instance"
 	menuWidth             = "36"
 	menuHeight            = "100%"
-	menuToggleKey         = "C-f"
+	commandKey            = "C-Space"
+	commandTable          = "tflow-command"
 	quitKey               = "C-q"
 	CurrentSessionEnv     = "TFLOW_CURRENT_SESSION"
 	CurrentClientEnv      = "TFLOW_CURRENT_CLIENT"
@@ -45,6 +47,7 @@ type Controller interface {
 	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
+	SetSessionTopBar(name, content string) error
 	AttachCommand(ctx context.Context, name string) (*exec.Cmd, error)
 	KillSession(name string) error
 	SessionPanesAllDead(name string) (bool, error)
@@ -71,6 +74,7 @@ type Palette struct {
 	Blue     string
 	Mantle   string
 	Teal     string
+	Yellow   string
 }
 
 func New() Controller {
@@ -103,4 +107,46 @@ func (p Palette) statusLeft() string {
 
 func (p Palette) statusStyle() string {
 	return fmt.Sprintf("bg=%s,fg=%s", p.Mantle, p.Text)
+}
+
+func (p Palette) statusRight() string {
+	yellow := p.Yellow
+	if yellow == "" {
+		yellow = "#f9e2af"
+	}
+	mantle := p.Mantle
+	if mantle == "" {
+		mantle = "#181825"
+	}
+	return "#{?#{==:#{client_key_table}," + commandTable + "},#[fg=" + yellow + "]#[bg=" + mantle + "]#[bg=" + yellow + "]#[fg=" + mantle + "]#[bold] COMMAND #[nobold]#[fg=" + yellow + "]#[bg=" + mantle + "]#[default],}"
+}
+
+func (p Palette) FormatTopBar(labels []string, activeIndex int) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	if activeIndex < 0 || activeIndex >= len(labels) {
+		activeIndex = 0
+	}
+	var b strings.Builder
+	for i, label := range labels {
+		label = escapeTmuxFormatLiteral(label)
+		if i == 0 && i != activeIndex {
+			b.WriteString("#[bg=" + p.Mantle + ",fg=" + p.Subtext + "] ")
+		} else if i > 0 {
+			b.WriteString("  ")
+		}
+		if i == activeIndex {
+			b.WriteString("#[bg=" + p.Surface0 + ",fg=" + p.Subtext + "]" +
+				"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] " + label + " " +
+				"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]")
+		} else {
+			b.WriteString("#[bg=" + p.Mantle + ",fg=" + p.Subtext + "]" + label)
+		}
+	}
+	return b.String()
+}
+
+func escapeTmuxFormatLiteral(value string) string {
+	return strings.ReplaceAll(value, "#", "##")
 }
