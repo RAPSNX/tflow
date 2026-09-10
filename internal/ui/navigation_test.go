@@ -495,3 +495,102 @@ func TestNavigateDoesNotPerformDeadSessionCleanup(t *testing.T) {
 		t.Fatalf("navigation must not trigger dead-session cleanup, killed: %v", killedSessions)
 	}
 }
+
+func TestNavigateLocksBeforeReloadingPersistentMembership(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	initial := appState{Projects: []storedProject{{
+		Name: "alpha",
+		Sessions: []persistentSession{
+			{ID: "s1", Label: "Current"},
+			{ID: "s2", Label: "Deleted concurrently"},
+		},
+	}}}
+	if err := saveAppState(path, initial); err != nil {
+		t.Fatal(err)
+	}
+
+	originalLock := lockAppState
+	lockCalls := 0
+	lockAppState = func(statePath string) (func() error, error) {
+		lockCalls++
+		latest := appState{Projects: []storedProject{{
+			Name:     "alpha",
+			Sessions: []persistentSession{{ID: "s1", Label: "Current"}},
+		}}}
+		if err := saveAppState(statePath, latest); err != nil {
+			return nil, err
+		}
+		return func() error { return nil }, nil
+	}
+	t.Cleanup(func() { lockAppState = originalLock })
+
+	created, switched := 0, 0
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "s1", Label: "Current"}}, nil
+		},
+		createSession: func(name, cwd, command string) (session, error) {
+			created++
+			return session{Name: name}, nil
+		},
+		switchClient: func(name string) error {
+			switched++
+			return nil
+		},
+	}
+	t.Setenv(menuCurrentEnv, "s1")
+	if err := navigateWithManager(manager, 1); err != nil {
+		t.Fatalf("navigate next: %v", err)
+	}
+	if lockCalls != 1 {
+		t.Fatalf("state lock calls = %d, want 1", lockCalls)
+	}
+	if created != 0 || switched != 0 {
+		t.Fatalf("created = %d, switched = %d; stale deleted target must remain untouched", created, switched)
+	}
+}
+
+func TestNavigateHoldsStateLockThroughLazyMaterialization(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "alpha", Workdir: "/project/alpha",
+		Sessions: []persistentSession{
+			{ID: "s1", Label: "Current"},
+			{ID: "s2", Label: "Lazy"},
+		},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	originalLock := lockAppState
+	locked := false
+	lockAppState = func(string) (func() error, error) {
+		locked = true
+		return func() error {
+			locked = false
+			return nil
+		}, nil
+	}
+	t.Cleanup(func() { lockAppState = originalLock })
+
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "s1", Label: "Current"}}, nil
+		},
+		createSession: func(name, cwd, command string) (session, error) {
+			if !locked {
+				t.Fatal("state lock was released before lazy materialization")
+			}
+			return session{Name: name}, nil
+		},
+	}
+	t.Setenv(menuCurrentEnv, "s1")
+	if err := navigateWithManager(manager, 1); err != nil {
+		t.Fatalf("navigate next: %v", err)
+	}
+	if locked {
+		t.Fatal("state lock was not released after navigation")
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rapsnx/tflow/internal/diag"
 	"github.com/rapsnx/tflow/internal/store"
 )
 
@@ -40,12 +41,6 @@ func navigateWithManager(manager tmuxController, direction int) error {
 		return nil
 	}
 
-	path := appStatePath()
-	state, err := loadAppState(path)
-	if err != nil {
-		return err
-	}
-
 	// Resolve instance ID
 	var currentInfo *session
 	for i := range sessions {
@@ -74,6 +69,24 @@ func navigateWithManager(manager tmuxController, direction int) error {
 		isVolatile = true
 	} else if strings.HasPrefix(currentSession, "tflow-v-") {
 		isVolatile = true
+	}
+
+	state := appState{}
+	if !isVolatile {
+		path := appStatePath()
+		unlock, err := lockAppState(path)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if unlockErr := unlock(); unlockErr != nil {
+				diag.Warnf("release state lock %q after navigation: %v", path, unlockErr)
+			}
+		}()
+		state, err = loadAppState(path)
+		if err != nil {
+			return err
+		}
 	}
 
 	var contextSessions []session

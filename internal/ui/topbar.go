@@ -88,6 +88,15 @@ func computeTargetTopBar(targetSession, project string, state appState, sessions
 	return palette.FormatTopBar(labels, activeIdx)
 }
 
+func (m model) topBarState() appState {
+	if path := strings.TrimSpace(m.statePath); path != "" {
+		if state, err := loadAppState(path); err == nil {
+			return state
+		}
+	}
+	return m.currentState()
+}
+
 func (m model) refreshActiveTopBarIfContext(affectedSession string) {
 	if m.currentSession == "" {
 		return
@@ -97,7 +106,7 @@ func (m model) refreshActiveTopBarIfContext(affectedSession string) {
 	sameProject := currentProject != "" && currentProject == affectedProject
 	sameVolatile := currentProject == "" && affectedProject == ""
 	if sameProject || sameVolatile {
-		state := m.currentState()
+		state := m.topBarState()
 		refreshTargetTopBar(m.tmux, m.currentSession, currentProject, state, m.sessions, m.instanceID)
 	}
 }
@@ -107,6 +116,6 @@ func (m model) refreshActiveTopBar() {
 		return
 	}
 	project := normalizeProjectName(m.sessionProjects[m.currentSession])
-	state := m.currentState()
+	state := m.topBarState()
 	refreshTargetTopBar(m.tmux, m.currentSession, project, state, m.sessions, m.instanceID)
 }

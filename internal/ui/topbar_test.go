@@ -432,3 +432,65 @@ func TestTopBarMutationRefreshesActiveSessionOnly(t *testing.T) {
 		t.Fatalf("top bar for active session must not update when unrelated project settings change")
 	}
 }
+
+func TestTopBarRefreshUsesMergedPersistentState(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	base := appState{Projects: []storedProject{{
+		Name: "proj", Workdir: "/proj",
+		Sessions: []persistentSession{
+			{ID: "active", Label: "Active"},
+			{ID: "sibling", Label: "Sibling"},
+		},
+	}}}
+	if err := saveAppState(path, base); err != nil {
+		t.Fatal(err)
+	}
+
+	var topBar string
+	m := model{
+		statePath:      path,
+		stateBasePath:  path,
+		stateBase:      base,
+		currentSession: "active",
+		tmux: fakeTmuxController{
+			setSessionLabel: func(name, label string) error { return nil },
+			setSessionTopBar: func(name, content string) error {
+				if name == "active" {
+					topBar = content
+				}
+				return nil
+			},
+		},
+		projects: []string{"proj"},
+		projectConfigs: map[string]projectConfig{
+			"proj": {Name: "proj", Workdir: "/proj"},
+		},
+		sessions: []session{
+			{Name: "active", Label: "Active"},
+			{Name: "sibling", Label: "Sibling"},
+		},
+		sessionProjects: map[string]string{"active": "proj", "sibling": "proj"},
+		sessionLabels:   map[string]string{"active": "Active", "sibling": "Sibling"},
+		persistentSessionOrder: map[string][]string{
+			"proj": {"active", "sibling"},
+		},
+	}
+
+	if _, err := mutateAppState(path, func(state appState) (appState, error) {
+		state.Projects[0].Sessions = append(state.Projects[0].Sessions, persistentSession{
+			ID: "concurrent", Label: "Concurrent",
+		})
+		return state, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	updated, _ := m.Update(sessionRenamedMsg{name: "sibling", label: "Renamed"})
+	if got := updated.(model); got.err != nil {
+		t.Fatalf("rename update: %v", got.err)
+	}
+	if !strings.Contains(topBar, "Active") || !strings.Contains(topBar, "Renamed") || !strings.Contains(topBar, "Concurrent") {
+		t.Fatalf("top bar = %q, want merged persistent labels", topBar)
+	}
+}
