@@ -985,6 +985,184 @@ func TestEditProjectHandlesFinishedSuccessAndTildeExpansion(t *testing.T) {
 	}
 }
 
+func TestEditProjectSavingAgentBinaryAddsLazyAgentSession(t *testing.T) {
+	tmp := t.TempDir()
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.statePath = tmp + "/store.json"
+	m.projects = []string{"small"}
+	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/tmp/small"}}
+	if err := m.saveState(); err != nil {
+		t.Fatal(err)
+	}
+
+	tempFile, err := os.CreateTemp(tmp, "settings-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempPath := tempFile.Name()
+	if _, err := tempFile.WriteString("workdir: /tmp/small\nagent-binary: codex\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = tempFile.Close()
+
+	updated, _ := m.handleProjectEditorFinished(projectEditorFinishedMsg{project: "small", tempPath: tempPath})
+	final := updated.(model)
+	if final.err != nil {
+		t.Fatalf("unexpected error: %v", final.err)
+	}
+	if got := final.projectConfigs["small"].AgentBinary; got != "codex" {
+		t.Fatalf("agentBinary = %q, want codex", got)
+	}
+
+	savedState, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := storedProjectByName(savedState, "small")
+	if !ok || project.AgentBinary != "codex" {
+		t.Fatalf("saved project = %#v, want agentBinary codex", project)
+	}
+	if len(project.Sessions) != 1 || project.Sessions[0].Label != "agent" || project.Sessions[0].Type != sessionTypeAgent || project.Sessions[0].Command != "codex" {
+		t.Fatalf("saved sessions = %#v, want one agent session labeled agent with command codex", project.Sessions)
+	}
+}
+
+func TestEditProjectSavingAgentBinaryAgainUpdatesExistingSessionOnly(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", tmp)
+	statePath := appStatePath()
+	seed := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/tmp/small", AgentBinary: "codex",
+		Sessions: []persistentSession{{ID: "tflow-p-agent", Label: "agent", Type: sessionTypeAgent, Command: "codex"}},
+	}}}
+	if err := saveAppState(statePath, seed); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := buildModel(fakeTmuxController{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tempFile, err := os.CreateTemp(tmp, "settings-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempPath := tempFile.Name()
+	if _, err := tempFile.WriteString("workdir: /tmp/small\nagent-binary: /usr/local/bin/codex\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = tempFile.Close()
+
+	updated, _ := m.handleProjectEditorFinished(projectEditorFinishedMsg{project: "small", tempPath: tempPath})
+	final := updated.(model)
+	if final.err != nil {
+		t.Fatalf("unexpected error: %v", final.err)
+	}
+
+	savedState, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := storedProjectByName(savedState, "small")
+	if !ok {
+		t.Fatal("project small is missing")
+	}
+	if len(project.Sessions) != 1 {
+		t.Fatalf("saved sessions = %#v, want exactly one (updated, not duplicated)", project.Sessions)
+	}
+	if project.Sessions[0].ID != "tflow-p-agent" || project.Sessions[0].Command != "/usr/local/bin/codex" {
+		t.Fatalf("saved session = %#v, want the same id with the updated command", project.Sessions[0])
+	}
+}
+
+func TestEditProjectClearingAgentBinaryRetainsSessionAndCommand(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", tmp)
+	statePath := appStatePath()
+	seed := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/tmp/small", AgentBinary: "codex",
+		Sessions: []persistentSession{{ID: "tflow-p-agent", Label: "agent", Type: sessionTypeAgent, Command: "codex"}},
+	}}}
+	if err := saveAppState(statePath, seed); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := buildModel(fakeTmuxController{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tempFile, err := os.CreateTemp(tmp, "settings-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempPath := tempFile.Name()
+	if _, err := tempFile.WriteString("workdir: /tmp/small\nagent-binary: \"\"\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = tempFile.Close()
+
+	updated, _ := m.handleProjectEditorFinished(projectEditorFinishedMsg{project: "small", tempPath: tempPath})
+	final := updated.(model)
+	if final.err != nil {
+		t.Fatalf("unexpected error: %v", final.err)
+	}
+
+	savedState, err := loadAppState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := storedProjectByName(savedState, "small")
+	if !ok {
+		t.Fatal("project small is missing")
+	}
+	if project.AgentBinary != "" {
+		t.Fatalf("agentBinary = %q, want cleared", project.AgentBinary)
+	}
+	if len(project.Sessions) != 1 || project.Sessions[0].Command != "codex" {
+		t.Fatalf("saved sessions = %#v, want the existing agent session retained with its captured command", project.Sessions)
+	}
+}
+
+func TestEditProjectRejectsAgentBinaryWithArgumentsWithoutMutating(t *testing.T) {
+	tmp := t.TempDir()
+	m := newModel(fakeTmuxController{}, "").(model)
+	m.statePath = tmp + "/store.json"
+	m.projects = []string{"small"}
+	m.selectedProject = "small"
+	m.projectConfigs = map[string]projectConfig{"small": {Name: "small", Workdir: "/tmp/small"}}
+	if err := m.saveState(); err != nil {
+		t.Fatal(err)
+	}
+
+	tempFile, err := os.CreateTemp(tmp, "settings-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempPath := tempFile.Name()
+	if _, err := tempFile.WriteString("workdir: /tmp/small\nagent-binary: codex --flag\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = tempFile.Close()
+
+	updated, _ := m.handleProjectEditorFinished(projectEditorFinishedMsg{project: "small", tempPath: tempPath})
+	final := updated.(model)
+	if final.err == nil {
+		t.Fatal("expected an error for an agent-binary value containing arguments")
+	}
+
+	savedState, err := loadAppState(m.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := storedProjectByName(savedState, "small")
+	if !ok || project.AgentBinary != "" || len(project.Sessions) != 0 {
+		t.Fatalf("store modified unexpectedly: %#v", project)
+	}
+}
+
 func TestEditProjectRejectsUnknownYAMLFieldsAndPreservesStore(t *testing.T) {
 	tmp := t.TempDir()
 	m := newModel(fakeTmuxController{}, "").(model)

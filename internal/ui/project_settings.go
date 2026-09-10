@@ -13,11 +13,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
 
+	"github.com/rapsnx/tflow/internal/diag"
 	"github.com/rapsnx/tflow/internal/store"
 )
 
 type projectSettingsDocument struct {
-	Workdir string `yaml:"workdir"`
+	Workdir     string `yaml:"workdir"`
+	AgentBinary string `yaml:"agent-binary"`
 }
 
 type projectEditorFinishedMsg struct {
@@ -153,7 +155,7 @@ var resolveEditorCommand = func(tempFile string) (*exec.Cmd, error) {
 func formatProjectSettingsYAML(cfg projectConfig) ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteString("# Project settings for " + cfg.Name + "\n")
-	data, err := yaml.Marshal(&projectSettingsDocument{Workdir: cfg.Workdir})
+	data, err := yaml.Marshal(&projectSettingsDocument{Workdir: cfg.Workdir, AgentBinary: cfg.AgentBinary})
 	if err != nil {
 		return nil, err
 	}
@@ -281,14 +283,25 @@ func (m model) handleProjectEditorFinished(msg projectEditorFinishedMsg) (tea.Mo
 		return m, nil
 	}
 
+	agentBinary := strings.TrimSpace(doc.AgentBinary)
+	if !isBareExecutableToken(agentBinary) {
+		m.err = fmt.Errorf("agent-binary must be an executable name or absolute path without arguments")
+		m.status = m.err.Error()
+		return m, nil
+	}
+
 	cfg := m.projectConfig(msg.project)
 	cfg.Name = msg.project
 	cfg.Workdir = strings.TrimSpace(doc.Workdir)
 	if cfg.Workdir != "" {
 		cfg.Workdir = store.NormalizeCWD(cfg.Workdir)
 	}
+	cfg.AgentBinary = agentBinary
 
 	m.setProjectConfig(cfg)
+	if agentBinary != "" {
+		m.provisionAgentSession(msg.project, agentBinary)
+	}
 	if err := m.saveState(); err != nil {
 		m.err = err
 		m.status = err.Error()
@@ -302,4 +315,34 @@ func (m model) handleProjectEditorFinished(msg projectEditorFinishedMsg) (tea.Mo
 	m.err = nil
 	m.status = ""
 	return m, nil
+}
+
+// provisionAgentSession adds one lazy agent session to project when it has
+// none, using the label "agent" if free or the first unused "agent-2",
+// "agent-3", and so on. When the project already has an agent session, this
+// only updates its captured executable -- it never touches a currently
+// running process, and a project holds at most one agent session.
+func (m *model) provisionAgentSession(project, agentBinary string) {
+	project = normalizeProjectName(project)
+	for _, s := range m.projectSessions(project) {
+		if m.sessionType(s.Name) == sessionTypeAgent {
+			m.setSessionCommand(s.Name, agentBinary)
+			return
+		}
+	}
+
+	id, err := newSessionID()
+	if err != nil {
+		diag.Warnf("generate lazy agent session id for project %q: %v", project, err)
+		return
+	}
+	name := persistentSessionName(id)
+	label := "agent"
+	for suffix := 2; m.hasSessionLabel(project, label, ""); suffix++ {
+		label = fmt.Sprintf("agent-%d", suffix)
+	}
+	m.assignSessionProject(name, project)
+	m.setSessionLabel(name, label)
+	m.setSessionType(name, sessionTypeAgent)
+	m.setSessionCommand(name, agentBinary)
 }
