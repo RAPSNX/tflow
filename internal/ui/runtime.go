@@ -171,10 +171,6 @@ func persistentSessionName(id string) string {
 	return runtmux.PersistentSessionName(id)
 }
 
-func randomAnimalName() string {
-	return runtmux.RandomAnimalName()
-}
-
 func isSessionExists(err error) bool {
 	return runtmux.IsSessionExists(err)
 }

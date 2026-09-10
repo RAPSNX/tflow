@@ -161,7 +161,12 @@ func navigateWithManager(manager tmuxController, direction int) error {
 			}
 		}
 		workdir := store.NormalizeCWD(pWorkdir)
-		newS, err := manager.CreateSession(target.Name, workdir, "")
+		sessionType, command := lookupSessionTypeCommand(state, project, target.Name)
+		resolvedCommand := materializeCommand(sessionType, command)
+		if err := validateMaterializeExecutable(sessionType, resolvedCommand); err != nil {
+			return err
+		}
+		newS, err := manager.CreateSession(target.Name, workdir, resolvedCommand)
 		if err != nil {
 			return fmt.Errorf("materialize target session %q: %w", target.Name, err)
 		}

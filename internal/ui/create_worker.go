@@ -134,31 +134,54 @@ func (m *model) createProjectRequest(request createRequest) error {
 	if ok && current.Temporary && current.Instance == request.Instance {
 		return m.promoteVolatileSessions(request.Project, request.Workdir, request.Current)
 	}
-	s, err := m.createPersistentSession(request.Workdir, "")
+	return m.createOrdinaryProject(request)
+}
+
+// createOrdinaryProject gives a newly created project two lazy sessions in
+// order, per the architecture: a "code" terminal session, materialized and
+// selected as the creation target, and a "git" session left lazy -- its ID
+// is reserved in persisted state but no tmux session exists for it until it
+// is later selected. This preset applies only to ordinary creation, never to
+// promotion from a volatile instance or to an already-existing project.
+func (m *model) createOrdinaryProject(request createRequest) error {
+	code, err := m.createPersistentSession(request.Workdir, "")
 	if err != nil {
 		return err
 	}
-	m.sessions = append(m.sessions, s)
+	m.sessions = append(m.sessions, code)
+
+	gitID, err := newSessionID()
+	if err != nil {
+		if killErr := m.tmux.KillSession(code.Name); killErr != nil {
+			diag.Warnf("kill unpersisted session %q: %v", code.Name, killErr)
+		}
+		return fmt.Errorf("generate lazy git session id: %w", err)
+	}
+	gitName := persistentSessionName(gitID)
+
 	m.addProject(request.Project)
 	m.setProjectConfig(projectConfig{Name: request.Project, Workdir: request.Workdir})
-	m.assignSessionProject(s.Name, request.Project)
-	m.setSessionLabel(s.Name, request.Label)
+	m.assignSessionProject(code.Name, request.Project)
+	m.setSessionLabel(code.Name, "code")
+	m.assignSessionProject(gitName, request.Project)
+	m.setSessionLabel(gitName, "git")
+	m.setSessionType(gitName, sessionTypeGit)
 	if err := m.saveState(); err != nil {
-		if killErr := m.tmux.KillSession(s.Name); killErr != nil {
-			diag.Warnf("kill unpersisted session %q: %v", s.Name, killErr)
+		if killErr := m.tmux.KillSession(code.Name); killErr != nil {
+			diag.Warnf("kill unpersisted session %q: %v", code.Name, killErr)
 		}
 		return err
 	}
-	if err := m.tmux.SetSessionProject(s.Name, request.Project); err != nil {
+	if err := m.tmux.SetSessionProject(code.Name, request.Project); err != nil {
 		return err
 	}
-	if err := m.tmux.SetSessionLabel(s.Name, request.Label); err != nil {
+	if err := m.tmux.SetSessionLabel(code.Name, "code"); err != nil {
 		return err
 	}
-	if err := m.tmux.SwitchClient(s.Name); err != nil {
+	if err := m.tmux.SwitchClient(code.Name); err != nil {
 		return err
 	}
-	refreshTargetTopBar(m.tmux, s.Name, request.Project, m.currentState(), m.sessions, m.instanceID)
+	refreshTargetTopBar(m.tmux, code.Name, request.Project, m.currentState(), m.sessions, m.instanceID)
 	return nil
 }
 
