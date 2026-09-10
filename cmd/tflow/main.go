@@ -52,6 +52,8 @@ func run(args []string, output io.Writer, start func() error) error {
 		return ui.OpenQuit()
 	case "toggle-menu":
 		return ui.ToggleMenu()
+	case "toggle-command-menu":
+		return ui.ToggleCommandMenu()
 	case "create-worker":
 		if len(args) != 2 {
 			return fmt.Errorf("create-worker requires one payload")

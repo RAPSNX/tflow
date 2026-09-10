@@ -729,3 +729,30 @@ func TestNavigateCleansUpLazySessionWhenMarkerSetupFails(t *testing.T) {
 		})
 	}
 }
+
+func TestRunMenuExitActionNavigatesCommandSidebarAction(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv(menuCurrentEnv, "s1")
+
+	var switched string
+	menu := model{exitAction: menuExitNavigate, exitNavigateDirection: 1}
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{
+				{Name: "s1", Temporary: true, Instance: "instance-1"},
+				{Name: "s2", Temporary: true, Instance: "instance-1"},
+			}, nil
+		},
+		switchClient: func(name string) error {
+			switched = name
+			return nil
+		},
+	}
+
+	if err := runMenuExitAction(manager, menu); err != nil {
+		t.Fatalf("runMenuExitAction: %v", err)
+	}
+	if switched != "s2" {
+		t.Fatalf("switched to %q, want s2", switched)
+	}
+}

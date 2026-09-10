@@ -26,6 +26,7 @@ type fakeTmuxController struct {
 	switchClient        func(name string) error
 	ensureControlMode   func(binaryPath string) error
 	toggleMenu          func(binaryPath string) error
+	toggleCommandMenu   func(binaryPath string) error
 	closeMenu           func() error
 	quitAll             func() error
 	cleanupVolatile     func(instanceID string) error
@@ -136,6 +137,13 @@ func (f fakeTmuxController) EnsureControlMode(binaryPath string) error {
 func (f fakeTmuxController) ToggleMenu(binaryPath string) error {
 	if f.toggleMenu != nil {
 		return f.toggleMenu(binaryPath)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) ToggleCommandMenu(binaryPath string) error {
+	if f.toggleCommandMenu != nil {
+		return f.toggleCommandMenu(binaryPath)
 	}
 	return nil
 }

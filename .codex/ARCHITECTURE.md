@@ -111,12 +111,13 @@ Explicit deletion follows these rules:
 
 ## Terminal interface
 
-`Ctrl+Space` enters a fixed, one-command tmux key table with a visible `COMMAND`
-indicator pill in the status bar: `h` selects the previous contextual session,
-`l` selects the next, and `Space`, `Enter`, or `o` opens the sidebar overview.
-One key returns to normal input; an unknown key, `Esc`, or `Ctrl+C` cancels. No
-configuration, timer, or key replay is involved, and tflow does not bind
-`Ctrl+F`. `Ctrl+Q` opens confirmation for quitting the current instance and
+`Ctrl+Space` toggles the sidebar in command mode, with a visible `COMMAND`
+indicator pill in the status bar. While that sidebar is open, `h` selects the
+previous contextual session and `l` selects the next; either action closes the
+sidebar and returns the client to normal input. A second `Ctrl+Space`, `Esc`, or
+`Ctrl+C` closes the command sidebar without navigating. Other sidebar shortcuts
+keep their normal behavior. No configuration, timer, or key replay is involved,
+and tflow does not bind `Ctrl+F`. `Ctrl+Q` opens confirmation for quitting the current instance and
 removing its volatile sessions.
 
 Navigation moves through the same order shown by the sidebar: stored order in

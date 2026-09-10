@@ -11,6 +11,12 @@ func (m Manager) ToggleMenu(binaryPath string) error {
 	return m.openMenu(binaryPath, "")
 }
 
+// ToggleCommandMenu opens the sidebar in command mode, or closes it when the
+// same client already has a command sidebar open.
+func (m Manager) ToggleCommandMenu(binaryPath string) error {
+	return m.openMenu(binaryPath, MenuModeCommand)
+}
+
 func (m Manager) OpenQuit(binaryPath string) error {
 	return m.openMenu(binaryPath, MenuModeQuit)
 }
@@ -37,6 +43,9 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 		if mode == "" {
 			return m.closeMenuPopup(currentClient)
 		}
+		if mode == MenuModeCommand {
+			return m.closeCommandMenuPopup(currentClient)
+		}
 		if err := m.closeMenuPopup(currentClient); err != nil {
 			return err
 		}
@@ -57,6 +66,14 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 	if err := m.markMenuPopup(currentClient); err != nil {
 		return err
 	}
+	if mode == MenuModeCommand {
+		if err := m.setClientKeyTable(currentClient, commandTable); err != nil {
+			if unmarkErr := m.unmarkMenuPopup(currentClient); unmarkErr != nil {
+				diag.Warnf("cleanup popup marker after failed command-table setup: %v", unmarkErr)
+			}
+			return err
+		}
+	}
 
 	args := []string{
 		"display-popup",
@@ -73,15 +90,40 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 	if mode != "" {
 		args = append(args, "-e", fmt.Sprintf("%s=%s", MenuModeEnv, mode))
 	}
-	args = append(args, popupShellCommand(binaryPath, currentClient))
+	args = append(args, popupShellCommand(binaryPath, currentClient, mode))
 	_, err = m.runner()(args...)
 	if err != nil {
 		if unmarkErr := m.unmarkMenuPopup(currentClient); unmarkErr != nil {
 			diag.Warnf("cleanup popup marker after failed display-popup: %v", unmarkErr)
 		}
+		if mode == MenuModeCommand {
+			if resetErr := m.setClientKeyTable(currentClient, "root"); resetErr != nil {
+				diag.Warnf("reset command key table after failed display-popup: %v", resetErr)
+			}
+		}
 		return err
 	}
 	return nil
+}
+
+func (m Manager) closeCommandMenuPopup(clientID string) error {
+	closeErr := m.closeMenuPopup(clientID)
+	resetErr := m.setClientKeyTable(clientID, "root")
+	if closeErr != nil {
+		if resetErr != nil {
+			diag.Warnf("reset command key table after failed popup close: %v", resetErr)
+		}
+		return closeErr
+	}
+	return resetErr
+}
+
+func (m Manager) setClientKeyTable(clientID, table string) error {
+	if strings.TrimSpace(clientID) == "" {
+		return nil
+	}
+	_, err := m.runner()("switch-client", "-c", clientID, "-T", table)
+	return err
 }
 
 func (m Manager) CloseMenu() error {
@@ -136,9 +178,13 @@ func (m Manager) closeMenuPopup(clientID string) error {
 	return unmarkErr
 }
 
-func popupShellCommand(binaryPath, clientID string) string {
+func popupShellCommand(binaryPath, clientID, mode string) string {
+	cleanup := popupUnsetScript(clientID)
+	if mode == MenuModeCommand {
+		cleanup += "; " + shellTmuxCommand("switch-client", "-c", clientID, "-T", "root") + " >/dev/null 2>&1"
+	}
 	script := strings.Join([]string{
-		"cleanup() { " + popupUnsetScript(clientID) + "; }",
+		"cleanup() { " + cleanup + "; }",
 		"trap cleanup EXIT HUP INT TERM",
 		ShellQuote(binaryPath) + " menu",
 	}, "; ")

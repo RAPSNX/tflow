@@ -337,3 +337,44 @@ func TestNStartsPlainSessionPrompt(t *testing.T) {
 		t.Fatalf("n should open a bare session input: %#v", got)
 	}
 }
+
+func TestCommandModeNavigationClosesSidebar(t *testing.T) {
+	for _, tc := range []struct {
+		key       rune
+		direction int
+	}{
+		{key: 104, direction: -1},
+		{key: 108, direction: 1},
+	} {
+		t.Run(string(tc.key), func(t *testing.T) {
+			m := newModel(fakeTmuxController{}, "dev").(model)
+			m.commandMode = true
+
+			updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{tc.key}})
+			if cmd == nil {
+				t.Fatal("expected command navigation exit")
+			}
+			msg := cmd().(menuActionMsg)
+			if msg.navigateDirection != tc.direction {
+				t.Fatalf("navigate direction = %d, want %d", msg.navigateDirection, tc.direction)
+			}
+			final, _ := updated.(model).Update(msg)
+			if got := final.(model); got.exitAction != menuExitNavigate || got.exitNavigateDirection != tc.direction {
+				t.Fatalf("exit state = %v", got.exitAction)
+			}
+		})
+	}
+}
+
+func TestCommandModeCtrlSpaceClosesSidebar(t *testing.T) {
+	m := newModel(fakeTmuxController{}, "dev").(model)
+	m.commandMode = true
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlAt})
+	if cmd == nil {
+		t.Fatal("expected Ctrl+Space to close command sidebar")
+	}
+	if msg := cmd().(menuActionMsg); msg.navigateDirection != 0 || msg.switchSession != "" {
+		t.Fatalf("close action unexpectedly navigates or switches")
+	}
+}

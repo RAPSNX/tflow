@@ -10,6 +10,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.Width = max(16, min(28, m.width-8))
 		return m, nil
 	case tea.KeyMsg:
+		if m.commandMode && msg.Type == tea.KeyCtrlAt {
+			return m, m.closeMenuCmd()
+		}
 		if msg.Type == tea.KeyCtrlF || msg.Type == tea.KeyCtrlC {
 			return m, m.closeMenuCmd()
 		}

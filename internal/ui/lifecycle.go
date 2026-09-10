@@ -175,7 +175,10 @@ func openMenu(ctx context.Context, manager tmuxController, runProgram menuProgra
 	if err != nil {
 		return err
 	}
-	if os.Getenv(runtmux.MenuModeEnv) == runtmux.MenuModeQuit {
+	switch os.Getenv(runtmux.MenuModeEnv) {
+	case runtmux.MenuModeCommand:
+		menu.commandMode = true
+	case runtmux.MenuModeQuit:
 		menu.mode = inputConfirmQuit
 		menu.status = "Confirm shutdown of this tflow instance."
 	}
@@ -461,6 +464,8 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 			refreshMenuTargetTopBar(manager, menu, target)
 		}
 		return nil
+	case menuExitNavigate:
+		return navigateWithManager(manager, menu.exitNavigateDirection)
 	case menuExitQuit:
 		return manager.QuitAll()
 	default:

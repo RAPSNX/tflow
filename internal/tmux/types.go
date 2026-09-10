@@ -25,6 +25,7 @@ const (
 	CurrentClientEnv      = "TFLOW_CURRENT_CLIENT"
 	CurrentInstanceEnv    = "TFLOW_INSTANCE_ID"
 	MenuModeEnv           = "TFLOW_MENU_MODE"
+	MenuModeCommand       = "command"
 	MenuModeQuit          = "quit"
 )
 
@@ -54,6 +55,7 @@ type Controller interface {
 	SwitchClient(name string) error
 	EnsureControlMode(binaryPath string, palette Palette) error
 	ToggleMenu(binaryPath string) error
+	ToggleCommandMenu(binaryPath string) error
 	OpenQuit(binaryPath string) error
 	CloseMenu() error
 	QuitAll() error
@@ -87,6 +89,14 @@ func ToggleMenu() error {
 		return err
 	}
 	return New().ToggleMenu(exe)
+}
+
+func ToggleCommandMenu() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return New().ToggleCommandMenu(exe)
 }
 
 func (m Manager) runner() Runner {

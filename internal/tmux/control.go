@@ -14,9 +14,7 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		fmt.Sprintf("%s=%s", CurrentSessionEnv, ShellQuote("#{session_name}")),
 		fmt.Sprintf("%s=%s", CurrentClientEnv, ShellQuote("#{client_name}")),
 	}
-	toggleShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" toggle-menu"), " ")
-	navigatePrevShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" navigate-prev"), " ")
-	navigateNextShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" navigate-next"), " ")
+	toggleCommandShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" toggle-command-menu"), " ")
 	quitShell := strings.Join(append(parts, "exec "+ShellQuote(binaryPath)+" open-quit"), " ")
 	cleanupClientShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" cleanup-client"), " ")
 	commands := [][]string{
@@ -67,14 +65,7 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		{"bind-key", "-T", "copy-mode-vi", "WheelDownPane", "send-keys", "-X", "-N", "5", "scroll-down"},
 		{"set-hook", "-g", "client-detached", "run-shell " + ShellQuote(cleanupClientShell)},
 		{"unbind-key", "-q", "-n", "C-f"},
-		{"bind-key", "-n", commandKey, "switch-client", "-T", commandTable},
-		{"bind-key", "-T", commandTable, "Space", "run-shell", toggleShell},
-		{"bind-key", "-T", commandTable, "Enter", "run-shell", toggleShell},
-		{"bind-key", "-T", commandTable, "o", "run-shell", toggleShell},
-		{"bind-key", "-T", commandTable, "h", "run-shell", navigatePrevShell},
-		{"bind-key", "-T", commandTable, "l", "run-shell", navigateNextShell},
-		{"bind-key", "-T", commandTable, "Escape", "switch-client", "-T", "root"},
-		{"bind-key", "-T", commandTable, "C-c", "switch-client", "-T", "root"},
+		{"bind-key", "-n", commandKey, "run-shell", toggleCommandShell},
 		{"bind-key", "-n", quitKey, "run-shell", quitShell},
 	}
 	for _, args := range commands {
