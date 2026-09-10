@@ -2170,3 +2170,117 @@ func TestRunMenuExitActionExcludesDeadVolatileSessionFromRefreshedBar(t *testing
 		t.Fatalf("final top bar %q must contain alive session", finalUpdate)
 	}
 }
+
+func TestRunMenuExitActionRevalidatesDeletionTargetBeforeSwitch(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	initial := appState{Projects: []storedProject{
+		{Name: "small", Sessions: []persistentSession{
+			{ID: "tflow-p-active", Label: "active"},
+			{ID: "tflow-p-sibling", Label: "sibling"},
+		}},
+		{Name: "garden", Sessions: []persistentSession{{ID: "tflow-p-garden", Label: "garden"}}},
+	}}
+	if err := saveAppState(path, initial); err != nil {
+		t.Fatal(err)
+	}
+
+	originalLock := lockAppState
+	lockAppState = func(statePath string) (func() error, error) {
+		moved := appState{Projects: []storedProject{
+			{Name: "small", Sessions: []persistentSession{{ID: "tflow-p-active", Label: "active"}}},
+			{Name: "garden", Sessions: []persistentSession{
+				{ID: "tflow-p-garden", Label: "garden"},
+				{ID: "tflow-p-sibling", Label: "sibling"},
+			}},
+		}}
+		if err := saveAppState(statePath, moved); err != nil {
+			return nil, err
+		}
+		return func() error { return nil }, nil
+	}
+	t.Cleanup(func() { lockAppState = originalLock })
+
+	switchCalls := 0
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-p-sibling",
+		exitDeleteSessions: []string{"tflow-p-active"},
+		currentSession:     "tflow-p-active",
+		statePath:          path,
+		sessionProjects: map[string]string{
+			"tflow-p-active":  "small",
+			"tflow-p-sibling": "small",
+		},
+		sessions: []session{{Name: "tflow-p-active"}, {Name: "tflow-p-sibling"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error {
+			switchCalls++
+			return nil
+		},
+	}, menu)
+	if err == nil || !strings.Contains(err.Error(), "no longer in the selected project") {
+		t.Fatalf("runMenuExitAction error = %v", err)
+	}
+	if switchCalls != 0 {
+		t.Fatalf("switch calls = %d, want 0", switchCalls)
+	}
+}
+
+func TestRunMenuExitActionHoldsDeletionTargetLockThroughSwitch(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	if err := saveAppState(path, appState{Projects: []storedProject{{
+		Name: "small", Sessions: []persistentSession{
+			{ID: "tflow-p-active", Label: "active"},
+			{ID: "tflow-p-sibling", Label: "sibling"},
+		},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	originalLock := lockAppState
+	locked := false
+	lockAppState = func(string) (func() error, error) {
+		locked = true
+		return func() error {
+			locked = false
+			return nil
+		}, nil
+	}
+	t.Cleanup(func() { lockAppState = originalLock })
+
+	menu := model{
+		exitAction:         menuExitSwitchSession,
+		exitSessionName:    "tflow-p-sibling",
+		exitDeleteSessions: []string{"tflow-p-active"},
+		currentSession:     "tflow-p-active",
+		statePath:          path,
+		sessionProjects: map[string]string{
+			"tflow-p-active":  "small",
+			"tflow-p-sibling": "small",
+		},
+		sessions: []session{{Name: "tflow-p-active"}, {Name: "tflow-p-sibling"}},
+	}
+	err := runMenuExitAction(fakeTmuxController{
+		switchClient: func(name string) error {
+			if !locked {
+				t.Fatal("state lock was released before switching to the deletion sibling")
+			}
+			return nil
+		},
+		killSession: func(name string) error {
+			if locked {
+				t.Fatal("state lock remained held while deleting after the switch")
+			}
+			return nil
+		},
+	}, menu)
+	if err != nil {
+		t.Fatalf("runMenuExitAction: %v", err)
+	}
+	if locked {
+		t.Fatal("state lock was not released after switching")
+	}
+}

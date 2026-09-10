@@ -427,13 +427,19 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 		outgoing := strings.TrimSpace(menu.currentSession)
 		deletingAfterSwitch := len(menu.exitDeleteSessions) > 0 || menu.exitDeleteProject != ""
 		removable := !deletingAfterSwitch && outgoing != "" && outgoing != target && outgoingSessionPanesAllDead(manager, outgoing)
-		if err := manager.SwitchClient(target); err != nil {
+		var switchErr error
+		if deletingAfterSwitch && strings.TrimSpace(menu.statePath) != "" && isPersistentSessionName(menu, target) {
+			switchErr = switchClientAfterDeletionTargetValidation(manager, menu, target)
+		} else {
+			switchErr = manager.SwitchClient(target)
+		}
+		if switchErr != nil {
 			if menu.exitFallbackSession != "" && menu.exitFallbackSession == target {
 				if killErr := ignoreMissingSession(manager.KillSession(target)); killErr != nil {
 					diag.Warnf("kill unused volatile fallback %q after switch failure: %v", target, killErr)
 				}
 			}
-			return err
+			return switchErr
 		}
 		refreshMenuTargetTopBar(manager, menu, target)
 		if deletingAfterSwitch {
@@ -460,6 +466,40 @@ func runMenuExitAction(manager tmuxController, final tea.Model) error {
 	default:
 		return nil
 	}
+}
+
+func switchClientAfterDeletionTargetValidation(manager tmuxController, menu model, target string) error {
+	path := menu.statePath
+	if strings.TrimSpace(path) == "" {
+		path = appStatePath()
+	}
+	unlock, err := lockAppState(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release state lock %q after deletion target validation: %v", path, unlockErr)
+		}
+	}()
+
+	state, err := loadAppState(path)
+	if err != nil {
+		return err
+	}
+	expectedProject := normalizeProjectName(menu.sessionProjects[target])
+	for _, project := range state.Projects {
+		for _, session := range project.Sessions {
+			if session.ID != target {
+				continue
+			}
+			if expectedProject == "" || normalizeProjectName(project.Name) != expectedProject {
+				return fmt.Errorf("selected session %q is no longer in the selected project", target)
+			}
+			return manager.SwitchClient(target)
+		}
+	}
+	return fmt.Errorf("selected session %q no longer exists", target)
 }
 
 func refreshMenuTargetTopBar(manager tmuxController, menu model, target string) {
