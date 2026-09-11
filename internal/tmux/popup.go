@@ -81,7 +81,10 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 		"-E",
 		"-w", menuWidth,
 		"-h", menuHeight,
-		"-x", "0",
+		// "C" centers the popup horizontally under the top bar rather than
+		// pinning it to the left edge; "S" for -y keeps it anchored directly
+		// below the status line, which status-position top puts at the top.
+		"-x", "C",
 		"-y", "S",
 		"-e", fmt.Sprintf("%s=%s", CurrentSessionEnv, currentSession),
 		"-e", fmt.Sprintf("%s=%s", CurrentClientEnv, currentClient),

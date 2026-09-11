@@ -103,7 +103,7 @@ func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
 	}
 
 	got := strings.Join(popupArgs, " ")
-	for _, want := range []string{"display-popup", "-c @2", "-E", "-w " + menuWidth, "-h " + menuHeight, "-x 0", "-y S", "-e " + CurrentSessionEnv + "=otter-temp", "-e " + CurrentClientEnv + "=@2", "-e " + CurrentInstanceEnv + "=instance-1"} {
+	for _, want := range []string{"display-popup", "-c @2", "-E", "-w " + menuWidth, "-h " + menuHeight, "-x C", "-y S", "-e " + CurrentSessionEnv + "=otter-temp", "-e " + CurrentClientEnv + "=@2", "-e " + CurrentInstanceEnv + "=instance-1"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("display-popup command = %q, want %q", got, want)
 		}

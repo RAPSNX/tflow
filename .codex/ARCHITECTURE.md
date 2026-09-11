@@ -121,7 +121,8 @@ and tflow does not bind `Ctrl+F`. `Ctrl+Q` opens confirmation for quitting the
 current instance and removing its volatile sessions.
 
 The command sidebar never covers the status line, so the top bar stays readable
-while command mode is active.
+while command mode is active. It is centered horizontally under the top bar,
+not pinned to the left edge.
 
 Navigation moves through the same order shown by the sidebar: stored order in
 the active project or tmux list order for the current instance's volatile
