@@ -69,6 +69,8 @@ func run(args []string, output io.Writer, start func() error) error {
 		return ui.SessionActivity()
 	case "session-visited":
 		return ui.SessionVisited()
+	case "attention-scan":
+		return ui.AttentionScan()
 	default:
 		return fmt.Errorf("unknown command %q; run %q for usage", args[0], "tflow --help")
 	}

@@ -345,6 +345,28 @@ func TestListSessionsIncludesAttentionMarker(t *testing.T) {
 	}
 }
 
+func TestListSessionsIncludesActivityFlag(t *testing.T) {
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			return "busy\t1\t0\t0\t\tcode\t0\t1\nidle\t1\t0\t0\t\tgit\t0\t0\n", nil
+		},
+	}
+
+	sessions, err := manager.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions returned error: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("len(sessions) = %d", len(sessions))
+	}
+	if !sessions[0].Activity {
+		t.Fatal("expected first session to carry the window activity flag")
+	}
+	if sessions[1].Activity {
+		t.Fatal("expected second session to have no activity flag")
+	}
+}
+
 func TestListSessionsTreatsAnyAttachedClientCountAsAttached(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {

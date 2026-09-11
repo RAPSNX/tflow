@@ -20,9 +20,23 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 	sessionOnlyPart := fmt.Sprintf("%s=%s", CurrentSessionEnv, ShellQuote("#{session_name}"))
 	sessionActivityShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " session-activity"
 	sessionVisitedShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " session-visited"
+	// alert-activity's run-shell command was verified (via tmux -vv server
+	// tracing, see .codex/TASK.md) to never invoke on the tested tmux 3.7c
+	// build, even though the identical mechanism reliably fires for
+	// client-session-changed on the same server. The hook above is kept as a
+	// free win on tmux builds where it does fire, but attention-scan below is
+	// the mechanism this feature actually depends on: it rides tmux's own
+	// status-interval timer -- a bounded, tmux-native redraw tick, not a
+	// custom daemon -- to periodically set the marker for any unvisited
+	// session with fresh output and refresh this client's own visible top
+	// bar, so a sibling session's attention reaches it without waiting for
+	// an unrelated switch/rename/etc. Its output is discarded by the caller
+	// (status-right only substitutes it, never displays it) via #().
+	attentionScanShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " attention-scan"
 	commands := [][]string{
 		{"set-option", "-g", "status", "on"},
 		{"set-option", "-g", "status-position", "top"},
+		{"set-option", "-g", "status-interval", "2"},
 		{"set-option", "-g", "status-style", palette.statusStyle()},
 		{"set-option", "-g", "default-terminal", "tmux-256color"},
 		{"set-option", "-g", "terminal-overrides", ",*:Tc"},
@@ -30,7 +44,7 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		{"set-option", "-g", "status-left-length", "200"},
 		{"set-option", "-g", "status-right-length", "30"},
 		{"set-option", "-g", "status-left", palette.statusLeft()},
-		{"set-option", "-g", "status-right", palette.statusRight()},
+		{"set-option", "-g", "status-right", palette.statusRight() + "#(" + attentionScanShell + ")"},
 		{"set-option", "-g", "window-status-separator", ""},
 		{"set-option", "-g", "window-status-format", ""},
 		{"set-option", "-g", "window-status-current-format", ""},

@@ -71,24 +71,24 @@ func (m model) renderSessionRow(index, selectedIndex int, s session) string {
 	project := normalizeProjectName(m.sessionProjects[s.Name])
 	selected := index == selectedIndex
 	style := m.rowStyle(selected, project)
-	chip := sessionTypeChip(m.sessionType(s.Name))
-	prefix := chip
+	plain := style.Padding(0)
+
+	// The chip and badges below are pre-rendered with their own colours and
+	// each ends in a terminal reset, so the row style must be reapplied
+	// around every remaining plain-text segment -- otherwise the row's
+	// background/foreground is lost for everything after the first badge.
+	segments := []string{sessionTypeChip(m.sessionType(s.Name))}
 	if s.Attention {
 		// Independent of type and selection: never replaces the chip, and
 		// renders whether or not this row is also the live session below.
-		prefix += " " + attentionBadgeStyle.Render("!")
+		segments = append(segments, plain.Render(" "), attentionBadgeStyle.Render("!"))
 	}
-	content := prefix + " " + label
 	if s.Name == m.currentSession {
-		content = prefix + " " + currentBadgeStyle.Render("live") + " " + label
-		if selected {
-			// The chip and badges reset terminal styles after rendering.
-			// Reapply the selected row style so the label stays highlighted
-			// beside them.
-			content = prefix + " " + currentBadgeStyle.Render("live") + selectedSessionStyle.Padding(0).Render(" "+label)
-		}
+		segments = append(segments, plain.Render(" "), currentBadgeStyle.Render("live"))
 	}
-	return style.Width(max(16, m.width-12)).Render(content)
+	segments = append(segments, plain.Render(" "+label))
+
+	return style.Width(max(16, m.width-12)).Render(strings.Join(segments, ""))
 }
 
 func (m model) renderFooter(width int) string {

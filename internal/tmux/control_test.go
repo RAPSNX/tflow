@@ -31,6 +31,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 	wants := [][]string{
 		{"set-option", "-g", "status", "on"},
 		{"set-option", "-g", "status-position", "top"},
+		{"set-option", "-g", "status-interval", "2"},
 		{"set-option", "-g", "status-style", "bg=#181825,fg=#cdd6f4"},
 		{"set-option", "-g", "default-terminal", "tmux-256color"},
 		{"set-option", "-g", "terminal-overrides", ",*:Tc"},
@@ -38,7 +39,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"set-option", "-g", "status-left-length", "200"},
 		{"set-option", "-g", "status-right-length", "30"},
 		{"set-option", "-g", "status-left", "#[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] project #[fg=#89b4fa]#{@tflow-project} #[bg=#181825,fg=#313244,nobold]  #[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] session #[fg=#94e2d5]#{?@tflow-session-label,#{@tflow-session-label},#S} #[bg=#181825,fg=#313244,nobold]"},
-		{"set-option", "-g", "status-right", "#{?#{==:#{client_key_table},tflow-command},#[fg=#f9e2af]#[bg=#181825]#[bg=#f9e2af]#[fg=#181825]#[bold] COMMAND #[nobold]#[fg=#f9e2af]#[bg=#181825]#[default],}"},
+		{"set-option", "-g", "status-right", "#{?#{==:#{client_key_table},tflow-command},#[fg=#f9e2af]#[bg=#181825]#[bg=#f9e2af]#[fg=#181825]#[bold] COMMAND #[nobold]#[fg=#f9e2af]#[bg=#181825]#[default],}#(TFLOW_CURRENT_SESSION='#{session_name}' exec '/tmp/tflow' attention-scan)"},
 		{"set-option", "-g", "window-status-format", ""},
 		{"set-option", "-g", "window-status-current-format", ""},
 		{"set-window-option", "-g", "remain-on-exit", "on"},

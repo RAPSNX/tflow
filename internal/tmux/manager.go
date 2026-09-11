@@ -26,7 +26,7 @@ func (m Manager) SessionAttached(name string) (bool, error) {
 }
 
 func (m Manager) ListSessions() ([]Session, error) {
-	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}\t#{"+attentionMarker+"}")
+	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}\t#{"+attentionMarker+"}\t#{window_activity_flag}")
 	if err != nil {
 		if IsNoServer(err) {
 			return nil, nil
@@ -65,6 +65,9 @@ func (m Manager) ListSessions() ([]Session, error) {
 		}
 		if len(parts) > 6 {
 			session.Attention = strings.TrimSpace(parts[6]) == "1"
+		}
+		if len(parts) > 7 {
+			session.Activity = strings.TrimSpace(parts[7]) == "1"
 		}
 		sessions = append(sessions, session)
 	}

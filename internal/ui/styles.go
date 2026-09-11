@@ -185,17 +185,19 @@ func applyTheme(p themePalette) {
 	attentionBadgeStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(redColor).Padding(0, 1)
 }
 
-// sessionTypeChip renders the full worded type chip for a sidebar row: blue
-// ">_ CODE" for terminal sessions (including legacy untyped records), teal
-// "⏇ GIT", or yellow "✦ AGENT". Selection, live, and attention states never
-// replace it -- callers append it alongside those, not instead of it.
+// sessionTypeChip renders the symbol-only type chip for a sidebar row: blue
+// ">_" for terminal sessions (including legacy untyped records), teal "⎇" for
+// git, or yellow "✦" for agent. The type name is never spelled out -- the
+// symbol and its colour are the only identity shown, matching the top bar.
+// Selection, live, and attention states never replace it -- callers append it
+// alongside those, not instead of it.
 func sessionTypeChip(sessionType string) string {
 	switch sessionType {
 	case sessionTypeGit:
-		return gitChipStyle.Render("⎇ GIT")
+		return gitChipStyle.Render("⎇")
 	case sessionTypeAgent:
-		return agentChipStyle.Render("✦ AGENT")
+		return agentChipStyle.Render("✦")
 	default:
-		return codeChipStyle.Render(">_ CODE")
+		return codeChipStyle.Render(">_")
 	}
 }

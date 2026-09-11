@@ -143,12 +143,15 @@ settings change that alters the originating client's displayed context
 refreshes only its active session. Moves and creation use their required target
 switch; inactive and unrelated sessions are never rewritten. Post-switch
 cleanup that removes an outgoing session refreshes the selected target again.
-Derived metadata is neither persistent nor maintained by a daemon or refresh
-loop.
+Derived metadata is never persisted. Every one of the above triggers is a
+push from the mutation itself, not a loop -- the lone exception is the
+attention marker described below, which a background session sets with no
+process of its own to push from, so a bounded, tmux-native timer carries it
+to the visible bar instead.
 
 Every session carries a type identity: blue code, teal git, or yellow agent.
-Sidebar rows render it as a full chip, `>_ CODE`, `⎇ GIT`, or `✦ AGENT`, while
-top-bar entries render the icon and colour alone to keep the line short.
+Both sidebar rows and top-bar entries render the icon and colour alone --
+`>_`, `⎇`, or `✦` -- never the spelled-out type name, to keep the line short.
 Selection never replaces the type identity. Teal `live` and red attention
 indicators remain independent of type and selection.
 
@@ -162,10 +165,20 @@ Every other mouse interaction is unbound in root and copy-mode tables.
 Terminal-native text selection therefore needs the terminal's override
 modifier, such as Shift in Alacritty.
 
-Tmux activity hooks set a runtime-only session attention marker when an
-unvisited session produces output. Any client visit clears it. The marker is
-shown in the sidebar and top bar, is never written to JSON, and may disappear
-when tmux restarts.
+A runtime-only session attention marker is set when an unvisited session
+produces output. Any client visit clears it, via tmux's client-session-changed
+hook. Setting it does not use tmux's alert-activity hook: that hook's
+run-shell command was verified, by tracing a real tmux server with `-vv`, to
+never invoke on the tested tmux 3.7c build, even though the identical
+mechanism reliably fires for client-session-changed on the same server (see
+`.codex/TASK.md` for the trace). Instead, tmux's own status-interval timer --
+set short and global, the one bounded, tmux-native exception to the no-loop
+rule above -- drives an invisible `#()` job on every status-line redraw that
+scans for unvisited sessions with fresh window activity, sets the marker for
+them, and refreshes the scanning client's own visible top bar so a sibling
+session's attention reaches it without an unrelated mutation to trigger a
+push. The marker is shown in the sidebar and top bar, is never written to
+JSON, and may disappear when tmux restarts.
 
 ## Persistent state
 

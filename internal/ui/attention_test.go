@@ -71,3 +71,66 @@ func TestSessionVisitedClearsAttentionUnconditionally(t *testing.T) {
 		t.Fatalf("name=%q attention=%v called=%v, want clearing s1", name, attention, called)
 	}
 }
+
+func TestAttentionScanMarksUnvisitedSessionsWithFreshActivity(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	marked := map[string]bool{}
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{
+				{Name: "busy-unvisited", Activity: true},
+				{Name: "busy-attached", Activity: true, Attached: true},
+				{Name: "already-flagged", Activity: true, Attention: true},
+				{Name: "idle", Activity: false},
+			}, nil
+		},
+		setSessionAttention: func(name string, attention bool) error {
+			marked[name] = attention
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "")
+	if err := attentionScanWithManager(fake); err != nil {
+		t.Fatalf("attentionScanWithManager: %v", err)
+	}
+	if want := map[string]bool{"busy-unvisited": true}; !mapsEqual(marked, want) {
+		t.Fatalf("marked = %#v, want %#v", marked, want)
+	}
+}
+
+func TestAttentionScanRefreshesCurrentSessionTopBar(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var pushedName, pushedContent string
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "s1", Temporary: true, Instance: "inst-1", Label: "code"}}, nil
+		},
+		setSessionAttention: func(name string, attention bool) error { return nil },
+		setSessionTopBar: func(name, content string) error {
+			pushedName, pushedContent = name, content
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "s1")
+	t.Setenv(menuInstanceEnv, "inst-1")
+	if err := attentionScanWithManager(fake); err != nil {
+		t.Fatalf("attentionScanWithManager: %v", err)
+	}
+	if pushedName != "s1" || pushedContent == "" {
+		t.Fatalf("pushedName=%q pushedContent=%q, want a refreshed top bar for s1", pushedName, pushedContent)
+	}
+}
+
+func mapsEqual(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}

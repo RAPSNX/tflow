@@ -51,9 +51,9 @@ func TestRenderSessionRowShowsTypeChipAcrossStates(t *testing.T) {
 		want    string
 		exclude []string
 	}{
-		{0, ">_ CODE", []string{"⎇ GIT", "✦ AGENT"}},
-		{1, "⎇ GIT", []string{">_ CODE", "✦ AGENT"}},
-		{2, "✦ AGENT", []string{">_ CODE", "⎇ GIT"}},
+		{0, ">_", []string{"⎇", "✦", "CODE", "GIT", "AGENT"}},
+		{1, "⎇", []string{">_", "✦", "CODE", "GIT", "AGENT"}},
+		{2, "✦", []string{">_", "⎇", "CODE", "GIT", "AGENT"}},
 	}
 	for _, tc := range cases {
 		plain := strip.ReplaceAllString(m.renderSessionRow(tc.index, tc.index, m.sessions[tc.index]), "")
@@ -70,8 +70,28 @@ func TestRenderSessionRowShowsTypeChipAcrossStates(t *testing.T) {
 	// Selection, live, and attention states never replace the chip.
 	m.currentSession = "s2"
 	live := strip.ReplaceAllString(m.renderSessionRow(1, 1, m.sessions[1]), "")
-	if !strings.Contains(live, "⎇ GIT") || !strings.Contains(live, "live") {
+	if !strings.Contains(live, "⎇") || !strings.Contains(live, "live") {
 		t.Fatalf("selected+live git row lost its chip or live badge: %q", live)
+	}
+}
+
+// TestRenderSessionRowKeepsSelectedHighlightPastTheChip guards against a
+// regression where the chip's own pre-rendered ANSI reset erased the
+// selected row's background/foreground for everything after it (the
+// attention mark, the live badge, and the label).
+func TestRenderSessionRowKeepsSelectedHighlightPastTheChip(t *testing.T) {
+	m := newMenu().(model)
+	m.width = 48
+	m.selectedProject = "small"
+	m.sessions = []session{{Name: "s1", Attention: true}}
+	m.sessionProjects = map[string]string{"s1": "small"}
+	m.sessionLabels = map[string]string{"s1": "flagged"}
+	m.currentSession = "s1"
+
+	row := m.renderSessionRow(0, 0, m.sessions[0])
+	wantLabel := selectedSessionStyle.Padding(0).Render(" flagged")
+	if !strings.Contains(row, wantLabel) {
+		t.Fatalf("selected row lost its highlight before the label: %q", row)
 	}
 }
 
@@ -86,7 +106,7 @@ func TestRenderSessionRowShowsAttentionIndependentOfTypeAndSelection(t *testing.
 	m.sessionTypes = map[string]string{"s1": sessionTypeGit}
 
 	flagged := strip.ReplaceAllString(m.renderSessionRow(0, 0, m.sessions[0]), "")
-	if !strings.Contains(flagged, "!") || !strings.Contains(flagged, "⎇ GIT") {
+	if !strings.Contains(flagged, "!") || !strings.Contains(flagged, "⎇") {
 		t.Fatalf("flagged git row missing attention mark or type chip: %q", flagged)
 	}
 
