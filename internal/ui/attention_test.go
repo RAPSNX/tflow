@@ -231,6 +231,65 @@ func TestAttentionScanRechecksAttachmentBeforeSettingTheMarker(t *testing.T) {
 	}
 }
 
+// TestAttentionScanRefreshesCurrentSessionWatermarkEveryTick guards against
+// a regression where only client-session-changed (on entry) stamped a
+// session's watermark: output produced while a session was actively being
+// viewed would still look unseen the instant the client switched away,
+// because the watermark was frozen at entry time while window_activity kept
+// advancing throughout the visit.
+func TestAttentionScanRefreshesCurrentSessionWatermarkEveryTick(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var visited []string
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "viewed", Attached: true}}, nil
+		},
+		markSessionVisited: func(name string) error {
+			visited = append(visited, name)
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "viewed")
+	if err := attentionScanWithManager(fake); err != nil {
+		t.Fatalf("attentionScanWithManager: %v", err)
+	}
+	if len(visited) != 1 || visited[0] != "viewed" {
+		t.Fatalf("visited = %#v, want the current session's watermark refreshed every scan", visited)
+	}
+}
+
+// TestAttentionScanTreatsSameSecondActivityAsFresh guards against a
+// regression where activity landing in the exact same one-second bucket as
+// the watermark was silently dropped: both timestamps have one-second
+// resolution, so a strict "activity > watermark" comparison would ignore
+// genuinely fresh output that happened to be stamped in the same second the
+// session was last visited.
+func TestAttentionScanTreatsSameSecondActivityAsFresh(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	marked := map[string]bool{}
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "s1", VisitedAt: 1000}}, nil
+		},
+		sessionActivityTimestamps: func() (map[string]int64, error) {
+			return map[string]int64{"s1": 1000}, nil
+		},
+		setSessionAttention: func(name string, attention bool) error {
+			marked[name] = attention
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "")
+	if err := attentionScanWithManager(fake); err != nil {
+		t.Fatalf("attentionScanWithManager: %v", err)
+	}
+	if !marked["s1"] {
+		t.Fatalf("marked = %#v, want activity in the same second as the watermark treated as fresh", marked)
+	}
+}
+
 func TestAttentionScanRefreshesCurrentSessionTopBar(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	var pushedName, pushedContent string

@@ -50,16 +50,34 @@ func sessionVisitedWithManager(manager tmuxController) error {
 // status-interval timer -- see EnsureControlMode) because alert-activity's
 // run-shell hook does not fire on the tested tmux 3.7c build (verified via
 // tmux -vv server tracing; recorded in .codex/TASK.md), leaving
-// SessionActivity uninvoked in that environment. It sets the attention
-// marker for any unvisited session whose window has produced fresh output,
-// then refreshes this client's own visible top bar so a sibling session's
-// attention reaches it without waiting for an unrelated switch, rename, or
-// other mutation to trigger a refresh.
+// SessionActivity uninvoked in that environment. It refreshes the current
+// session's own activity watermark (so output produced while it is being
+// viewed can't look unseen the instant the client leaves it), sets the
+// attention marker for any unvisited session whose window has produced
+// fresh output since its watermark, then refreshes this client's own
+// visible top bar so a sibling session's attention reaches it without
+// waiting for an unrelated switch, rename, or other mutation to trigger a
+// refresh.
 func AttentionScan() error {
 	return attentionScanWithManager(newSessionManager())
 }
 
 func attentionScanWithManager(manager tmuxController) error {
+	current := strings.TrimSpace(os.Getenv(menuCurrentEnv))
+	if current != "" {
+		// client-session-changed only stamps the session being entered,
+		// never the one being left, so output produced while this session
+		// is being actively viewed would otherwise still look unseen the
+		// instant the client switches away (its watermark would still be
+		// its entry-time stamp, while window_activity kept advancing
+		// throughout the whole visit). Refreshing it here every scan tick
+		// keeps the watermark within one tick of "now" for as long as the
+		// visit lasts.
+		if err := ignoreMissingSession(manager.MarkSessionVisited(current)); err != nil {
+			return err
+		}
+	}
+
 	sessions, err := manager.ListSessions()
 	if err != nil {
 		return ignoreMissingSession(err)
@@ -78,8 +96,10 @@ func attentionScanWithManager(manager tmuxController) error {
 		// session -- so it can stay set long after the last visit. Comparing
 		// against the visited-at watermark instead of trusting any nonzero
 		// activity time tells genuinely fresh output from a stale flag left
-		// over from before that visit.
-		if activityAt, ok := activity[s.Name]; !ok || activityAt <= s.VisitedAt || s.Attached || s.Attention {
+		// over from before that visit. Both values have one-second
+		// resolution, so activity landing in the exact same second as the
+		// watermark counts as fresh rather than being silently dropped.
+		if activityAt, ok := activity[s.Name]; !ok || activityAt < s.VisitedAt || s.Attached || s.Attention {
 			continue
 		}
 		// s.Attached is a snapshot from the ListSessions call above; a client
@@ -104,7 +124,6 @@ func attentionScanWithManager(manager tmuxController) error {
 		s.Attention = true
 	}
 
-	current := strings.TrimSpace(os.Getenv(menuCurrentEnv))
 	if current == "" {
 		return nil
 	}

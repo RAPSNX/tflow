@@ -44,23 +44,29 @@ jobs:
         env:
           GOPROXY: https://proxy.golang.org,direct
         run: |
-          # The module proxy indexes a new tag shortly after the GitHub
-          # Release is published, not necessarily instantly, and @latest can
-          # keep resolving to the previous tag for a while after that. Retry
-          # the install-then-verify pair together for a few minutes rather
-          # than failing as soon as @latest resolves to a stale version.
+          # Install the exact pushed tag rather than @latest: Go's version
+          # queries prefer release versions over prereleases, so @latest
+          # would keep resolving to an existing stable release -- never the
+          # tag this workflow just published -- for every prerelease tag
+          # (e.g. v2.0.0-rc.1) pushed while a stable release exists,
+          # deterministically exhausting every retry. The module proxy still
+          # indexes a new tag shortly after the GitHub Release is published,
+          # not necessarily instantly, so retry the install itself for a few
+          # minutes rather than failing on the first miss.
           want="tflow ${GITHUB_REF_NAME}"
           for attempt in $(seq 1 10); do
-            if GOBIN="$RUNNER_TEMP/bin" go install github.com/rapsnx/tflow/cmd/tflow@latest; then
+            if GOBIN="$RUNNER_TEMP/bin" go install "github.com/rapsnx/tflow/cmd/tflow@${GITHUB_REF_NAME}"; then
               got="$("$RUNNER_TEMP/bin/tflow" version)"
               echo "installed: $got"
               echo "expected:  $want"
-              if [ "$got" = "$want" ]; then
-                break
+              if [ "$got" != "$want" ]; then
+                echo "installed version does not match the pushed tag" >&2
+                exit 1
               fi
+              break
             fi
             if [ "$attempt" -eq 10 ]; then
-              echo "go install did not resolve to $want after $attempt attempts" >&2
+              echo "go install did not resolve ${GITHUB_REF_NAME} after $attempt attempts" >&2
               exit 1
             fi
             sleep 30
