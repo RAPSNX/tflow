@@ -26,7 +26,7 @@ func (m Manager) SessionAttached(name string) (bool, error) {
 }
 
 func (m Manager) ListSessions() ([]Session, error) {
-	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}\t#{"+attentionMarker+"}\t#{window_activity_flag}")
+	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}\t#{"+attentionMarker+"}")
 	if err != nil {
 		if IsNoServer(err) {
 			return nil, nil
@@ -66,12 +66,45 @@ func (m Manager) ListSessions() ([]Session, error) {
 		if len(parts) > 6 {
 			session.Attention = strings.TrimSpace(parts[6]) == "1"
 		}
-		if len(parts) > 7 {
-			session.Activity = strings.TrimSpace(parts[7]) == "1"
-		}
 		sessions = append(sessions, session)
 	}
 	return sessions, nil
+}
+
+// WindowActivityBySession reports, per session, whether ANY of its windows
+// currently carries tmux's window_activity_flag -- unlike list-sessions'
+// window_activity_flag substitution, which only samples each session's
+// active window and so misses output in a background window of a
+// multi-window session. Used by AttentionScan, which needs the true
+// session-wide signal for "unvisited session produced output".
+func (m Manager) WindowActivityBySession() (map[string]bool, error) {
+	out, err := m.runner()("list-windows", "-a", "-F", "#{session_name}\t#{window_activity_flag}")
+	if err != nil {
+		if IsNoServer(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	activity := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		if name == "" {
+			continue
+		}
+		if strings.TrimSpace(parts[1]) == "1" {
+			activity[name] = true
+		}
+	}
+	return activity, nil
 }
 
 func (m Manager) CreateSession(name, cwd, command string) (Session, error) {

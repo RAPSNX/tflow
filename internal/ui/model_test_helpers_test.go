@@ -10,33 +10,41 @@ import (
 const defaultProjectName = "default"
 
 type fakeTmuxController struct {
-	listSessions        func() ([]session, error)
-	sessionAttached     func(name string) (bool, error)
-	createSession       func(name, cwd, command string) (session, error)
-	renameSession       func(oldName, newName string) error
-	setSessionProject   func(name, project string) error
-	runBackground       func(command string) error
-	displayMessage      func(message string) error
-	currentPaneDir      func() (string, error)
-	setSessionTemporary func(name string, temporary bool, instanceID string) error
-	setSessionLabel     func(name, label string) error
-	setSessionAttention func(name string, attention bool) error
-	setSessionTopBar    func(name, content string) error
-	attachCommand       func(ctx context.Context, name string) (*exec.Cmd, error)
-	killSession         func(name string) error
-	sessionPanesAllDead func(name string) (bool, error)
-	switchClient        func(name string) error
-	ensureControlMode   func(binaryPath string) error
-	toggleMenu          func(binaryPath string) error
-	toggleCommandMenu   func(binaryPath string) error
-	closeMenu           func() error
-	quitAll             func() error
-	cleanupVolatile     func(instanceID string) error
+	listSessions            func() ([]session, error)
+	windowActivityBySession func() (map[string]bool, error)
+	sessionAttached         func(name string) (bool, error)
+	createSession           func(name, cwd, command string) (session, error)
+	renameSession           func(oldName, newName string) error
+	setSessionProject       func(name, project string) error
+	runBackground           func(command string) error
+	displayMessage          func(message string) error
+	currentPaneDir          func() (string, error)
+	setSessionTemporary     func(name string, temporary bool, instanceID string) error
+	setSessionLabel         func(name, label string) error
+	setSessionAttention     func(name string, attention bool) error
+	setSessionTopBar        func(name, content string) error
+	attachCommand           func(ctx context.Context, name string) (*exec.Cmd, error)
+	killSession             func(name string) error
+	sessionPanesAllDead     func(name string) (bool, error)
+	switchClient            func(name string) error
+	ensureControlMode       func(binaryPath string) error
+	toggleMenu              func(binaryPath string) error
+	toggleCommandMenu       func(binaryPath string) error
+	closeMenu               func() error
+	quitAll                 func() error
+	cleanupVolatile         func(instanceID string) error
 }
 
 func (f fakeTmuxController) ListSessions() ([]session, error) {
 	if f.listSessions != nil {
 		return f.listSessions()
+	}
+	return nil, nil
+}
+
+func (f fakeTmuxController) WindowActivityBySession() (map[string]bool, error) {
+	if f.windowActivityBySession != nil {
+		return f.windowActivityBySession()
 	}
 	return nil, nil
 }

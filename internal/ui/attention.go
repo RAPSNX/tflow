@@ -63,9 +63,16 @@ func attentionScanWithManager(manager tmuxController) error {
 	if err != nil {
 		return ignoreMissingSession(err)
 	}
+	// list-sessions only samples each session's active window, so a
+	// background window in a multi-window session would be missed; scan
+	// every window and aggregate per session instead.
+	activity, err := manager.WindowActivityBySession()
+	if err != nil {
+		return ignoreMissingSession(err)
+	}
 	for i := range sessions {
 		s := &sessions[i]
-		if s.Activity && !s.Attached && !s.Attention {
+		if activity[s.Name] && !s.Attached && !s.Attention {
 			if err := ignoreMissingSession(manager.SetSessionAttention(s.Name, true)); err != nil {
 				return err
 			}
@@ -81,7 +88,19 @@ func attentionScanWithManager(manager tmuxController) error {
 	if err != nil {
 		return err
 	}
-	instanceID := strings.TrimSpace(os.Getenv(menuInstanceEnv))
+	// The status #() job only exports TFLOW_CURRENT_SESSION, not an instance
+	// ID, so the instance is resolved from the current session's own tmux
+	// marker (already in sessions from ListSessions) rather than an env var
+	// that was never set -- an empty instanceID would make the volatile
+	// branch of computeTargetTopBar treat every instance's sessions as its
+	// own, bleeding other instances' volatile sessions into this top bar.
+	instanceID := ""
+	for _, s := range sessions {
+		if s.Name == current {
+			instanceID = s.Instance
+			break
+		}
+	}
 	refreshTargetTopBar(manager, current, "", state, sessions, instanceID)
 	return nil
 }

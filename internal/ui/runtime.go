@@ -18,6 +18,7 @@ type session = runtmux.Session
 
 type tmuxController interface {
 	ListSessions() ([]session, error)
+	WindowActivityBySession() (map[string]bool, error)
 	SessionAttached(name string) (bool, error)
 	CreateSession(name, cwd, command string) (session, error)
 	RenameSession(oldName, newName string) error
@@ -66,6 +67,10 @@ func OpenQuit() error {
 
 func (m sessionManager) ListSessions() ([]session, error) {
 	return m.inner.ListSessions()
+}
+
+func (m sessionManager) WindowActivityBySession() (map[string]bool, error) {
+	return m.inner.WindowActivityBySession()
 }
 
 func (m sessionManager) SessionAttached(name string) (bool, error) {

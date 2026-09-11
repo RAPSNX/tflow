@@ -42,15 +42,11 @@ type Session struct {
 	Temporary bool
 	Instance  string
 	Attention bool
-	// Activity mirrors tmux's own window_activity_flag for the session's
-	// active window: it goes true the moment an unvisited session produces
-	// output and stays true (tmux does not clear it on a timer) until some
-	// client actually views that window. See AttentionScan.
-	Activity bool
 }
 
 type Controller interface {
 	ListSessions() ([]Session, error)
+	WindowActivityBySession() (map[string]bool, error)
 	SessionAttached(name string) (bool, error)
 	CreateSession(name, cwd, command string) (Session, error)
 	RenameSession(oldName, newName string) error

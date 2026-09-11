@@ -345,25 +345,33 @@ func TestListSessionsIncludesAttentionMarker(t *testing.T) {
 	}
 }
 
-func TestListSessionsIncludesActivityFlag(t *testing.T) {
+func TestWindowActivityBySessionAggregatesEveryWindow(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			return "busy\t1\t0\t0\t\tcode\t0\t1\nidle\t1\t0\t0\t\tgit\t0\t0\n", nil
+			if args[0] != "list-windows" {
+				t.Fatalf("unexpected command: %v", args)
+			}
+			// "busy" has activity only in its second (non-active) window;
+			// aggregation across windows must still catch it. "idle" has no
+			// activity in either of its windows.
+			return strings.Join([]string{
+				"busy\t0",
+				"busy\t1",
+				"idle\t0",
+				"idle\t0",
+			}, "\n") + "\n", nil
 		},
 	}
 
-	sessions, err := manager.ListSessions()
+	activity, err := manager.WindowActivityBySession()
 	if err != nil {
-		t.Fatalf("ListSessions returned error: %v", err)
+		t.Fatalf("WindowActivityBySession returned error: %v", err)
 	}
-	if len(sessions) != 2 {
-		t.Fatalf("len(sessions) = %d", len(sessions))
+	if !activity["busy"] {
+		t.Fatal("expected \"busy\" to have activity from its second window")
 	}
-	if !sessions[0].Activity {
-		t.Fatal("expected first session to carry the window activity flag")
-	}
-	if sessions[1].Activity {
-		t.Fatal("expected second session to have no activity flag")
+	if activity["idle"] {
+		t.Fatal("expected \"idle\" to have no activity")
 	}
 }
 
