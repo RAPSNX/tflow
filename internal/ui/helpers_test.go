@@ -46,6 +46,24 @@ func TestMergeAppStatesPreservesConcurrentProjectWorkdirDuringSessionChange(t *t
 	}
 }
 
+func TestMergeAppStatesPreservesConcurrentAgentBinaryDuringWorkdirChange(t *testing.T) {
+	base := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/old", AgentBinary: "codex", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}},
+	}}}
+	latest := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/old", AgentBinary: "claude", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}},
+	}}}
+	desired := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/new", AgentBinary: "codex", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}},
+	}}}
+
+	merged := mergeAppStates(latest, base, desired)
+	project, ok := storedProjectByName(merged, "small")
+	if !ok || project.Workdir != "/new" || project.AgentBinary != "claude" {
+		t.Fatalf("project = %#v, want desired workdir and the concurrent agent-binary preserved", project)
+	}
+}
+
 func TestSaveStatePreservesConcurrentDisjointChanges(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	path := appStatePath()

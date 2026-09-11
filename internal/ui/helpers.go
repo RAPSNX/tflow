@@ -93,7 +93,7 @@ func mergeAppStates(latest, base, desired appState) appState {
 			continue
 		}
 		if project.Workdir != baseProject.Workdir || project.AgentBinary != baseProject.AgentBinary {
-			ensureStateProject(&latest, project)
+			mergeStateProjectFields(&latest, project, baseProject)
 		}
 	}
 
@@ -155,6 +155,30 @@ func stateSessions(state appState) map[string]stateSession {
 		}
 	}
 	return sessions
+}
+
+// mergeStateProjectFields applies only the project fields this editor
+// actually changed (desired vs. its own base snapshot) onto latest,
+// leaving every other field as latest already has it -- a concurrent
+// instance may have changed a different field on the same project, and
+// copying the whole desired project over would silently revert that
+// unrelated, already-saved edit.
+func mergeStateProjectFields(state *appState, desired, base storedProject) {
+	for index := range state.Projects {
+		if state.Projects[index].Name != desired.Name {
+			continue
+		}
+		if desired.Workdir != base.Workdir {
+			state.Projects[index].Workdir = desired.Workdir
+		}
+		if desired.AgentBinary != base.AgentBinary {
+			state.Projects[index].AgentBinary = desired.AgentBinary
+		}
+		return
+	}
+	// The project is no longer in latest (e.g. removed by a concurrent
+	// save); there is nothing to merge fields into, so reinsert it whole.
+	ensureStateProject(state, desired)
 }
 
 func ensureStateProject(state *appState, project storedProject) {
