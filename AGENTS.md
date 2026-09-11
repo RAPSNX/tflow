@@ -1,8 +1,38 @@
 # Repository Guidelines
 
-## Development
-
 This is a small Go module with entry point `cmd/tflow/main.go`.
+
+## Sources of truth
+
+* `.codex/ARCHITECTURE.md` defines tflow's intended end state, including the
+  persistent state path. Read it before changing behavior.
+* `.codex/TASK.md` contains only unfinished, architecture-derived work, as
+  `- [ ]` items. Remove an item once it is implemented and verified; leave
+  remaining items unchecked.
+* `README.md` documents implemented user-facing behavior. Check it for every
+  user-facing change and update it minimally when needed; it may differ from
+  unimplemented end-state work.
+* Always ask when requirements, scope, or intended behavior are unclear,
+  including a conflict between the task list and the architecture or
+  undefined behavior. Do not guess, and do not implement work outside the
+  task list unless explicitly requested.
+* Do not introduce a user-edited configuration file.
+
+## ARCHITECTURE.md is the goal state
+
+`.codex/ARCHITECTURE.md` describes tflow as if it were already fully built,
+in the present tense. It is never a place for history, changelogs, bug logs,
+debugging traces, verification evidence, TODOs, or comparisons with an
+earlier design ("instead of", "rather than", "no longer", "previously", "was
+verified", "matters because"). A standing constraint may be stated, with at
+most one clause of rationale ("compares against the visit watermark so a
+stale background-window flag never re-sets the marker"); the story of how
+that constraint was discovered belongs in a commit message or PR
+description, not here. Open work belongs in `.codex/TASK.md`. When the
+design changes, rewrite the affected text to the new end state directly;
+never append an amendment.
+
+## Development
 
 * Put reusable application code in focused, short lowercase packages under
   `internal/`; use `pkg/` only for intentional public APIs.
@@ -18,31 +48,8 @@ Commands:
 * `go build ./...`: compile all packages
 * `gofmt -w <files>`: format changed Go files
 
-## Sources of truth
+## Verification
 
-* Read this file before editing and `.codex/ARCHITECTURE.md` before changing
-  behavior.
-* `.codex/ARCHITECTURE.md` defines the intended end state, including the
-  persistent state path.
-* `.codex/TASK.md` contains only unfinished, architecture-derived work. Remove
-  verified items when completed; leave remaining items unchecked.
-* Stop and ask if the task list conflicts with the architecture or requested
-  behavior is undefined. Do not implement work outside the task list unless
-  explicitly requested.
-* Do not introduce a user-edited configuration file.
-* `README.md` documents implemented user-facing behavior. Check it for every
-  user-facing change and update it minimally when needed; it may differ from
-  unimplemented end-state work.
-
-## Git workflow
-
-* Stop immediately if the worktree has pre-existing changes.
-* Use a dedicated worktree and task branch from `main`; continue on the PR
-  branch when updating an existing PR.
-* Verify review comments against the architecture and code, then resolve fixed
-  GitHub threads.
-* Keep changes focused, end them in a meaningful commit, push the branch, and
-  open or update a published pull request.
 * Run `go test ./...` before finishing.
 * Before finishing any change that touches tmux control mode, key bindings,
   the popup, or the status bar, verify it by hand in a real-like environment:
@@ -50,9 +57,30 @@ Commands:
   default (e.g. `sed -i` a throwaway `socketName` locally, or set
   `TMUX_TMPDIR`), attach it under `script` or a real terminal, and drive it
   with `tmux -L <socket> send-keys` / `capture-pane`. Never run a manual
-  verification build against the default `tflow` socket; it collides with any
-  real tflow instance already running on the machine.
-* There is a review agent that reviews released PRs, so always check for reviews on a released upstream PR. Always spawn a sub-agent called the "review-checker" which does:
-    * Sleep 30sec
-    * Check for upstream unresolved comments
-    * Check for reactions on the PR description: 👍 == Review done or 👀 Review in progress or sent.
+  verification build against the default `tflow` socket; it collides with
+  any real tflow instance already running on the machine.
+
+## Git workflow
+
+* Stop immediately if the worktree has pre-existing changes.
+* Use a dedicated worktree and task branch from `main`; continue on the PR
+  branch when updating an existing PR.
+* Keep changes focused, end them in a meaningful commit, push the branch,
+  and open or update a published pull request.
+* Verify review comments against the architecture and code, then resolve
+  fixed GitHub threads.
+
+## PR reviews
+
+An upstream bot reviews every published PR. After pushing, poll for it
+yourself instead of spawning an agent: wait 30 seconds, then check for
+unresolved review threads and for the PR description's own reactions
+(👀 = review in progress or requested, 👍 = review done); repeat until 👍 is
+present and no unresolved threads remain. Verify each finding against the
+architecture and code, fix it, push, and poll again.
+
+## No sub-agents
+
+Do not spawn sub-agents for work in this repository. A spawn re-reads the
+whole context from scratch, which costs more than doing the step inline —
+including polling for PR reviews above.

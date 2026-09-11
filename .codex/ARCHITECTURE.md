@@ -111,22 +111,24 @@ Explicit deletion follows these rules:
 
 ## Terminal interface
 
+### Keys
+
 `Ctrl+Space` toggles the sidebar in command mode, with a visible `COMMAND`
 indicator pill in the status bar. While that sidebar is open, `h` selects the
 previous contextual session and `l` selects the next; either action closes the
 sidebar and returns the client to normal input. A second `Ctrl+Space`, `Esc`, or
 `Ctrl+C` closes the command sidebar without navigating. Other sidebar shortcuts
-keep their normal behavior. No configuration, timer, or key replay is involved,
-and tflow does not bind `Ctrl+F`. `Ctrl+Q` opens confirmation for quitting the
-current instance and removing its volatile sessions.
+keep their normal behavior. `Ctrl+Q` opens confirmation for quitting the current
+instance and removing its volatile sessions. No configuration, timer, or key
+replay is involved, and tflow does not bind `Ctrl+F`.
+
+### Command sidebar
 
 The command sidebar never covers the status line, so the top bar stays readable
-while command mode is active. It is centered horizontally under the top bar,
-not pinned to the left edge, and shaped wide and short rather than narrow and
-tall: the tflow badge sits on the left, with every contextual session
-rendered as an inline pill beside it on the same row, mirroring the top
-bar's own row-of-pills shape instead of stacking one full-width row per
-session.
+while command mode is active. It is centered horizontally under the top bar and
+shaped wide and short: the tflow badge sits on the left, with every contextual
+session rendered as an inline pill beside it on the same row, mirroring the top
+bar's own row-of-pills shape.
 
 Navigation moves through the same order shown by the sidebar: stored order in
 the active project or tmux list order for the current instance's volatile
@@ -134,6 +136,13 @@ sessions. Navigation is bounded, halting at the start or end of the context
 without wrapping. It never crosses projects or instances, lazily materializes
 missing persistent targets, remains client-scoped, and does not run
 sidebar-only exited-session cleanup.
+
+Tmux owns popup lifetime. Successful actions close the sidebar and return
+focus to the terminal. Valid session and project creation closes it once tmux
+accepts the short-lived worker, while creation and switching continue in the
+background.
+
+### Top bar
 
 The top bar is tflow's primary state view. It opens with a project section,
 then a solid arrow marking the section split, then all contextual sessions in
@@ -148,11 +157,11 @@ settings change that alters the originating client's displayed context
 refreshes only its active session. Moves and creation use their required target
 switch; inactive and unrelated sessions are never rewritten. Post-switch
 cleanup that removes an outgoing session refreshes the selected target again.
-Derived metadata is never persisted. Every one of the above triggers is a
-push from the mutation itself, not a loop -- the lone exception is the
-attention marker described below, which a background session sets with no
-process of its own to push from, so a bounded, tmux-native timer carries it
-to the visible bar instead.
+Derived metadata is never persisted. Every refresh above is a push from the
+mutation that causes it, not a loop -- the lone exception is the attention
+scan described below, the one bounded, tmux-native timer in the design.
+
+### Session types and indicators
 
 Every session carries a type identity: blue code, teal git, or yellow agent.
 Both sidebar pills and top-bar entries render the icon and colour alone --
@@ -160,37 +169,33 @@ Both sidebar pills and top-bar entries render the icon and colour alone --
 Selection never replaces the type identity. Teal `live` and red attention
 indicators remain independent of type and selection.
 
-Tmux owns popup lifetime. Successful actions close the sidebar and return
-focus to the terminal. Valid session and project creation closes it once tmux
-accepts the short-lived worker, while creation and switching continue in the
-background.
+### Attention
+
+A runtime-only session attention marker is set when an unvisited session
+produces output; it is shown in the sidebar and top bar, is never written to
+JSON, and may disappear when tmux restarts. Any client visit clears the
+marker and stamps that moment as the session's visit watermark, via tmux's
+client-session-changed hook.
+
+The mechanism the feature depends on is tmux's own status-interval timer --
+set short and global -- driving an invisible `#()` job on every status-line
+redraw. Each tick, that job refreshes the viewed session's own watermark (so
+output produced while it is being viewed is never mistaken for unseen the
+instant the client leaves it), scans every window of every session, sets the
+marker for any unattached session whose latest window activity is at or
+after its watermark -- keeping a stale background-window flag from
+re-triggering attention on an already-visited session -- and refreshes the
+scanning client's own visible top bar so a sibling session's attention
+reaches it without an unrelated mutation to trigger a push. tmux's
+alert-activity hook is also installed and may set the marker earlier on
+builds where it fires, but nothing depends on it.
+
+### Mouse
 
 Mouse reporting is enabled only for wheel scrolling through pane history.
 Every other mouse interaction is unbound in root and copy-mode tables.
 Terminal-native text selection therefore needs the terminal's override
 modifier, such as Shift in Alacritty.
-
-A runtime-only session attention marker is set when an unvisited session
-produces output. Any client visit clears it and stamps that moment as the
-session's new activity watermark, via tmux's client-session-changed hook.
-Setting it does not use tmux's alert-activity hook: that hook's run-shell
-command was verified, by tracing a real tmux server with `-vv`, to never
-invoke on the tested tmux 3.7c build, even though the identical mechanism
-reliably fires for client-session-changed on the same server (see
-`.codex/TASK.md` for the trace). Instead, tmux's own status-interval timer --
-set short and global, the one bounded, tmux-native exception to the no-loop
-rule above -- drives an invisible `#()` job on every status-line redraw that
-scans every session's windows for one whose own last-activity time is after
-that session's watermark, sets the marker for it, and refreshes the scanning
-client's own visible top bar so a sibling session's attention reaches it
-without an unrelated mutation to trigger a push. Comparing against the
-watermark, rather than trusting any window with activity, matters because a
-background (non-active) window's activity is only cleared by individually
-selecting that window, not by visiting the session -- so without the
-watermark, a stale background-window flag would restore attention on every
-scan after the session was already visited. The marker is shown in the
-sidebar and top bar, is never written to JSON, and may disappear when tmux
-restarts.
 
 ## Persistent state
 
@@ -260,10 +265,9 @@ after tmux deletion retains the record for later lazy materialization.
 Opening or refreshing the sidebar performs one session-list query and no
 per-session writes when unchanged. Metadata changes only through explicit
 operations or startup reconciliation. An operation updates markers only for
-sessions it creates, promotes, renames, moves, or deletes; a switch may update
-derived status only for its target. Optimizations require command counts or
-measurements, and implementation favors direct testable code over new
-lifecycle, persistence, or recovery frameworks.
+sessions it creates, promotes, renames, moves, or deletes. Optimizations
+require command counts or measurements, and implementation favors direct
+testable code over new lifecycle, persistence, or recovery frameworks.
 
 ## CLI and releases
 

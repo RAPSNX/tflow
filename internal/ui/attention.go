@@ -47,17 +47,15 @@ func sessionVisitedWithManager(manager tmuxController) error {
 
 // AttentionScan is invoked on every tmux status-line redraw (an invisible
 // #() job embedded in status-right, ticking on the bounded, tmux-native
-// status-interval timer -- see EnsureControlMode) because alert-activity's
-// run-shell hook does not fire on the tested tmux 3.7c build (verified via
-// tmux -vv server tracing; recorded in .codex/TASK.md), leaving
-// SessionActivity uninvoked in that environment. It refreshes the current
-// session's own activity watermark (so output produced while it is being
-// viewed can't look unseen the instant the client leaves it), sets the
-// attention marker for any unvisited session whose window has produced
-// fresh output since its watermark, then refreshes this client's own
-// visible top bar so a sibling session's attention reaches it without
-// waiting for an unrelated switch, rename, or other mutation to trigger a
-// refresh.
+// status-interval timer -- see EnsureControlMode) and is the mechanism the
+// attention feature actually depends on; SessionActivity is a best-effort
+// supplement. It refreshes the current session's own activity watermark (so
+// output produced while it is being viewed can't look unseen the instant the
+// client leaves it), sets the attention marker for any unvisited session
+// whose window has produced fresh output since its watermark, then
+// refreshes this client's own visible top bar so a sibling session's
+// attention reaches it without waiting for an unrelated switch, rename, or
+// other mutation to trigger a refresh.
 func AttentionScan() error {
 	return attentionScanWithManager(newSessionManager())
 }
