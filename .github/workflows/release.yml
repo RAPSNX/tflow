@@ -42,7 +42,7 @@ jobs:
 
       - name: Install the published module from the proxy and verify its version
         env:
-          GOPROXY: https://proxy.golang.org,direct
+          GOPROXY: https://proxy.golang.org
         run: |
           # Install the exact pushed tag rather than @latest: Go's version
           # queries prefer release versions over prereleases, so @latest

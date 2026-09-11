@@ -15,7 +15,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
 
-	"github.com/rapsnx/tflow/internal/diag"
 	"github.com/rapsnx/tflow/internal/store"
 )
 
@@ -317,7 +316,18 @@ func (m model) handleProjectEditorFinished(msg projectEditorFinishedMsg) (tea.Mo
 
 	m.setProjectConfig(cfg)
 	if agentBinary != "" {
-		m.provisionAgentSession(msg.project, agentBinary)
+		if err := m.provisionAgentSession(msg.project, agentBinary); err != nil {
+			m.projectConfigs = prevProjectConfigs
+			m.sessionProjects = prevSessionProjects
+			m.persistentSessionOrder = prevPersistentSessionOrder
+			m.sessionLabels = prevSessionLabels
+			m.sessionTypes = prevSessionTypes
+			m.sessionCommands = prevSessionCommands
+			m.projects = prevProjects
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
 	}
 	if err := m.saveState(); err != nil {
 		m.projectConfigs = prevProjectConfigs
@@ -346,19 +356,18 @@ func (m model) handleProjectEditorFinished(msg projectEditorFinishedMsg) (tea.Mo
 // "agent-3", and so on. When the project already has an agent session, this
 // only updates its captured executable -- it never touches a currently
 // running process, and a project holds at most one agent session.
-func (m *model) provisionAgentSession(project, agentBinary string) {
+func (m *model) provisionAgentSession(project, agentBinary string) error {
 	project = normalizeProjectName(project)
 	for _, s := range m.projectSessions(project) {
 		if m.sessionType(s.Name) == sessionTypeAgent {
 			m.setSessionCommand(s.Name, agentBinary)
-			return
+			return nil
 		}
 	}
 
 	id, err := newSessionID()
 	if err != nil {
-		diag.Warnf("generate lazy agent session id for project %q: %v", project, err)
-		return
+		return fmt.Errorf("generate lazy agent session id for project %q: %w", project, err)
 	}
 	name := persistentSessionName(id)
 	label := "agent"
@@ -369,4 +378,5 @@ func (m *model) provisionAgentSession(project, agentBinary string) {
 	m.setSessionLabel(name, label)
 	m.setSessionType(name, sessionTypeAgent)
 	m.setSessionCommand(name, agentBinary)
+	return nil
 }
