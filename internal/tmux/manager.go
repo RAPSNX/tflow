@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/rapsnx/tflow/internal/diag"
@@ -112,6 +113,58 @@ func (m Manager) SessionActivityTimestamps() (map[string]int64, error) {
 		}
 	}
 	return activity, nil
+}
+
+// MarkSessionVisited clears the runtime-only attention marker and records
+// this session's current peak window_activity (across all its windows) as
+// its new watermark, rather than wall-clock time. Both this watermark and
+// the window_activity AttentionScan later compares it against come from the
+// same one-second-resolution tmux clock, so a plain "activity > watermark"
+// check is unambiguous even when a visit and some activity land in the same
+// wall-clock second: if nothing has advanced window_activity past what it
+// already was at visit time, nothing new has happened, full stop. Using
+// wall-clock time instead would make that same-second case ambiguous in
+// whichever direction the comparison operator broke a tie.
+func (m Manager) MarkSessionVisited(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("session name is empty")
+	}
+	if _, err := m.runner()("set-option", "-t", name, attentionMarker, "0"); err != nil {
+		return err
+	}
+	watermark, err := m.sessionPeakActivity(name)
+	if err != nil {
+		return err
+	}
+	_, err = m.runner()("set-option", "-t", name, visitedMarker, strconv.FormatInt(watermark, 10))
+	return err
+}
+
+// sessionPeakActivity returns the latest window_activity time (unix
+// seconds) across every window in the named session, or 0 if the session or
+// server is gone.
+func (m Manager) sessionPeakActivity(name string) (int64, error) {
+	out, err := m.runner()("list-windows", "-t", name, "-F", "#{window_activity}")
+	if err != nil {
+		if IsNoSession(err) || IsNoServer(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	var peak int64
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var at int64
+		fmt.Sscanf(line, "%d", &at)
+		if at > peak {
+			peak = at
+		}
+	}
+	return peak, nil
 }
 
 func (m Manager) CreateSession(name, cwd, command string) (Session, error) {

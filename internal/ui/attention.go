@@ -30,9 +30,13 @@ func sessionActivityWithManager(manager tmuxController) error {
 }
 
 // SessionVisited is invoked by tmux's client-session-changed hook. Any
-// client visit unconditionally clears the visited session's attention
-// marker and stamps this moment as its new activity watermark (see
-// AttentionScan).
+// client visit unconditionally clears the visited (destination) session's
+// attention marker and stamps its new activity watermark. It also stamps
+// the outgoing session (tmux's #{client_last_session}, the session being
+// switched away from) at this exact moment, rather than leaving it to
+// AttentionScan's next tick -- output produced in the gap between the last
+// tick and the switch would otherwise still look unseen once the session is
+// detached.
 func SessionVisited() error {
 	return sessionVisitedWithManager(newSessionManager())
 }
@@ -42,7 +46,13 @@ func sessionVisitedWithManager(manager tmuxController) error {
 	if name == "" {
 		return nil
 	}
-	return ignoreMissingSession(manager.MarkSessionVisited(name))
+	if err := ignoreMissingSession(manager.MarkSessionVisited(name)); err != nil {
+		return err
+	}
+	if last := strings.TrimSpace(os.Getenv(menuLastVisitedEnv)); last != "" && last != name {
+		return ignoreMissingSession(manager.MarkSessionVisited(last))
+	}
+	return nil
 }
 
 // AttentionScan is invoked on every tmux status-line redraw (an invisible
@@ -94,10 +104,13 @@ func attentionScanWithManager(manager tmuxController) error {
 		// session -- so it can stay set long after the last visit. Comparing
 		// against the visited-at watermark instead of trusting any nonzero
 		// activity time tells genuinely fresh output from a stale flag left
-		// over from before that visit. Both values have one-second
-		// resolution, so activity landing in the exact same second as the
-		// watermark counts as fresh rather than being silently dropped.
-		if activityAt, ok := activity[s.Name]; !ok || activityAt < s.VisitedAt || s.Attached || s.Attention {
+		// over from before that visit. VisitedAt is stamped from this same
+		// session's own peak window_activity at visit time (not wall-clock
+		// time), so a strict ">" here is unambiguous even when a visit and
+		// some activity land in the same one-second tmux clock tick: if
+		// window_activity hasn't advanced past what it already was at visit
+		// time, nothing new has happened.
+		if activityAt, ok := activity[s.Name]; !ok || activityAt <= s.VisitedAt || s.Attached || s.Attention {
 			continue
 		}
 		// s.Attached is a snapshot from the ListSessions call above; a client

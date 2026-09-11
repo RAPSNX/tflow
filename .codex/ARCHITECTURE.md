@@ -174,21 +174,32 @@ indicators remain independent of type and selection.
 A runtime-only session attention marker is set when an unvisited session
 produces output; it is shown in the sidebar and top bar, is never written to
 JSON, and may disappear when tmux restarts. Any client visit clears the
-marker and stamps that moment as the session's visit watermark, via tmux's
-client-session-changed hook.
+marker for the entered session and, via tmux's client-session-changed hook,
+stamps a fresh watermark for both the entered session and the one being
+switched away from (tmux's `client_last_session`) -- so output produced late
+in a visit, in the gap before the next status tick, still can't look unseen
+once that session is detached.
+
+A session's watermark is that session's own peak window activity time at the
+moment it is stamped, not wall-clock time: comparing two timestamps from the
+same tmux clock stays unambiguous even when a visit and some output land in
+the same one-second tick, since a plain "activity is later than the
+watermark" check means exactly what it says -- wall-clock time would leave
+that same-second case a coin flip no matter which way ties broke.
 
 The mechanism the feature depends on is tmux's own status-interval timer --
 set short and global -- driving an invisible `#()` job on every status-line
 redraw. Each tick, that job refreshes the viewed session's own watermark (so
-output produced while it is being viewed is never mistaken for unseen the
-instant the client leaves it), scans every window of every session, sets the
-marker for any unattached session whose latest window activity is at or
-after its watermark -- keeping a stale background-window flag from
-re-triggering attention on an already-visited session -- and refreshes the
-scanning client's own visible top bar so a sibling session's attention
-reaches it without an unrelated mutation to trigger a push. tmux's
-alert-activity hook is also installed and may set the marker earlier on
-builds where it fires, but nothing depends on it.
+output produced while it is being viewed is never mistaken for unseen even
+before the client leaves), scans every window of every session, sets the
+marker for any unattached session whose latest window activity is later than
+its watermark -- keeping a stale background-window flag, which is only
+cleared by individually selecting that window, from re-triggering attention
+on an already-visited session -- and refreshes the scanning client's own
+visible top bar so a sibling session's attention reaches it without an
+unrelated mutation to trigger a push. tmux's alert-activity hook is also
+installed and may set the marker earlier on builds where it fires, but
+nothing depends on it.
 
 ### Mouse
 

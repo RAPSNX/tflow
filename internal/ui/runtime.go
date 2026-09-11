@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	menuCurrentEnv  = runtmux.CurrentSessionEnv
-	menuClientEnv   = runtmux.CurrentClientEnv
-	menuInstanceEnv = runtmux.CurrentInstanceEnv
+	menuCurrentEnv     = runtmux.CurrentSessionEnv
+	menuClientEnv      = runtmux.CurrentClientEnv
+	menuInstanceEnv    = runtmux.CurrentInstanceEnv
+	menuLastVisitedEnv = runtmux.LastVisitedSessionEnv
 )
 
 type session = runtmux.Session

@@ -1,10 +1,8 @@
 package tmux
 
 import (
-	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestEnsureControlModeBindsToggleKey(t *testing.T) {
@@ -77,7 +75,7 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"bind-key", "-T", "copy-mode-vi", "WheelDownPane", "send-keys", "-X", "-N", "5", "scroll-down"},
 		{"set-window-option", "-g", "monitor-activity", "on"},
 		{"set-hook", "-g", "alert-activity", "run-shell " + ShellQuote("TFLOW_CURRENT_SESSION='#{session_name}' exec '/tmp/tflow' session-activity")},
-		{"set-hook", "-g", "client-session-changed", "run-shell " + ShellQuote("TFLOW_CURRENT_SESSION='#{session_name}' exec '/tmp/tflow' session-visited")},
+		{"set-hook", "-g", "client-session-changed", "run-shell " + ShellQuote("TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_LAST_VISITED_SESSION='#{client_last_session}' exec '/tmp/tflow' session-visited")},
 		{"unbind-key", "-q", "-n", "C-f"},
 		{"bind-key", "-n", "C-Space", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-command-menu"},
 		{"bind-key", "-T", "tflow-command", "Escape", "switch-client", "-T", "root"},
@@ -263,31 +261,34 @@ func TestMarkSessionVisitedClearsAttentionAndStampsWatermark(t *testing.T) {
 	var calls [][]string
 	manager := Manager{Run: func(args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
+		if args[0] == "list-windows" {
+			// Two windows; the watermark must be the max across them, not
+			// wall-clock time, so a plain "activity > watermark" comparison
+			// stays unambiguous even when a visit and some activity land in
+			// the same one-second tmux clock tick.
+			return "150\n300\n", nil
+		}
 		return "", nil
 	}}
 
-	before := time.Now().Unix()
 	if err := manager.MarkSessionVisited("tflow-p-1"); err != nil {
 		t.Fatalf("MarkSessionVisited error: %v", err)
 	}
-	after := time.Now().Unix()
 
-	if len(calls) != 2 {
-		t.Fatalf("calls = %#v, want exactly 2 tmux calls", calls)
+	if len(calls) != 3 {
+		t.Fatalf("calls = %#v, want exactly 3 tmux calls", calls)
 	}
 	wantClear := []string{"set-option", "-t", "tflow-p-1", "@tflow-attention", "0"}
 	if strings.Join(calls[0], " ") != strings.Join(wantClear, " ") {
 		t.Fatalf("first call = %#v, want %#v", calls[0], wantClear)
 	}
-	if calls[1][0] != "set-option" || calls[1][1] != "-t" || calls[1][2] != "tflow-p-1" || calls[1][3] != "@tflow-visited-at" {
-		t.Fatalf("second call = %#v, want a @tflow-visited-at stamp", calls[1])
+	wantQuery := []string{"list-windows", "-t", "tflow-p-1", "-F", "#{window_activity}"}
+	if strings.Join(calls[1], " ") != strings.Join(wantQuery, " ") {
+		t.Fatalf("second call = %#v, want %#v", calls[1], wantQuery)
 	}
-	stamped, err := strconv.ParseInt(calls[1][4], 10, 64)
-	if err != nil {
-		t.Fatalf("stamped watermark %q is not an integer: %v", calls[1][4], err)
-	}
-	if stamped < before || stamped > after {
-		t.Fatalf("stamped watermark %d, want between %d and %d", stamped, before, after)
+	wantStamp := []string{"set-option", "-t", "tflow-p-1", "@tflow-visited-at", "300"}
+	if strings.Join(calls[2], " ") != strings.Join(wantStamp, " ") {
+		t.Fatalf("third call = %#v, want %#v", calls[2], wantStamp)
 	}
 
 	if err := manager.MarkSessionVisited(""); err == nil {

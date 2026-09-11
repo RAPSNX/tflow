@@ -34,9 +34,14 @@ const (
 	CurrentSessionEnv  = "TFLOW_CURRENT_SESSION"
 	CurrentClientEnv   = "TFLOW_CURRENT_CLIENT"
 	CurrentInstanceEnv = "TFLOW_INSTANCE_ID"
-	MenuModeEnv        = "TFLOW_MENU_MODE"
-	MenuModeCommand    = "command"
-	MenuModeQuit       = "quit"
+	// LastVisitedSessionEnv carries tmux's #{client_last_session} into the
+	// client-session-changed hook: the session being switched away from, so
+	// its watermark can be stamped at the exact moment of the switch rather
+	// than waiting for AttentionScan's next tick.
+	LastVisitedSessionEnv = "TFLOW_LAST_VISITED_SESSION"
+	MenuModeEnv           = "TFLOW_MENU_MODE"
+	MenuModeCommand       = "command"
+	MenuModeQuit          = "quit"
 )
 
 type Session struct {

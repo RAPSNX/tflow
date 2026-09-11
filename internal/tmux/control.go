@@ -2,9 +2,7 @@ package tmux
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
-	"time"
 )
 
 func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
@@ -21,19 +19,18 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 	cleanupClientShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" cleanup-client"), " ")
 	sessionOnlyPart := fmt.Sprintf("%s=%s", CurrentSessionEnv, ShellQuote("#{session_name}"))
 	sessionActivityShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " session-activity"
-	sessionVisitedShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " session-visited"
-	// alert-activity's run-shell command was verified (via tmux -vv server
-	// tracing, see .codex/TASK.md) to never invoke on the tested tmux 3.7c
-	// build, even though the identical mechanism reliably fires for
-	// client-session-changed on the same server. The hook above is kept as a
-	// free win on tmux builds where it does fire, but attention-scan below is
-	// the mechanism this feature actually depends on: it rides tmux's own
-	// status-interval timer -- a bounded, tmux-native redraw tick, not a
-	// custom daemon -- to periodically set the marker for any unvisited
-	// session with fresh output and refresh this client's own visible top
-	// bar, so a sibling session's attention reaches it without waiting for
-	// an unrelated switch/rename/etc. Its output is discarded by the caller
-	// (status-right only substitutes it, never displays it) via #().
+	sessionVisitedShell := sessionOnlyPart + " " +
+		fmt.Sprintf("%s=%s", LastVisitedSessionEnv, ShellQuote("#{client_last_session}")) +
+		" exec " + ShellQuote(binaryPath) + " session-visited"
+	// attention-scan below is the mechanism the attention feature actually
+	// depends on: it rides tmux's own status-interval timer -- a bounded,
+	// tmux-native redraw tick, not a custom daemon -- to periodically set
+	// the marker for any unvisited session with fresh output and refresh
+	// this client's own visible top bar, so a sibling session's attention
+	// reaches it without waiting for an unrelated switch/rename/etc. Its
+	// output is discarded by the caller (status-right only substitutes it,
+	// never displays it) via #(). The alert-activity hook above is kept as
+	// a best-effort supplement on tmux builds where it fires.
 	attentionScanShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " attention-scan"
 	commands := [][]string{
 		{"set-option", "-g", "status", "on"},
@@ -121,23 +118,5 @@ func (m Manager) SetSessionAttention(name string, attention bool) error {
 		value = "1"
 	}
 	_, err := m.runner()("set-option", "-t", name, attentionMarker, value)
-	return err
-}
-
-// MarkSessionVisited clears the runtime-only attention marker and records
-// this moment as the session's new activity watermark: AttentionScan only
-// re-flags a window whose own last-activity time is after this timestamp,
-// so a background window's tmux activity flag -- which is only cleared by
-// individually selecting that window, not by visiting the session -- can't
-// re-trigger attention from output that predates this visit.
-func (m Manager) MarkSessionVisited(name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return fmt.Errorf("session name is empty")
-	}
-	if _, err := m.runner()("set-option", "-t", name, attentionMarker, "0"); err != nil {
-		return err
-	}
-	_, err := m.runner()("set-option", "-t", name, visitedMarker, strconv.FormatInt(time.Now().Unix(), 10))
 	return err
 }

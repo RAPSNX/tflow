@@ -259,13 +259,14 @@ func TestAttentionScanRefreshesCurrentSessionWatermarkEveryTick(t *testing.T) {
 	}
 }
 
-// TestAttentionScanTreatsSameSecondActivityAsFresh guards against a
-// regression where activity landing in the exact same one-second bucket as
-// the watermark was silently dropped: both timestamps have one-second
-// resolution, so a strict "activity > watermark" comparison would ignore
-// genuinely fresh output that happened to be stamped in the same second the
-// session was last visited.
-func TestAttentionScanTreatsSameSecondActivityAsFresh(t *testing.T) {
+// TestAttentionScanTreatsEqualWatermarkAsNotFresh guards the property that
+// makes the watermark comparison unambiguous at one-second resolution:
+// VisitedAt is stamped from the session's own peak window_activity at visit
+// time (see MarkSessionVisited), not wall-clock time, so activity exactly
+// equal to the watermark means window_activity hasn't advanced since the
+// visit -- nothing new happened, regardless of what wall-clock second either
+// value falls in.
+func TestAttentionScanTreatsEqualWatermarkAsNotFresh(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	marked := map[string]bool{}
 	fake := fakeTmuxController{
@@ -285,9 +286,69 @@ func TestAttentionScanTreatsSameSecondActivityAsFresh(t *testing.T) {
 	if err := attentionScanWithManager(fake); err != nil {
 		t.Fatalf("attentionScanWithManager: %v", err)
 	}
-	if !marked["s1"] {
-		t.Fatalf("marked = %#v, want activity in the same second as the watermark treated as fresh", marked)
+	if marked["s1"] {
+		t.Fatalf("marked = %#v, want activity equal to the watermark treated as not fresh", marked)
 	}
+}
+
+// TestSessionVisitedStampsBothTheEnteredAndOutgoingSession guards against a
+// regression where only the destination session's watermark was refreshed
+// on a switch: output produced in the gap between AttentionScan's last tick
+// and the moment of switching away would otherwise still look unseen once
+// the outgoing session is detached, since nothing else would refresh its
+// watermark until it was visited again.
+func TestSessionVisitedStampsBothTheEnteredAndOutgoingSession(t *testing.T) {
+	var visited []string
+	fake := fakeTmuxController{
+		markSessionVisited: func(name string) error {
+			visited = append(visited, name)
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "destination")
+	t.Setenv(menuLastVisitedEnv, "outgoing")
+	if err := sessionVisitedWithManager(fake); err != nil {
+		t.Fatalf("sessionVisitedWithManager: %v", err)
+	}
+	if want := []string{"destination", "outgoing"}; !slicesEqual(visited, want) {
+		t.Fatalf("visited = %#v, want %#v", visited, want)
+	}
+}
+
+// TestSessionVisitedDoesNotDoubleStampWhenReenteringTheSameSession guards
+// against a spurious duplicate MarkSessionVisited call when
+// client_last_session reports the same session tmux just switched into
+// (e.g. re-selecting the already-current session).
+func TestSessionVisitedDoesNotDoubleStampWhenReenteringTheSameSession(t *testing.T) {
+	var visited []string
+	fake := fakeTmuxController{
+		markSessionVisited: func(name string) error {
+			visited = append(visited, name)
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "s1")
+	t.Setenv(menuLastVisitedEnv, "s1")
+	if err := sessionVisitedWithManager(fake); err != nil {
+		t.Fatalf("sessionVisitedWithManager: %v", err)
+	}
+	if want := []string{"s1"}; !slicesEqual(visited, want) {
+		t.Fatalf("visited = %#v, want %#v", visited, want)
+	}
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestAttentionScanRefreshesCurrentSessionTopBar(t *testing.T) {
