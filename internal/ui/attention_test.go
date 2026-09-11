@@ -133,6 +133,42 @@ func TestAttentionScanUsesEveryWindowNotJustTheActiveOne(t *testing.T) {
 	}
 }
 
+// TestAttentionScanRechecksAttachmentBeforeSettingTheMarker guards against a
+// race where a client attaches to (or is visited on) a session between the
+// ListSessions snapshot and the SetSessionAttention write: nothing later
+// re-clears attention for an attached session, so writing from the stale
+// snapshot would leave the marker incorrectly set on the currently viewed
+// session until some unrelated future visit.
+func TestAttentionScanRechecksAttachmentBeforeSettingTheMarker(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	marked := map[string]bool{}
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			// Snapshot says unattached, but a client attaches in the gap
+			// before the write below runs.
+			return []session{{Name: "just-attached", Attached: false}}, nil
+		},
+		windowActivityBySession: func() (map[string]bool, error) {
+			return map[string]bool{"just-attached": true}, nil
+		},
+		sessionAttached: func(name string) (bool, error) {
+			return name == "just-attached", nil
+		},
+		setSessionAttention: func(name string, attention bool) error {
+			marked[name] = attention
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "")
+	if err := attentionScanWithManager(fake); err != nil {
+		t.Fatalf("attentionScanWithManager: %v", err)
+	}
+	if marked["just-attached"] {
+		t.Fatalf("marked = %#v, want no marker set for a session attached at recheck time", marked)
+	}
+}
+
 func TestAttentionScanRefreshesCurrentSessionTopBar(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	var pushedName, pushedContent string

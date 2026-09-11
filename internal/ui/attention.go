@@ -72,12 +72,29 @@ func attentionScanWithManager(manager tmuxController) error {
 	}
 	for i := range sessions {
 		s := &sessions[i]
-		if activity[s.Name] && !s.Attached && !s.Attention {
-			if err := ignoreMissingSession(manager.SetSessionAttention(s.Name, true)); err != nil {
-				return err
-			}
-			s.Attention = true
+		if !activity[s.Name] || s.Attached || s.Attention {
+			continue
 		}
+		// s.Attached is a snapshot from the ListSessions call above; a client
+		// can attach between that snapshot and this write (including via the
+		// client-session-changed hook clearing the marker concurrently), and
+		// nothing later re-clears attention for an attached session. Recheck
+		// attachment immediately before writing to shrink that race to a
+		// single round-trip instead of this whole scan's duration.
+		attached, err := manager.SessionAttached(s.Name)
+		if err != nil {
+			if ignored := ignoreMissingSession(err); ignored != nil {
+				return ignored
+			}
+			continue
+		}
+		if attached {
+			continue
+		}
+		if err := ignoreMissingSession(manager.SetSessionAttention(s.Name, true)); err != nil {
+			return err
+		}
+		s.Attention = true
 	}
 
 	current := strings.TrimSpace(os.Getenv(menuCurrentEnv))
