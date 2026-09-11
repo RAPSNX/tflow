@@ -2,7 +2,9 @@ package tmux
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 )
 
 func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
@@ -119,5 +121,23 @@ func (m Manager) SetSessionAttention(name string, attention bool) error {
 		value = "1"
 	}
 	_, err := m.runner()("set-option", "-t", name, attentionMarker, value)
+	return err
+}
+
+// MarkSessionVisited clears the runtime-only attention marker and records
+// this moment as the session's new activity watermark: AttentionScan only
+// re-flags a window whose own last-activity time is after this timestamp,
+// so a background window's tmux activity flag -- which is only cleared by
+// individually selecting that window, not by visiting the session -- can't
+// re-trigger attention from output that predates this visit.
+func (m Manager) MarkSessionVisited(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("session name is empty")
+	}
+	if _, err := m.runner()("set-option", "-t", name, attentionMarker, "0"); err != nil {
+		return err
+	}
+	_, err := m.runner()("set-option", "-t", name, visitedMarker, strconv.FormatInt(time.Now().Unix(), 10))
 	return err
 }

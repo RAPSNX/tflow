@@ -1,8 +1,10 @@
 package tmux
 
 import (
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestEnsureControlModeBindsToggleKey(t *testing.T) {
@@ -253,6 +255,42 @@ func TestSetSessionAttention(t *testing.T) {
 	}
 
 	if err := manager.SetSessionAttention("", true); err == nil {
+		t.Fatal("expected error for empty session name")
+	}
+}
+
+func TestMarkSessionVisitedClearsAttentionAndStampsWatermark(t *testing.T) {
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "", nil
+	}}
+
+	before := time.Now().Unix()
+	if err := manager.MarkSessionVisited("tflow-p-1"); err != nil {
+		t.Fatalf("MarkSessionVisited error: %v", err)
+	}
+	after := time.Now().Unix()
+
+	if len(calls) != 2 {
+		t.Fatalf("calls = %#v, want exactly 2 tmux calls", calls)
+	}
+	wantClear := []string{"set-option", "-t", "tflow-p-1", "@tflow-attention", "0"}
+	if strings.Join(calls[0], " ") != strings.Join(wantClear, " ") {
+		t.Fatalf("first call = %#v, want %#v", calls[0], wantClear)
+	}
+	if calls[1][0] != "set-option" || calls[1][1] != "-t" || calls[1][2] != "tflow-p-1" || calls[1][3] != "@tflow-visited-at" {
+		t.Fatalf("second call = %#v, want a @tflow-visited-at stamp", calls[1])
+	}
+	stamped, err := strconv.ParseInt(calls[1][4], 10, 64)
+	if err != nil {
+		t.Fatalf("stamped watermark %q is not an integer: %v", calls[1][4], err)
+	}
+	if stamped < before || stamped > after {
+		t.Fatalf("stamped watermark %d, want between %d and %d", stamped, before, after)
+	}
+
+	if err := manager.MarkSessionVisited(""); err == nil {
 		t.Fatal("expected error for empty session name")
 	}
 }

@@ -26,7 +26,7 @@ func (m Manager) SessionAttached(name string) (bool, error) {
 }
 
 func (m Manager) ListSessions() ([]Session, error) {
-	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}\t#{"+attentionMarker+"}")
+	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}\t#{"+attentionMarker+"}\t#{"+visitedMarker+"}")
 	if err != nil {
 		if IsNoServer(err) {
 			return nil, nil
@@ -66,19 +66,24 @@ func (m Manager) ListSessions() ([]Session, error) {
 		if len(parts) > 6 {
 			session.Attention = strings.TrimSpace(parts[6]) == "1"
 		}
+		if len(parts) > 7 {
+			fmt.Sscanf(parts[7], "%d", &session.VisitedAt)
+		}
 		sessions = append(sessions, session)
 	}
 	return sessions, nil
 }
 
-// WindowActivityBySession reports, per session, whether ANY of its windows
-// currently carries tmux's window_activity_flag -- unlike list-sessions'
-// window_activity_flag substitution, which only samples each session's
-// active window and so misses output in a background window of a
-// multi-window session. Used by AttentionScan, which needs the true
-// session-wide signal for "unvisited session produced output".
-func (m Manager) WindowActivityBySession() (map[string]bool, error) {
-	out, err := m.runner()("list-windows", "-a", "-F", "#{session_name}\t#{window_activity_flag}")
+// SessionActivityTimestamps reports, per session, the latest
+// window_activity time (unix seconds) across every window in that
+// session -- unlike list-sessions' window_activity_flag substitution, which
+// only samples each session's active window and so misses output in a
+// background window of a multi-window session. Used by AttentionScan, which
+// compares this against each session's visited-at watermark to tell fresh
+// activity from a background window's flag that has been stuck since
+// before the last visit.
+func (m Manager) SessionActivityTimestamps() (map[string]int64, error) {
+	out, err := m.runner()("list-windows", "-a", "-F", "#{session_name}\t#{window_activity}")
 	if err != nil {
 		if IsNoServer(err) {
 			return nil, nil
@@ -86,7 +91,7 @@ func (m Manager) WindowActivityBySession() (map[string]bool, error) {
 		return nil, err
 	}
 
-	activity := map[string]bool{}
+	activity := map[string]int64{}
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -100,8 +105,10 @@ func (m Manager) WindowActivityBySession() (map[string]bool, error) {
 		if name == "" {
 			continue
 		}
-		if strings.TrimSpace(parts[1]) == "1" {
-			activity[name] = true
+		var at int64
+		fmt.Sscanf(parts[1], "%d", &at)
+		if at > activity[name] {
+			activity[name] = at
 		}
 	}
 	return activity, nil

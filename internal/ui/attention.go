@@ -31,7 +31,8 @@ func sessionActivityWithManager(manager tmuxController) error {
 
 // SessionVisited is invoked by tmux's client-session-changed hook. Any
 // client visit unconditionally clears the visited session's attention
-// marker.
+// marker and stamps this moment as its new activity watermark (see
+// AttentionScan).
 func SessionVisited() error {
 	return sessionVisitedWithManager(newSessionManager())
 }
@@ -41,7 +42,7 @@ func sessionVisitedWithManager(manager tmuxController) error {
 	if name == "" {
 		return nil
 	}
-	return ignoreMissingSession(manager.SetSessionAttention(name, false))
+	return ignoreMissingSession(manager.MarkSessionVisited(name))
 }
 
 // AttentionScan is invoked on every tmux status-line redraw (an invisible
@@ -66,13 +67,19 @@ func attentionScanWithManager(manager tmuxController) error {
 	// list-sessions only samples each session's active window, so a
 	// background window in a multi-window session would be missed; scan
 	// every window and aggregate per session instead.
-	activity, err := manager.WindowActivityBySession()
+	activity, err := manager.SessionActivityTimestamps()
 	if err != nil {
 		return ignoreMissingSession(err)
 	}
 	for i := range sessions {
 		s := &sessions[i]
-		if !activity[s.Name] || s.Attached || s.Attention {
+		// A background (non-active) window's activity flag is only cleared
+		// by individually selecting that window, not by visiting the
+		// session -- so it can stay set long after the last visit. Comparing
+		// against the visited-at watermark instead of trusting any nonzero
+		// activity time tells genuinely fresh output from a stale flag left
+		// over from before that visit.
+		if activityAt, ok := activity[s.Name]; !ok || activityAt <= s.VisitedAt || s.Attached || s.Attention {
 			continue
 		}
 		// s.Attached is a snapshot from the ListSessions call above; a client

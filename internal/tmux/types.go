@@ -17,6 +17,7 @@ const (
 	tempMarker            = "@tflow-temp"
 	instanceMarker        = "@tflow-instance"
 	attentionMarker       = "@tflow-attention"
+	visitedMarker         = "@tflow-visited-at"
 	// The popup renders as one wide, short horizontal strip (badge + inline
 	// session pills, mirroring the top bar's own row-of-pills shape) rather
 	// than a tall vertical list, so it is wide and short to match -- not
@@ -46,11 +47,23 @@ type Session struct {
 	Temporary bool
 	Instance  string
 	Attention bool
+	// VisitedAt is the unix time (seconds) MarkSessionVisited last recorded
+	// for this session, or 0 if it has never been visited. AttentionScan
+	// compares a window's own last-activity time against this watermark
+	// rather than trusting window_activity_flag alone: that flag is only
+	// cleared on a window when it is individually selected, so a background
+	// (non-active) window's flag can stay set long after the session itself
+	// was visited, which would otherwise re-flag stale, pre-visit activity
+	// as if it were new.
+	VisitedAt int64
 }
 
 type Controller interface {
 	ListSessions() ([]Session, error)
-	WindowActivityBySession() (map[string]bool, error)
+	// SessionActivityTimestamps reports, per session, the latest
+	// window_activity time (unix seconds) across all of that session's
+	// windows -- not just its active one.
+	SessionActivityTimestamps() (map[string]int64, error)
 	SessionAttached(name string) (bool, error)
 	CreateSession(name, cwd, command string) (Session, error)
 	RenameSession(oldName, newName string) error
@@ -61,6 +74,9 @@ type Controller interface {
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
 	SetSessionAttention(name string, attention bool) error
+	// MarkSessionVisited clears the attention marker and records the visit
+	// time as this session's new activity watermark.
+	MarkSessionVisited(name string) error
 	SetSessionTopBar(name, content string) error
 	AttachCommand(ctx context.Context, name string) (*exec.Cmd, error)
 	KillSession(name string) error

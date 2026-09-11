@@ -10,29 +10,30 @@ import (
 const defaultProjectName = "default"
 
 type fakeTmuxController struct {
-	listSessions            func() ([]session, error)
-	windowActivityBySession func() (map[string]bool, error)
-	sessionAttached         func(name string) (bool, error)
-	createSession           func(name, cwd, command string) (session, error)
-	renameSession           func(oldName, newName string) error
-	setSessionProject       func(name, project string) error
-	runBackground           func(command string) error
-	displayMessage          func(message string) error
-	currentPaneDir          func() (string, error)
-	setSessionTemporary     func(name string, temporary bool, instanceID string) error
-	setSessionLabel         func(name, label string) error
-	setSessionAttention     func(name string, attention bool) error
-	setSessionTopBar        func(name, content string) error
-	attachCommand           func(ctx context.Context, name string) (*exec.Cmd, error)
-	killSession             func(name string) error
-	sessionPanesAllDead     func(name string) (bool, error)
-	switchClient            func(name string) error
-	ensureControlMode       func(binaryPath string) error
-	toggleMenu              func(binaryPath string) error
-	toggleCommandMenu       func(binaryPath string) error
-	closeMenu               func() error
-	quitAll                 func() error
-	cleanupVolatile         func(instanceID string) error
+	listSessions              func() ([]session, error)
+	sessionActivityTimestamps func() (map[string]int64, error)
+	sessionAttached           func(name string) (bool, error)
+	createSession             func(name, cwd, command string) (session, error)
+	renameSession             func(oldName, newName string) error
+	setSessionProject         func(name, project string) error
+	runBackground             func(command string) error
+	displayMessage            func(message string) error
+	currentPaneDir            func() (string, error)
+	setSessionTemporary       func(name string, temporary bool, instanceID string) error
+	setSessionLabel           func(name, label string) error
+	setSessionAttention       func(name string, attention bool) error
+	markSessionVisited        func(name string) error
+	setSessionTopBar          func(name, content string) error
+	attachCommand             func(ctx context.Context, name string) (*exec.Cmd, error)
+	killSession               func(name string) error
+	sessionPanesAllDead       func(name string) (bool, error)
+	switchClient              func(name string) error
+	ensureControlMode         func(binaryPath string) error
+	toggleMenu                func(binaryPath string) error
+	toggleCommandMenu         func(binaryPath string) error
+	closeMenu                 func() error
+	quitAll                   func() error
+	cleanupVolatile           func(instanceID string) error
 }
 
 func (f fakeTmuxController) ListSessions() ([]session, error) {
@@ -42,9 +43,9 @@ func (f fakeTmuxController) ListSessions() ([]session, error) {
 	return nil, nil
 }
 
-func (f fakeTmuxController) WindowActivityBySession() (map[string]bool, error) {
-	if f.windowActivityBySession != nil {
-		return f.windowActivityBySession()
+func (f fakeTmuxController) SessionActivityTimestamps() (map[string]int64, error) {
+	if f.sessionActivityTimestamps != nil {
+		return f.sessionActivityTimestamps()
 	}
 	return nil, nil
 }
@@ -112,6 +113,13 @@ func (f fakeTmuxController) SetSessionLabel(name, label string) error {
 func (f fakeTmuxController) SetSessionAttention(name string, attention bool) error {
 	if f.setSessionAttention != nil {
 		return f.setSessionAttention(name, attention)
+	}
+	return nil
+}
+
+func (f fakeTmuxController) MarkSessionVisited(name string) error {
+	if f.markSessionVisited != nil {
+		return f.markSessionVisited(name)
 	}
 	return nil
 }

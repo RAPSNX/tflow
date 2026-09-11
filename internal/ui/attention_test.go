@@ -56,13 +56,17 @@ func TestSessionActivityIgnoresMissingCurrentSession(t *testing.T) {
 	}
 }
 
-func TestSessionVisitedClearsAttentionUnconditionally(t *testing.T) {
-	var name string
+func TestSessionVisitedClearsAttentionAndStampsWatermark(t *testing.T) {
+	var clearedName string
 	var attention bool
-	called := false
+	var visitedName string
 	fake := fakeTmuxController{
 		setSessionAttention: func(n string, a bool) error {
-			name, attention, called = n, a, true
+			clearedName, attention = n, a
+			return nil
+		},
+		markSessionVisited: func(n string) error {
+			visitedName = n
 			return nil
 		},
 	}
@@ -70,8 +74,11 @@ func TestSessionVisitedClearsAttentionUnconditionally(t *testing.T) {
 	if err := sessionVisitedWithManager(fake); err != nil {
 		t.Fatalf("sessionVisitedWithManager: %v", err)
 	}
-	if !called || name != "s1" || attention {
-		t.Fatalf("name=%q attention=%v called=%v, want clearing s1", name, attention, called)
+	if visitedName != "s1" {
+		t.Fatalf("visitedName=%q, want MarkSessionVisited called for s1", visitedName)
+	}
+	if clearedName != "" || attention {
+		t.Fatalf("clearedName=%q attention=%v, want SetSessionAttention not called directly -- MarkSessionVisited owns clearing", clearedName, attention)
 	}
 }
 
@@ -87,8 +94,8 @@ func TestAttentionScanMarksUnvisitedSessionsWithFreshActivity(t *testing.T) {
 				{Name: "idle"},
 			}, nil
 		},
-		windowActivityBySession: func() (map[string]bool, error) {
-			return map[string]bool{"busy-unvisited": true, "busy-attached": true, "already-flagged": true}, nil
+		sessionActivityTimestamps: func() (map[string]int64, error) {
+			return map[string]int64{"busy-unvisited": 100, "busy-attached": 100, "already-flagged": 100}, nil
 		},
 		setSessionAttention: func(name string, attention bool) error {
 			marked[name] = attention
@@ -114,9 +121,9 @@ func TestAttentionScanUsesEveryWindowNotJustTheActiveOne(t *testing.T) {
 		},
 		// Simulates activity in a background (non-active) window: list-sessions'
 		// own window_activity_flag sample would miss this, but the aggregated
-		// per-session view from WindowActivityBySession must not.
-		windowActivityBySession: func() (map[string]bool, error) {
-			return map[string]bool{"multi-window": true}, nil
+		// per-session view from SessionActivityTimestamps must not.
+		sessionActivityTimestamps: func() (map[string]int64, error) {
+			return map[string]int64{"multi-window": 100}, nil
 		},
 		setSessionAttention: func(name string, attention bool) error {
 			marked[name] = attention
@@ -130,6 +137,61 @@ func TestAttentionScanUsesEveryWindowNotJustTheActiveOne(t *testing.T) {
 	}
 	if !marked["multi-window"] {
 		t.Fatalf("marked = %#v, want multi-window session marked from its background window", marked)
+	}
+}
+
+// TestAttentionScanIgnoresActivityThatPredatesTheLastVisit guards against a
+// regression where a background (non-active) window's tmux activity flag --
+// only cleared by individually selecting that window, not by visiting the
+// session -- stayed set from before the last visit and was misread as fresh
+// output on every subsequent scan, permanently re-flagging the session.
+func TestAttentionScanIgnoresActivityThatPredatesTheLastVisit(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	marked := map[string]bool{}
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "stale-background-window", VisitedAt: 500}}, nil
+		},
+		sessionActivityTimestamps: func() (map[string]int64, error) {
+			return map[string]int64{"stale-background-window": 100}, nil
+		},
+		setSessionAttention: func(name string, attention bool) error {
+			marked[name] = attention
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "")
+	if err := attentionScanWithManager(fake); err != nil {
+		t.Fatalf("attentionScanWithManager: %v", err)
+	}
+	if marked["stale-background-window"] {
+		t.Fatalf("marked = %#v, want no marker set for activity that predates the last visit", marked)
+	}
+}
+
+func TestAttentionScanMarksActivityNewerThanTheLastVisit(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	marked := map[string]bool{}
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "s1", VisitedAt: 100}}, nil
+		},
+		sessionActivityTimestamps: func() (map[string]int64, error) {
+			return map[string]int64{"s1": 200}, nil
+		},
+		setSessionAttention: func(name string, attention bool) error {
+			marked[name] = attention
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "")
+	if err := attentionScanWithManager(fake); err != nil {
+		t.Fatalf("attentionScanWithManager: %v", err)
+	}
+	if !marked["s1"] {
+		t.Fatalf("marked = %#v, want the marker set for activity newer than the last visit", marked)
 	}
 }
 
@@ -148,8 +210,8 @@ func TestAttentionScanRechecksAttachmentBeforeSettingTheMarker(t *testing.T) {
 			// before the write below runs.
 			return []session{{Name: "just-attached", Attached: false}}, nil
 		},
-		windowActivityBySession: func() (map[string]bool, error) {
-			return map[string]bool{"just-attached": true}, nil
+		sessionActivityTimestamps: func() (map[string]int64, error) {
+			return map[string]int64{"just-attached": 100}, nil
 		},
 		sessionAttached: func(name string) (bool, error) {
 			return name == "just-attached", nil

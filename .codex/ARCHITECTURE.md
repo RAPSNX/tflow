@@ -171,19 +171,26 @@ Terminal-native text selection therefore needs the terminal's override
 modifier, such as Shift in Alacritty.
 
 A runtime-only session attention marker is set when an unvisited session
-produces output. Any client visit clears it, via tmux's client-session-changed
-hook. Setting it does not use tmux's alert-activity hook: that hook's
-run-shell command was verified, by tracing a real tmux server with `-vv`, to
-never invoke on the tested tmux 3.7c build, even though the identical
-mechanism reliably fires for client-session-changed on the same server (see
+produces output. Any client visit clears it and stamps that moment as the
+session's new activity watermark, via tmux's client-session-changed hook.
+Setting it does not use tmux's alert-activity hook: that hook's run-shell
+command was verified, by tracing a real tmux server with `-vv`, to never
+invoke on the tested tmux 3.7c build, even though the identical mechanism
+reliably fires for client-session-changed on the same server (see
 `.codex/TASK.md` for the trace). Instead, tmux's own status-interval timer --
 set short and global, the one bounded, tmux-native exception to the no-loop
 rule above -- drives an invisible `#()` job on every status-line redraw that
-scans for unvisited sessions with fresh window activity, sets the marker for
-them, and refreshes the scanning client's own visible top bar so a sibling
-session's attention reaches it without an unrelated mutation to trigger a
-push. The marker is shown in the sidebar and top bar, is never written to
-JSON, and may disappear when tmux restarts.
+scans every session's windows for one whose own last-activity time is after
+that session's watermark, sets the marker for it, and refreshes the scanning
+client's own visible top bar so a sibling session's attention reaches it
+without an unrelated mutation to trigger a push. Comparing against the
+watermark, rather than trusting any window with activity, matters because a
+background (non-active) window's activity is only cleared by individually
+selecting that window, not by visiting the session -- so without the
+watermark, a stale background-window flag would restore attention on every
+scan after the session was already visited. The marker is shown in the
+sidebar and top bar, is never written to JSON, and may disappear when tmux
+restarts.
 
 ## Persistent state
 

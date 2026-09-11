@@ -345,33 +345,33 @@ func TestListSessionsIncludesAttentionMarker(t *testing.T) {
 	}
 }
 
-func TestWindowActivityBySessionAggregatesEveryWindow(t *testing.T) {
+func TestSessionActivityTimestampsAggregatesEveryWindow(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
 			if args[0] != "list-windows" {
 				t.Fatalf("unexpected command: %v", args)
 			}
-			// "busy" has activity only in its second (non-active) window;
-			// aggregation across windows must still catch it. "idle" has no
-			// activity in either of its windows.
+			// "busy" has its latest activity in its second (non-active)
+			// window; aggregation across windows must still catch it and
+			// take the max. "idle" has no activity in either window.
 			return strings.Join([]string{
-				"busy\t0",
-				"busy\t1",
+				"busy\t100",
+				"busy\t200",
 				"idle\t0",
 				"idle\t0",
 			}, "\n") + "\n", nil
 		},
 	}
 
-	activity, err := manager.WindowActivityBySession()
+	activity, err := manager.SessionActivityTimestamps()
 	if err != nil {
-		t.Fatalf("WindowActivityBySession returned error: %v", err)
+		t.Fatalf("SessionActivityTimestamps returned error: %v", err)
 	}
-	if !activity["busy"] {
-		t.Fatal("expected \"busy\" to have activity from its second window")
+	if activity["busy"] != 200 {
+		t.Fatalf("activity[busy] = %d, want the max across its windows (200)", activity["busy"])
 	}
-	if activity["idle"] {
-		t.Fatal("expected \"idle\" to have no activity")
+	if activity["idle"] != 0 {
+		t.Fatalf("activity[idle] = %d, want 0", activity["idle"])
 	}
 }
 
