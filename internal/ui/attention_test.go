@@ -5,11 +5,8 @@ import "testing"
 func TestSessionActivityMarksOnlyUnvisitedSession(t *testing.T) {
 	var marked map[string]bool
 	fake := fakeTmuxController{
-		listSessions: func() ([]session, error) {
-			return []session{
-				{Name: "unvisited", Attached: false},
-				{Name: "visited", Attached: true},
-			}, nil
+		sessionAttached: func(name string) (bool, error) {
+			return name == "visited", nil
 		},
 		setSessionAttention: func(name string, attention bool) error {
 			if marked == nil {
@@ -41,7 +38,7 @@ func TestSessionActivityMarksOnlyUnvisitedSession(t *testing.T) {
 func TestSessionActivityIgnoresMissingCurrentSession(t *testing.T) {
 	called := false
 	fake := fakeTmuxController{
-		listSessions: func() ([]session, error) { return nil, nil },
+		sessionAttached: func(name string) (bool, error) { return false, nil },
 		setSessionAttention: func(name string, attention bool) error {
 			called = true
 			return nil

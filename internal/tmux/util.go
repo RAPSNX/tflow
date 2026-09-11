@@ -35,10 +35,6 @@ func ContainsAnimalName(name string) bool {
 	return false
 }
 
-func RandomAnimalName() string {
-	return tempSessionAnimals[rand.IntN(len(tempSessionAnimals))]
-}
-
 func NormalizeCWD(cwd string) string {
 	return store.NormalizeCWD(cwd)
 }

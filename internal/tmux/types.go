@@ -46,6 +46,7 @@ type Session struct {
 
 type Controller interface {
 	ListSessions() ([]Session, error)
+	SessionAttached(name string) (bool, error)
 	CreateSession(name, cwd, command string) (Session, error)
 	RenameSession(oldName, newName string) error
 	SetSessionProject(name, project string) error

@@ -19,18 +19,12 @@ func sessionActivityWithManager(manager tmuxController) error {
 	if name == "" {
 		return nil
 	}
-	sessions, err := manager.ListSessions()
+	attached, err := manager.SessionAttached(name)
 	if err != nil {
-		return err
+		return ignoreMissingSession(err)
 	}
-	for _, s := range sessions {
-		if s.Name != name {
-			continue
-		}
-		if s.Attached {
-			return nil
-		}
-		break
+	if attached {
+		return nil
 	}
 	return ignoreMissingSession(manager.SetSessionAttention(name, true))
 }

@@ -150,6 +150,52 @@ func TestSaveStateRejectsConcurrentDuplicateProjectLabel(t *testing.T) {
 	}
 }
 
+func TestSaveStateRejectsConcurrentDuplicateAgentSession(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	base := appState{Projects: []storedProject{{Name: "small", Workdir: "/small", Sessions: []persistentSession{}}}}
+	if err := saveAppState(path, base); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := buildModel(fakeTmuxController{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := buildModel(fakeTmuxController{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two clients independently provision an agent session for the same
+	// project under different labels, so the fast in-memory label check each
+	// one runs on its own never sees the other's addition.
+	first.assignSessionProject("tflow-p-agent-1", "small")
+	first.setSessionLabel("tflow-p-agent-1", "agent")
+	first.setSessionType("tflow-p-agent-1", sessionTypeAgent)
+	first.setSessionCommand("tflow-p-agent-1", "codex")
+
+	second.assignSessionProject("tflow-p-agent-2", "small")
+	second.setSessionLabel("tflow-p-agent-2", "agent-2")
+	second.setSessionType("tflow-p-agent-2", sessionTypeAgent)
+	second.setSessionCommand("tflow-p-agent-2", "codex")
+
+	if err := first.saveState(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.saveState(); err == nil {
+		t.Fatal("second save accepted a second agent session for the same project")
+	}
+
+	state, err := loadAppState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := storedProjectByName(state, "small")
+	if !ok || len(project.Sessions) != 1 || project.Sessions[0].ID != "tflow-p-agent-1" {
+		t.Fatalf("project = %#v, want only the first agent session", project)
+	}
+}
+
 func TestSaveStateRejectsConcurrentProjectRenameCollision(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	path := appStatePath()

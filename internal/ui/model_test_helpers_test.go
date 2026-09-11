@@ -11,6 +11,7 @@ const defaultProjectName = "default"
 
 type fakeTmuxController struct {
 	listSessions        func() ([]session, error)
+	sessionAttached     func(name string) (bool, error)
 	createSession       func(name, cwd, command string) (session, error)
 	renameSession       func(oldName, newName string) error
 	setSessionProject   func(name, project string) error
@@ -38,6 +39,13 @@ func (f fakeTmuxController) ListSessions() ([]session, error) {
 		return f.listSessions()
 	}
 	return nil, nil
+}
+
+func (f fakeTmuxController) SessionAttached(name string) (bool, error) {
+	if f.sessionAttached != nil {
+		return f.sessionAttached(name)
+	}
+	return false, nil
 }
 
 func (f fakeTmuxController) CreateSession(name, cwd, command string) (session, error) {

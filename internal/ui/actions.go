@@ -109,12 +109,6 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 		m.status = "Session no longer exists."
 		return m, nil
 	}
-	resolvedCommand := materializeCommand(sessionType, command)
-	if err := validateMaterializeExecutable(sessionType, resolvedCommand); err != nil {
-		m.err, m.status = err, err.Error()
-		return m, nil
-	}
-
 	running, err := m.tmux.ListSessions()
 	if err != nil {
 		m.err, m.status = err, err.Error()
@@ -132,6 +126,12 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 		m.setSessionCommand(name, command)
 		m.sessions = append(m.sessions, existing)
 		return m.switchSelectedSessionAfterValidation(name)
+	}
+
+	resolvedCommand := materializeCommand(sessionType, command)
+	if err := validateMaterializeExecutable(sessionType, resolvedCommand, workdir); err != nil {
+		m.err, m.status = err, err.Error()
+		return m, nil
 	}
 
 	created, err := m.tmux.CreateSession(name, workdir, resolvedCommand)

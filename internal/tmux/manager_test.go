@@ -261,6 +261,40 @@ func TestSwitchClientPreservesOriginalErrorWhenReplacementResolutionFails(t *tes
 	}
 }
 
+func TestSessionAttachedQueriesOneSessionDirectly(t *testing.T) {
+	var got []string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			got = append([]string(nil), args...)
+			return "1\n", nil
+		},
+	}
+	attached, err := manager.SessionAttached("tflow-p-1")
+	if err != nil {
+		t.Fatalf("SessionAttached error: %v", err)
+	}
+	if !attached {
+		t.Fatal("expected attached = true")
+	}
+	want := []string{"display-message", "-p", "-t", "tflow-p-1", "#{session_attached}"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("call = %#v, want %#v", got, want)
+	}
+
+	manager.Run = func(args ...string) (string, error) { return "0\n", nil }
+	attached, err = manager.SessionAttached("tflow-p-1")
+	if err != nil {
+		t.Fatalf("SessionAttached error: %v", err)
+	}
+	if attached {
+		t.Fatal("expected attached = false")
+	}
+
+	if _, err := manager.SessionAttached(""); err == nil {
+		t.Fatal("expected error for empty session name")
+	}
+}
+
 func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {

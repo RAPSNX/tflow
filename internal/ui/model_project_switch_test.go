@@ -355,6 +355,49 @@ func TestSwitchSelectedSessionMaterializesAgentSessionWithCapturedCommand(t *tes
 	}
 }
 
+func TestSwitchSelectedSessionReusesAlreadyRunningAgentSessionDespiteMissingExecutable(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := appStatePath()
+	state := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/work/small", Sessions: []persistentSession{{ID: "tflow-p-agent", Label: "agent", Type: sessionTypeAgent, Command: "tflow-definitely-missing-binary"}},
+	}}}
+	if err := saveAppState(path, state); err != nil {
+		t.Fatal(err)
+	}
+
+	created := false
+	manager := fakeTmuxController{
+		// The session is already running -- its binary having since vanished
+		// from PATH must not block switching to a session that already
+		// exists and needs no new process.
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "tflow-p-agent", Label: "agent"}}, nil
+		},
+		createSession: func(name, cwd, command string) (session, error) {
+			created = true
+			return session{Name: name}, nil
+		},
+	}
+	m, err := buildModel(manager, "scratch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.selectedProject = "small"
+	m.selectedSession = "tflow-p-agent"
+
+	updated, cmd := m.switchSelectedSession()
+	got := updated.(model)
+	if got.err != nil {
+		t.Fatalf("unexpected error: %v", got.err)
+	}
+	if cmd == nil {
+		t.Fatal("expected switch command")
+	}
+	if created {
+		t.Fatal("must not attempt to create a session that is already running")
+	}
+}
+
 func TestSwitchSelectedSessionReportsMissingAgentExecutableWithoutMutating(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	path := appStatePath()

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"unicode"
 )
 
 // materializeCommand resolves the shell command a lazily materialized
@@ -43,14 +44,22 @@ func lookupSessionTypeCommand(state appState, project, id string) (sessionType, 
 // validateMaterializeExecutable reports a clear, descriptive error when the
 // executable a git or agent session would run cannot be found, so
 // materialization fails without creating a broken tmux session or otherwise
-// mutating state. A bare name is resolved on PATH; an absolute path is
-// checked directly. Terminal sessions (empty command) always pass.
-func validateMaterializeExecutable(sessionType, resolvedCommand string) error {
+// mutating state. A bare name (no path separator) is resolved on PATH; an
+// absolute path is checked directly; a relative path containing a separator
+// is checked against workdir, matching where tmux will actually launch it
+// (its session is created with that directory, per CreateSession's cwd
+// argument), rather than this process's own working directory. Terminal
+// sessions (empty command) always pass.
+func validateMaterializeExecutable(sessionType, resolvedCommand, workdir string) error {
 	if resolvedCommand == "" {
 		return nil
 	}
-	if filepath.IsAbs(resolvedCommand) {
-		info, err := os.Stat(resolvedCommand)
+	path := resolvedCommand
+	if !filepath.IsAbs(path) && strings.ContainsRune(path, filepath.Separator) {
+		path = filepath.Join(workdir, path)
+	}
+	if filepath.IsAbs(path) {
+		info, err := os.Stat(path)
 		if err != nil {
 			return fmt.Errorf("%s executable %q not found: %w", sessionType, resolvedCommand, err)
 		}
@@ -59,7 +68,7 @@ func validateMaterializeExecutable(sessionType, resolvedCommand string) error {
 		}
 		return nil
 	}
-	if _, err := exec.LookPath(resolvedCommand); err != nil {
+	if _, err := exec.LookPath(path); err != nil {
 		return fmt.Errorf("%s executable %q not found on PATH", sessionType, resolvedCommand)
 	}
 	return nil
@@ -67,11 +76,23 @@ func validateMaterializeExecutable(sessionType, resolvedCommand string) error {
 
 // isBareExecutableToken reports whether value is a single path-like token
 // (a bare executable name or an absolute path) with no shell arguments,
-// matching the accepted shape for a project's agent-binary setting.
+// matching the accepted shape for a project's agent-binary setting. A
+// materialized agent session runs this value through a real shell (`sh -lc`,
+// see Manager.CreateSession), so this rejects shell metacharacters outright
+// rather than only whitespace: a value like "codex;id" contains no
+// whitespace but is not a bare executable token either.
 func isBareExecutableToken(value string) bool {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return true
 	}
-	return !strings.ContainsAny(value, " \t\n")
+	for _, r := range value {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r):
+		case strings.ContainsRune("-_./~", r):
+		default:
+			return false
+		}
+	}
+	return true
 }

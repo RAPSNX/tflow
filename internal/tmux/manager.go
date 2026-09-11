@@ -11,6 +11,20 @@ import (
 	"github.com/rapsnx/tflow/internal/store"
 )
 
+// SessionAttached reports whether name currently has any client attached,
+// without the cost of listing and parsing every session on the server.
+func (m Manager) SessionAttached(name string) (bool, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false, fmt.Errorf("session name is empty")
+	}
+	out, err := m.runner()("display-message", "-p", "-t", name, "#{session_attached}")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "0", nil
+}
+
 func (m Manager) ListSessions() ([]Session, error) {
 	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}\t#{"+attentionMarker+"}")
 	if err != nil {

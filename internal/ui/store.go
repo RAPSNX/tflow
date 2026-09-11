@@ -43,6 +43,10 @@ func normalizeAppState(state appState) appState {
 	return store.NormalizeAppState(state)
 }
 
+func validateAppState(state appState) error {
+	return store.ValidateAppState(state)
+}
+
 func appStatePath() string {
 	return store.AppStatePath()
 }
