@@ -13,6 +13,17 @@ func writeExecutable(t *testing.T, path string) {
 	}
 }
 
+// stubExecutableOnPath puts a fake, always-successful executable named name
+// on PATH for the duration of the test, so materialization tests for
+// commands like lazygit don't depend on that host software actually being
+// installed (CI runs go test ./... without installing it).
+func stubExecutableOnPath(t *testing.T, name string) {
+	t.Helper()
+	dir := t.TempDir()
+	writeExecutable(t, filepath.Join(dir, name))
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 func TestValidateMaterializeExecutableResolvesRelativePathAgainstWorkdir(t *testing.T) {
 	workdir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(workdir, "bin"), 0o755); err != nil {
@@ -63,9 +74,25 @@ func TestIsBareExecutableTokenRejectsShellMetacharacters(t *testing.T) {
 			t.Fatalf("isBareExecutableToken(%q) = true, want false", value)
 		}
 	}
-	for _, value := range []string{"codex", "/usr/local/bin/codex", "./bin/codex", "~/bin/codex", "codex-2"} {
+	for _, value := range []string{"codex", "/usr/local/bin/codex", "codex-2"} {
 		if !isBareExecutableToken(value) {
 			t.Fatalf("isBareExecutableToken(%q) = false, want true", value)
+		}
+	}
+}
+
+// TestIsBareExecutableTokenRejectsRelativeAndTildePaths guards a contract
+// narrower than "only shell metacharacters are rejected": ARCHITECTURE.md
+// permits only a bare executable name or an absolute path here. A relative
+// or tilde-relative value must be rejected even though it contains none of
+// the shell metacharacters above, because validateMaterializeExecutable
+// joins any non-absolute path to the project workdir rather than expanding
+// "~" or resolving it relative to anything else -- so "~/bin/codex" could
+// never materialize even when that executable exists.
+func TestIsBareExecutableTokenRejectsRelativeAndTildePaths(t *testing.T) {
+	for _, value := range []string{"./bin/codex", "~/bin/codex", "../codex", "sub/codex"} {
+		if isBareExecutableToken(value) {
+			t.Fatalf("isBareExecutableToken(%q) = true, want false", value)
 		}
 	}
 }

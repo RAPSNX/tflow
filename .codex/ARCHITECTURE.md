@@ -122,7 +122,11 @@ current instance and removing its volatile sessions.
 
 The command sidebar never covers the status line, so the top bar stays readable
 while command mode is active. It is centered horizontally under the top bar,
-not pinned to the left edge.
+not pinned to the left edge, and shaped wide and short rather than narrow and
+tall: the tflow badge sits on the left, with every contextual session
+rendered as an inline pill beside it on the same row, mirroring the top
+bar's own row-of-pills shape instead of stacking one full-width row per
+session.
 
 Navigation moves through the same order shown by the sidebar: stored order in
 the active project or tmux list order for the current instance's volatile
@@ -151,7 +155,7 @@ process of its own to push from, so a bounded, tmux-native timer carries it
 to the visible bar instead.
 
 Every session carries a type identity: blue code, teal git, or yellow agent.
-Both sidebar rows and top-bar entries render the icon and colour alone --
+Both sidebar pills and top-bar entries render the icon and colour alone --
 `>_`, `⎇`, or `✦` -- never the spelled-out type name, to keep the line short.
 Selection never replaces the type identity. Teal `live` and red attention
 indicators remain independent of type and selection.

@@ -34,12 +34,10 @@ var (
 	selectedTextColor = lipgloss.Color("#11111B")
 
 	appStyle               lipgloss.Style
-	headerStyle            lipgloss.Style
 	titleStyle             lipgloss.Style
 	brandBadgeStyle        lipgloss.Style
 	mutedStyle             lipgloss.Style
 	panelStyle             lipgloss.Style
-	sectionTitleStyle      lipgloss.Style
 	sessionStyle           lipgloss.Style
 	selectedSessionStyle   lipgloss.Style
 	currentBadgeStyle      lipgloss.Style
@@ -103,10 +101,6 @@ func applyTheme(p themePalette) {
 		Foreground(textColor).
 		Background(baseBG)
 
-	headerStyle = lipgloss.NewStyle().
-		Background(baseBG).
-		Padding(0, 0, 1, 0)
-
 	titleStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(textColor)
@@ -120,15 +114,14 @@ func applyTheme(p themePalette) {
 	mutedStyle = lipgloss.NewStyle().
 		Foreground(subtextColor)
 
+	// A single horizontal strip (badge + session pills), not a tall
+	// vertical section -- only horizontal padding, so the popup stays
+	// short.
 	panelStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(surface1).
 		Background(mantleColor).
-		Padding(1)
-
-	sectionTitleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(textColor)
+		Padding(0, 2)
 
 	sessionStyle = lipgloss.NewStyle().
 		Foreground(textColor).

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 
@@ -298,11 +300,33 @@ func (m model) handleProjectEditorFinished(msg projectEditorFinishedMsg) (tea.Mo
 	}
 	cfg.AgentBinary = agentBinary
 
+	// setProjectConfig and provisionAgentSession mutate these maps/slice in
+	// place, and map/slice fields are reference types, so a later failed
+	// save can't be undone by simply not returning the mutated m -- the
+	// shared underlying storage would already carry the change regardless
+	// of which model value is returned. Snapshot them first so a save
+	// failure can restore the untouched originals, per ARCHITECTURE.md:
+	// "persistence ... failures leave state unchanged."
+	prevProjectConfigs := maps.Clone(m.projectConfigs)
+	prevSessionProjects := maps.Clone(m.sessionProjects)
+	prevPersistentSessionOrder := maps.Clone(m.persistentSessionOrder)
+	prevSessionLabels := maps.Clone(m.sessionLabels)
+	prevSessionTypes := maps.Clone(m.sessionTypes)
+	prevSessionCommands := maps.Clone(m.sessionCommands)
+	prevProjects := slices.Clone(m.projects)
+
 	m.setProjectConfig(cfg)
 	if agentBinary != "" {
 		m.provisionAgentSession(msg.project, agentBinary)
 	}
 	if err := m.saveState(); err != nil {
+		m.projectConfigs = prevProjectConfigs
+		m.sessionProjects = prevSessionProjects
+		m.persistentSessionOrder = prevPersistentSessionOrder
+		m.sessionLabels = prevSessionLabels
+		m.sessionTypes = prevSessionTypes
+		m.sessionCommands = prevSessionCommands
+		m.projects = prevProjects
 		m.err = err
 		m.status = err.Error()
 		return m, nil

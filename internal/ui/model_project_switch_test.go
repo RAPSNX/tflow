@@ -287,6 +287,7 @@ func TestSwitchSelectedSessionMaterializesPersistedSession(t *testing.T) {
 
 func TestSwitchSelectedSessionMaterializesGitSessionWithLazygit(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	stubExecutableOnPath(t, "lazygit")
 	path := appStatePath()
 	state := appState{Projects: []storedProject{{
 		Name: "small", Workdir: "/work/small", Sessions: []persistentSession{{ID: "tflow-p-git", Label: "git", Type: sessionTypeGit}},

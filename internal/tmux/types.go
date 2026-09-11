@@ -17,12 +17,16 @@ const (
 	tempMarker            = "@tflow-temp"
 	instanceMarker        = "@tflow-instance"
 	attentionMarker       = "@tflow-attention"
-	menuWidth             = "36"
+	// The popup renders as one wide, short horizontal strip (badge + inline
+	// session pills, mirroring the top bar's own row-of-pills shape) rather
+	// than a tall vertical list, so it is wide and short to match -- not
+	// narrow and tall.
+	menuWidth = "70%"
 	// menuHeight stays below 100% so the popup fits under the status line.
 	// tmux resolves a popup that would overflow by moving it back up rather
 	// than shrinking it, so a full-height popup lands on the status line and
 	// hides the top bar. Percentages are floored, so this always leaves a row.
-	menuHeight         = "95%"
+	menuHeight         = "60%"
 	commandKey         = "C-Space"
 	commandTable       = "tflow-command"
 	quitKey            = "C-q"

@@ -35,7 +35,7 @@ func (m model) View() string {
 
 func (m model) renderMenu() string {
 	innerWidth := max(28, m.width-4)
-	sections := []string{m.renderHeader(innerWidth), m.renderSessionPanel(innerWidth)}
+	sections := []string{m.renderMenuBar(innerWidth)}
 	if m.showHelp {
 		sections = append(sections, "", m.renderHelp())
 	}
@@ -48,22 +48,29 @@ func (m model) renderMenu() string {
 	return lipgloss.JoinVertical(lipgloss.Left, body, spacer, footer)
 }
 
-func (m model) renderHeader(width int) string {
-	return headerStyle.Width(width).Render(lipgloss.PlaceHorizontal(width, lipgloss.Center, brandBadgeStyle.Render("TFLOW")))
+// renderMenuBar lays the popup out as one horizontal strip: the tflow badge
+// on the left, then every contextual session as an inline pill beside it,
+// mirroring the top bar's own row-of-pills shape. This replaces a header
+// stacked above a tall vertical session list with a single wide, short row.
+func (m model) renderMenuBar(width int) string {
+	badge := brandBadgeStyle.Render("TFLOW")
+	content := lipgloss.JoinHorizontal(lipgloss.Center, badge, "  ", m.renderSessionPanel())
+	return panelStyle.Width(width).Render(content)
 }
 
-func (m model) renderSessionPanel(width int) string {
-	lines := []string{sectionTitleStyle.Render("Sessions"), ""}
+// renderSessionPanel renders every contextual session as an inline pill, in
+// selection order, or a muted placeholder when the context is empty.
+func (m model) renderSessionPanel() string {
 	sessions := m.contextSessions()
 	selectedIndex := sessionIndex(sessions, m.selectedSession)
 	if len(sessions) == 0 {
-		lines = append(lines, mutedStyle.Render("No sessions in this context"))
-	} else {
-		for index, session := range sessions {
-			lines = append(lines, m.renderSessionRow(index, selectedIndex, session))
-		}
+		return mutedStyle.Render("No sessions in this context")
 	}
-	return panelStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+	pills := make([]string, len(sessions))
+	for index, s := range sessions {
+		pills[index] = m.renderSessionRow(index, selectedIndex, s)
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Center, pills...)
 }
 
 func (m model) renderSessionRow(index, selectedIndex int, s session) string {
@@ -88,7 +95,9 @@ func (m model) renderSessionRow(index, selectedIndex int, s session) string {
 	}
 	segments = append(segments, plain.Render(" "+label))
 
-	return style.Width(max(16, m.width-12)).Render(strings.Join(segments, ""))
+	// Sized to its own content, not stretched full-width -- pills sit side
+	// by side in a horizontal row rather than stacking as full-width rows.
+	return style.Render(strings.Join(segments, ""))
 }
 
 func (m model) renderFooter(width int) string {

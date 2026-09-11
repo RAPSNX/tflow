@@ -94,5 +94,14 @@ func isBareExecutableToken(value string) bool {
 			return false
 		}
 	}
+	// Only a bare name (no separator at all) or an absolute path is
+	// accepted; a relative or tilde-relative path is rejected here rather
+	// than accepted and mishandled later -- validateMaterializeExecutable
+	// joins a non-absolute path to the project workdir, not the user's
+	// home, so "~" is never expanded and a value like "~/bin/codex" could
+	// never resolve even when that executable exists.
+	if strings.ContainsRune(value, filepath.Separator) && !filepath.IsAbs(value) {
+		return false
+	}
 	return true
 }

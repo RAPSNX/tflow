@@ -7,17 +7,39 @@ import (
 	"testing"
 )
 
-func TestRenderHeaderCentersBrandWithoutPopupMetadata(t *testing.T) {
+// TestRenderMenuBarPlacesBrandOnTheLeftOfInlineSessions guards the
+// horizontal layout: the tflow badge sits near the left edge, with every
+// contextual session rendered as an inline pill to its right on the same
+// line -- not a header centered above a tall vertical session list.
+func TestRenderMenuBarPlacesBrandOnTheLeftOfInlineSessions(t *testing.T) {
 	m := newMenu().(model)
-	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderHeader(40), "")
-	firstLine := strings.Split(plain, "\n")[0]
-	if got, want := strings.Index(firstLine, "TFLOW"), 17; got != want {
-		t.Fatalf("TFLOW offset = %d, want %d in %q", got, want, firstLine)
-	}
-	for _, unwanted := range []string{"project", "session"} {
-		if strings.Contains(plain, unwanted) {
-			t.Fatalf("header unexpectedly contains %q in %q", unwanted, plain)
+	m.width = 60
+	m.projects = []string{defaultProjectName}
+	m.sessions = []session{{Name: "dev"}}
+	m.sessionProjects = map[string]string{"dev": defaultProjectName}
+	m.selectedProject = defaultProjectName
+	m.selectedSession = "dev"
+
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderMenuBar(60), "")
+	var contentLine string
+	for _, line := range strings.Split(plain, "\n") {
+		if strings.Contains(line, "TFLOW") {
+			contentLine = line
+			break
 		}
+	}
+	if contentLine == "" {
+		t.Fatalf("menu bar missing brand: %q", plain)
+	}
+	brandIndex := strings.Index(contentLine, "TFLOW")
+	if brandIndex > 6 {
+		t.Fatalf("brand offset = %d, want it near the left edge (not centered) in %q", brandIndex, contentLine)
+	}
+	if !strings.Contains(plain, "dev") {
+		t.Fatalf("menu bar missing session pill: %q", plain)
+	}
+	if strings.Index(plain, "dev") < brandIndex {
+		t.Fatalf("session pill should appear after the brand, not before, in %q", plain)
 	}
 }
 
@@ -136,9 +158,9 @@ func TestRenderSessionPanelShowsFlatSessionsOnly(t *testing.T) {
 	m.selectedProject = defaultProjectName
 	m.selectedSession = "dev"
 
-	view := m.renderSessionPanel(40)
+	view := m.renderSessionPanel()
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(view, "")
-	for _, want := range []string{"Sessions", "live", "dev"} {
+	for _, want := range []string{"live", "dev"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("renderSessionPanel missing %q in %q", want, plain)
 		}
@@ -162,7 +184,7 @@ func TestRenderSessionPanelUsesCurrentProjectContext(t *testing.T) {
 	m.selectedProject = "small"
 	m.selectedSession = "api"
 
-	view := m.renderSessionPanel(40)
+	view := m.renderSessionPanel()
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(view, "")
 	if !strings.Contains(plain, "api") {
 		t.Fatalf("renderSessionPanel missing selected-project session in %q", plain)
@@ -187,7 +209,7 @@ func TestRenderMenuIncludesBrandSessionPanelAndStatusArea(t *testing.T) {
 	m.status = "Type a project prefix to switch."
 
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderMenu(), "")
-	for _, want := range []string{"TFLOW", "Sessions", "Type a project prefix to switch."} {
+	for _, want := range []string{"TFLOW", "dev", "Type a project prefix to switch."} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("renderMenu missing %q in %q", want, plain)
 		}
@@ -235,10 +257,10 @@ func TestRenderMenuShowsHelpInlineBelowSessions(t *testing.T) {
 	m.selectedSession = "dev"
 
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.View(), "")
-	sessions := strings.Index(plain, "Sessions")
+	menuBar := strings.Index(plain, "TFLOW")
 	help := strings.Index(plain, "Shortcuts")
-	if sessions < 0 || help < 0 || help <= sessions {
-		t.Fatalf("help was not rendered below sessions: %q", plain)
+	if menuBar < 0 || help < 0 || help <= menuBar {
+		t.Fatalf("help was not rendered below the menu bar: %q", plain)
 	}
 	lines := strings.Split(plain, "\n")
 	for index, line := range lines {
@@ -351,7 +373,7 @@ func TestRenderBadgesUseFilledContrastingStyles(t *testing.T) {
 	m.selectedProject = "small"
 	m.currentSession = "dev"
 	m.selectedSession = "dev"
-	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderSessionPanel(40), "")
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(m.renderSessionPanel(), "")
 	if strings.Count(plain, "live") != 1 || !strings.Contains(plain, "live  dev") {
 		t.Fatalf("active row = %q", plain)
 	}
