@@ -91,8 +91,8 @@ func TestTopBarOpensWithProjectSection(t *testing.T) {
 	if strings.Index(got, "solo") >= strings.Index(got, "Alone") {
 		t.Fatalf("expected project section before its sessions, got: %q", got)
 	}
-	if !strings.Contains(got, "\ue0b0") {
-		t.Fatalf("expected section split arrow, got: %q", got)
+	if !strings.Contains(got, "#[bg=#1e2030,fg=#363a4f]\ue0b6#[bg=#363a4f,fg=#8aadf4,bold] solo #[bg=#1e2030,fg=#363a4f,nobold]\ue0b4  ") {
+		t.Fatalf("expected a filled, rounded-cap project pill, got: %q", got)
 	}
 }
 
@@ -102,10 +102,11 @@ func TestTopBarKeepsProjectSectionInVolatileContext(t *testing.T) {
 	}
 
 	got := computeTargetTopBar("tflow-v-1", "", appState{}, sessions, "inst-A")
-	if !strings.Contains(got, "\ue0b0") {
-		t.Fatalf("volatile top bar should still render the project section, got: %q", got)
+	want := "#[bg=#1e2030,fg=#363a4f]\ue0b6#[bg=#363a4f,fg=#8aadf4,bold]  #[bg=#1e2030,fg=#363a4f,nobold]\ue0b4  "
+	if !strings.Contains(got, want) {
+		t.Fatalf("volatile top bar should still render the empty project section, got: %q", got)
 	}
-	if strings.Index(got, "\ue0b0") >= strings.Index(got, "Alpha") {
+	if strings.Index(got, want) >= strings.Index(got, "Alpha") {
 		t.Fatalf("expected empty project section before the sessions, got: %q", got)
 	}
 }
@@ -125,13 +126,11 @@ func TestTopBarThreadsSessionTypeIconsThrough(t *testing.T) {
 	}
 
 	got := computeTargetTopBar("s2", "demo", state, nil, "")
-	if !strings.Contains(got, "\ue0b6") {
-		t.Fatalf("expected pill glyphs present, got: %q", got)
-	}
-	// The active pill (git) must carry the git icon color/glyph, not the
-	// default terminal one.
-	if !strings.Contains(got, "\u2387") {
-		t.Fatalf("expected git icon in top bar, got: %q", got)
+	// s2 (git) is the active/target session, so its icon glyph is still the
+	// git glyph, but coloured green (live), not teal (its type colour) --
+	// matching the popup's live-chip behavior.
+	if !strings.Contains(got, "#[fg=#a6da95]\u2387#[fg=#a5adcb]") {
+		t.Fatalf("expected the active session's git glyph coloured green (live), got: %q", got)
 	}
 }
 

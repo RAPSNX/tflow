@@ -756,3 +756,273 @@ func TestRunMenuExitActionNavigatesCommandSidebarAction(t *testing.T) {
 		t.Fatalf("switched to %q, want s2", switched)
 	}
 }
+
+// TestNavigateToGitSessionSwitchesWithinProjectContext guards the item-D
+// jump-to-git-session addition: it must find and switch to the project's
+// git-typed session even when it is not the immediately adjacent one, and
+// must not consult session type for any session outside the current
+// project.
+func TestNavigateToGitSessionSwitchesWithinProjectContext(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	statePath := appStatePath()
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	state := appState{
+		Projects: []storedProject{
+			{
+				Name: "alpha",
+				Sessions: []persistentSession{
+					{ID: "s1", Label: "Code"},
+					{ID: "s2", Label: "Git", Type: sessionTypeGit},
+					{ID: "s3", Label: "Agent", Type: sessionTypeAgent, Command: "codex"},
+				},
+			},
+		},
+	}
+	if err := saveAppState(statePath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions := []session{
+		{Name: "s1", Label: "Code"},
+		{Name: "s2", Label: "Git"},
+		{Name: "s3", Label: "Agent"},
+	}
+
+	var switchedTo string
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) { return sessions, nil },
+		switchClient: func(name string) error {
+			switchedTo = name
+			return nil
+		},
+		setSessionTopBar: func(name, content string) error { return nil },
+	}
+
+	t.Setenv(menuCurrentEnv, "s1")
+	if err := navigateToTypeWithManager(fake, sessionTypeGit); err != nil {
+		t.Fatalf("navigateToTypeWithManager: %v", err)
+	}
+	if switchedTo != "s2" {
+		t.Fatalf("switched to %q, want s2", switchedTo)
+	}
+}
+
+// TestNavigateToGitSessionAlreadyThereIsNoOp guards that jumping to the git
+// session while already on it refreshes the top bar but never calls
+// SwitchClient.
+func TestNavigateToGitSessionAlreadyThereIsNoOp(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	statePath := appStatePath()
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	state := appState{
+		Projects: []storedProject{
+			{
+				Name: "alpha",
+				Sessions: []persistentSession{
+					{ID: "s1", Label: "Code"},
+					{ID: "s2", Label: "Git", Type: sessionTypeGit},
+				},
+			},
+		},
+	}
+	if err := saveAppState(statePath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions := []session{
+		{Name: "s1", Label: "Code"},
+		{Name: "s2", Label: "Git"},
+	}
+
+	switchCalled := false
+	topBarCalls := make(map[string]string)
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) { return sessions, nil },
+		switchClient: func(name string) error {
+			switchCalled = true
+			return nil
+		},
+		setSessionTopBar: func(name, content string) error {
+			topBarCalls[name] = content
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "s2")
+	if err := navigateToTypeWithManager(fake, sessionTypeGit); err != nil {
+		t.Fatalf("navigateToTypeWithManager: %v", err)
+	}
+	if switchCalled {
+		t.Fatal("switchClient called while already on the git session")
+	}
+	if _, ok := topBarCalls["s2"]; !ok {
+		t.Fatal("top bar was not refreshed for the already-active git session")
+	}
+}
+
+// TestNavigateToGitSessionNoMatchDisplaysMessage guards the no-git-session
+// case within a real project context: a short status message via
+// DisplayMessage, not silent failure or an error.
+func TestNavigateToGitSessionNoMatchDisplaysMessage(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	statePath := appStatePath()
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	state := appState{
+		Projects: []storedProject{
+			{
+				Name: "alpha",
+				Sessions: []persistentSession{
+					{ID: "s1", Label: "Code"},
+					{ID: "s2", Label: "Agent", Type: sessionTypeAgent, Command: "codex"},
+				},
+			},
+		},
+	}
+	if err := saveAppState(statePath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions := []session{
+		{Name: "s1", Label: "Code"},
+		{Name: "s2", Label: "Agent"},
+	}
+
+	switchCalled := false
+	var displayed string
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) { return sessions, nil },
+		switchClient: func(name string) error {
+			switchCalled = true
+			return nil
+		},
+		displayMessage: func(message string) error {
+			displayed = message
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "s1")
+	if err := navigateToTypeWithManager(fake, sessionTypeGit); err != nil {
+		t.Fatalf("navigateToTypeWithManager: %v", err)
+	}
+	if switchCalled {
+		t.Fatal("switchClient called despite no git session in the project")
+	}
+	if displayed == "" {
+		t.Fatal("expected a status message when no git session exists in the project")
+	}
+}
+
+// TestNavigateToGitSessionVolatileContextDisplaysMessage guards item-D's
+// documented limitation: session type is only ever tracked in persisted
+// project state, so a volatile (no-project) context can never resolve a
+// git session -- it must report a status message rather than error or do
+// nothing silently.
+func TestNavigateToGitSessionVolatileContextDisplaysMessage(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	sessions := []session{
+		{Name: "tflow-v-inst-1", Temporary: true, Instance: "inst"},
+	}
+
+	switchCalled := false
+	var displayed string
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) { return sessions, nil },
+		switchClient: func(name string) error {
+			switchCalled = true
+			return nil
+		},
+		displayMessage: func(message string) error {
+			displayed = message
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "tflow-v-inst-1")
+	if err := navigateToTypeWithManager(fake, sessionTypeGit); err != nil {
+		t.Fatalf("navigateToTypeWithManager: %v", err)
+	}
+	if switchCalled {
+		t.Fatal("switchClient called in a volatile context")
+	}
+	if displayed == "" {
+		t.Fatal("expected a status message in a volatile (no-project) context")
+	}
+}
+
+// TestNavigateToGitSessionLazilyMaterializesTarget guards that jumping to a
+// git session not currently running in tmux materializes it the same way
+// navigateWithManager already does for prev/next, running lazygit as its
+// command.
+func TestNavigateToGitSessionLazilyMaterializesTarget(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	statePath := appStatePath()
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	state := appState{
+		Projects: []storedProject{
+			{
+				Name:    "alpha",
+				Workdir: "/project/alpha",
+				Sessions: []persistentSession{
+					{ID: "s1", Label: "Code"},
+					{ID: "s2", Label: "Git", Type: sessionTypeGit},
+				},
+			},
+		},
+	}
+	if err := saveAppState(statePath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	// Only s1 is running in tmux; s2 (the git session) is not.
+	sessions := []session{
+		{Name: "s1", Label: "Code"},
+	}
+
+	var createdName, createdDir, createdCommand string
+	var switchedTo string
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) { return sessions, nil },
+		createSession: func(name, cwd, command string) (session, error) {
+			createdName, createdDir, createdCommand = name, cwd, command
+			return session{Name: name}, nil
+		},
+		setSessionProject: func(name, project string) error { return nil },
+		setSessionLabel:   func(name, label string) error { return nil },
+		switchClient: func(name string) error {
+			switchedTo = name
+			return nil
+		},
+		setSessionTopBar: func(name, content string) error { return nil },
+	}
+
+	t.Setenv(menuCurrentEnv, "s1")
+	if err := navigateToTypeWithManager(fake, sessionTypeGit); err != nil {
+		t.Fatalf("navigateToTypeWithManager: %v", err)
+	}
+	if createdName != "s2" {
+		t.Fatalf("created session = %q, want s2", createdName)
+	}
+	if createdDir != "/project/alpha" {
+		t.Fatalf("created dir = %q, want /project/alpha", createdDir)
+	}
+	if createdCommand != "lazygit" {
+		t.Fatalf("created command = %q, want lazygit", createdCommand)
+	}
+	if switchedTo != "s2" {
+		t.Fatalf("switched to %q, want s2", switchedTo)
+	}
+}

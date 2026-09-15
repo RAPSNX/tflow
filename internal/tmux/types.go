@@ -18,17 +18,24 @@ const (
 	instanceMarker        = "@tflow-instance"
 	attentionMarker       = "@tflow-attention"
 	visitedMarker         = "@tflow-visited-at"
-	// The popup renders as one wide, short horizontal strip (badge + inline
-	// session pills, mirroring the top bar's own row-of-pills shape) rather
-	// than a tall vertical list, so it is wide and short to match -- not
-	// narrow and tall.
-	menuWidth = "70%"
+	// The session list renders at a fixed width (see sessionLabelWidth in
+	// internal/ui/view.go), not derived from the popup's own size, so the
+	// popup itself needs a fixed width wide enough to fit the badge and
+	// that list without wrapping, rather than a percentage of the
+	// surrounding terminal.
+	menuWidth = "60"
 	// menuHeight stays below 100% so the popup fits under the status line.
 	// tmux resolves a popup that would overflow by moving it back up rather
 	// than shrinking it, so a full-height popup lands on the status line and
 	// hides the top bar. Percentages are floored, so this always leaves a row.
-	menuHeight         = "60%"
-	commandKey         = "C-Space"
+	menuHeight = "35%"
+	// prefixKey enters prefixTable, a brief wait state for the second key
+	// of the chord (mirroring how tmux's own prefix key, e.g. C-b, works:
+	// tmux auto-reverts the client to its previous table after exactly one
+	// keypress, bound or not, so no explicit timeout/cancel handling is
+	// needed beyond the Escape binding below for clarity).
+	prefixKey          = "C-f"
+	prefixTable        = "tflow-prefix"
 	commandTable       = "tflow-command"
 	quitKey            = "C-q"
 	CurrentSessionEnv  = "TFLOW_CURRENT_SESSION"
@@ -111,6 +118,7 @@ type Palette struct {
 	Mantle   string
 	Teal     string
 	Yellow   string
+	Green    string
 	Red      string
 }
 
@@ -141,12 +149,17 @@ func (m Manager) runner() Runner {
 	return Run
 }
 
+// statusLeft is the global fallback status-left, shown before the first
+// per-session FormatTopBar override lands -- styled to match it, with the
+// same filled, rounded-cap pill treatment around the project and session
+// segments.
 func (p Palette) statusLeft() string {
-	return "#[bg=" + p.Surface0 + ",fg=" + p.Subtext + "]" +
-		"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] project #[fg=" + p.Blue + "]#{@tflow-project} " +
+	return "#[bg=" + p.Mantle + ",fg=" + p.Surface0 + "]" +
+		"#[bg=" + p.Surface0 + ",fg=" + p.Blue + ",bold] #{@tflow-project} " +
 		"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]" +
-		"  #[bg=" + p.Surface0 + ",fg=" + p.Subtext + "]" +
-		"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] session #[fg=" + p.Teal + "]#{?@tflow-session-label,#{@tflow-session-label},#S} " +
+		"  " +
+		"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + "]" +
+		"#[bg=" + p.Surface0 + ",fg=" + p.Teal + ",bold] #{?@tflow-session-label,#{@tflow-session-label},#S} " +
 		"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]"
 }
 
@@ -154,6 +167,11 @@ func (p Palette) statusStyle() string {
 	return fmt.Sprintf("bg=%s,fg=%s", p.Mantle, p.Text)
 }
 
+// statusRight shows the COMMAND indicator only while the client is waiting
+// in prefixTable for the chord's second key (Ctrl+F held, about to press
+// f) -- not once the popup is actually open (commandTable), since the
+// popup itself (badge + bordered session list) is already an unambiguous
+// visual cue at that point and the pill would be redundant.
 func (p Palette) statusRight() string {
 	yellow := p.Yellow
 	if yellow == "" {
@@ -163,7 +181,7 @@ func (p Palette) statusRight() string {
 	if mantle == "" {
 		mantle = "#181825"
 	}
-	return "#{?#{==:#{client_key_table}," + commandTable + "},#[fg=" + yellow + "]#[bg=" + mantle + "]#[bg=" + yellow + "]#[fg=" + mantle + "]#[bold] COMMAND #[nobold]#[fg=" + yellow + "]#[bg=" + mantle + "]#[default],}"
+	return "#{?#{==:#{client_key_table}," + prefixTable + "},#[fg=" + yellow + "]#[bg=" + mantle + "]#[bg=" + yellow + "]#[fg=" + mantle + "]#[bold] COMMAND #[nobold]#[fg=" + yellow + "]#[bg=" + mantle + "]#[default],}"
 }
 
 func (p Palette) FormatTopBar(project string, labels []string, types []string, attentions []bool, activeIndex int) string {
@@ -181,54 +199,80 @@ func (p Palette) FormatTopBar(project string, labels []string, types []string, a
 		if i < len(types) {
 			sessionType = types[i]
 		}
-		icon := p.sessionTypeIcon(sessionType)
+		live := i == activeIndex
+		icon := p.sessionTypeIcon(sessionType, live)
 		attention := i < len(attentions) && attentions[i]
 		if i > 0 {
 			b.WriteString("  ")
 		}
-		if i == activeIndex {
-			b.WriteString("#[bg=" + p.Surface0 + ",fg=" + p.Subtext + "]" +
-				"#[bg=" + p.Surface0 + ",fg=" + p.Text + ",bold] " + icon + " " + p.attentionMark(attention) + label + " " +
+		if live {
+			b.WriteString("#[bg=" + p.Mantle + ",fg=" + p.Surface0 + "]" +
+				"#[bg=" + p.Surface0 + ",fg=" + p.Subtext + "] " + icon + " " + label + p.attentionMark(attention) + " " +
 				"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]")
 		} else {
-			b.WriteString("#[bg=" + p.Mantle + ",fg=" + p.Subtext + "]" + icon + " " + p.attentionMark(attention) + label)
+			b.WriteString("#[bg=" + p.Mantle + ",fg=" + p.Subtext + "]" + icon + " " + label + p.attentionMark(attention))
 		}
 	}
 	return b.String()
 }
 
-// attentionMark renders a red marker ahead of a session's label when its
+// attentionMark renders a red marker after a session's label when its
 // runtime-only attention flag is set, independent of its type and whether it
-// is the active pill.
+// is the active pill -- matching the popup's after-the-label ordering.
 func (p Palette) attentionMark(attention bool) string {
 	if !attention {
 		return ""
 	}
-	return "#[fg=" + p.Red + "]!#[fg=" + p.Subtext + "] "
+	return " #[fg=" + p.Red + "]!#[fg=" + p.Subtext + "]"
 }
 
 // sessionTypeIcon renders a session's type icon colored with its accent,
 // reverting back to the surrounding subtext color afterward so the label
-// that follows keeps its own active/inactive styling untouched.
-func (p Palette) sessionTypeIcon(sessionType string) string {
+// that follows keeps its own active/inactive styling untouched. A live
+// session (the one this client is currently attached to) always renders
+// green regardless of its type, mirroring the popup's liveChipStyle.
+func (p Palette) sessionTypeIcon(sessionType string, live bool) string {
+	glyph := typeGlyph(sessionType)
+	if live {
+		return "#[fg=" + p.Green + "]" + glyph + "#[fg=" + p.Subtext + "]"
+	}
+	color := p.Blue
 	switch sessionType {
 	case "git":
-		return "#[fg=" + p.Teal + "]⎇#[fg=" + p.Subtext + "]"
+		color = p.Teal
 	case "agent":
-		return "#[fg=" + p.Yellow + "]✦#[fg=" + p.Subtext + "]"
+		color = p.Yellow
+	}
+	return "#[fg=" + color + "]" + glyph + "#[fg=" + p.Subtext + "]"
+}
+
+// typeGlyph returns the bare icon glyph for a session type, independent of
+// any color -- shared by sessionTypeIcon's live and non-live branches.
+func typeGlyph(sessionType string) string {
+	switch sessionType {
+	case "git":
+		return "⎇"
+	case "agent":
+		return "✦"
 	default:
-		return "#[fg=" + p.Blue + "]>_#[fg=" + p.Subtext + "]"
+		return ">_"
 	}
 }
 
-// projectSection renders the leading project pill and the arrow dividing it
+// projectSection renders the leading project name and the arrow dividing it
 // from the session section. A volatile context has no project and renders an
-// empty pill rather than nothing, so the bar keeps its shape in every context.
+// empty section rather than nothing, so the bar keeps its shape in every
+// context. Plain text, no fill -- matching the popup's flat style language.
+// projectSection renders the leading project name as a filled,
+// rounded-cap pill (bg=Surface0 against the status line's ambient
+// bg=Mantle) and the arrow dividing it from the session section. A
+// volatile context has no project and renders an empty pill rather than
+// nothing, so the bar keeps its shape in every context.
 func (p Palette) projectSection(project string) string {
 	project = escapeTmuxFormatLiteral(strings.TrimSpace(project))
 	return "#[bg=" + p.Mantle + ",fg=" + p.Surface0 + "]" +
 		"#[bg=" + p.Surface0 + ",fg=" + p.Blue + ",bold] " + project + " " +
-		"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]" +
+		"#[bg=" + p.Mantle + ",fg=" + p.Surface0 + ",nobold]" +
 		"  "
 }
 

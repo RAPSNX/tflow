@@ -54,11 +54,22 @@ Commands:
 * Before finishing any change that touches tmux control mode, key bindings,
   the popup, or the status bar, verify it by hand in a real-like environment:
   build the binary, run it under a dedicated tmux socket other than the
-  default (e.g. `sed -i` a throwaway `socketName` locally, or set
-  `TMUX_TMPDIR`), attach it under `script` or a real terminal, and drive it
-  with `tmux -L <socket> send-keys` / `capture-pane`. Never run a manual
+  default, attach it under `script` or a real terminal, and drive it with
+  `tmux -L <socket> send-keys` / `capture-pane`. Never run a manual
   verification build against the default `tflow` socket; it collides with
   any real tflow instance already running on the machine.
+* Set up and tear down that isolated socket only through
+  `scripts/tmux-verify.sh` (`eval "$(scripts/tmux-verify.sh setup)"` sets
+  `ROOT`/`TMUX_TMPDIR`/`XDG_STATE_HOME`/`SOCK`; `scripts/tmux-verify.sh
+  cleanup "$ROOT"` tears it down) -- never hand-roll
+  `mktemp`/`export`/`rm -rf` for this. A past incident (see git history)
+  ran a bare `rm -rf "$TMUX_TMPDIR"` with the variable unset in a shell
+  that hadn't re-sourced it; it fell back to an ambient value and wiped
+  the user's XDG runtime directory (Wayland, D-Bus, and PipeWire sockets),
+  forcing a session restart. The script's `cleanup` refuses to run unless
+  its argument is a real, existing, canonicalized path under its own
+  `${TMPDIR:-/tmp}/tmux-verify.*` naming, so the same class of mistake
+  can't resolve to a dangerous path even if it recurs.
 
 ## Git workflow
 

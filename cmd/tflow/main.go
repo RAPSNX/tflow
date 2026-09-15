@@ -63,6 +63,8 @@ func run(args []string, output io.Writer, start func() error) error {
 		return ui.NavigatePrev()
 	case "navigate-next":
 		return ui.NavigateNext()
+	case "jump-git":
+		return ui.NavigateToGitSession()
 	case "cleanup-client":
 		return runtmux.CleanupDetachedClient()
 	case "session-activity":

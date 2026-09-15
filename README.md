@@ -60,13 +60,17 @@ Start `tflow` in a terminal. It opens a volatile session that behaves like a nor
 
 The top bar shows the current project and every session in it, with the active one highlighted.
 
-Press `Ctrl+Space` to open the command sidebar; it opens below the top bar, so the bar stays visible while you choose. While it is open, press `h` or `l` to move to the previous or next session; the sidebar then closes. From the sidebar you can also create, rename, move, delete, and switch projects and sessions. Press `Ctrl+Q` to quit the current tflow instance.
+Press `Ctrl+F` to enter command mode -- holding it down works the same as tapping it. From there, `f` opens the command sidebar (holding Ctrl down through both presses works too, you don't need to release it between them) below the top bar, so the bar stays visible while you choose. `h` and `l` jump straight to the previous or next session without opening the sidebar at all, and `g` jumps straight to the current project's git session -- all three act immediately from command mode. Once the sidebar is open, `h`/`l` still work there too, navigating and closing it. From the sidebar you can also create, rename, move, delete, and switch projects and sessions. Press `Ctrl+Q` to quit the current tflow instance.
 
 ## Shortcuts
 
 | Key | Action |
 |---|---|
-| `Ctrl+Space` | Toggle command sidebar |
+| `Ctrl+F` | Enter command mode |
+| `f` (command mode) | Open command sidebar |
+| `h` (command mode) | Switch to the previous session immediately, no sidebar |
+| `l` (command mode) | Switch to the next session immediately, no sidebar |
+| `g` (command mode) | Jump to the current project's git session immediately, no sidebar |
 | `h` (command sidebar) | Navigate to previous session and close sidebar |
 | `l` (command sidebar) | Navigate to next session and close sidebar |
 | `Esc` / `Ctrl+C` (command sidebar) | Close command sidebar |

@@ -113,22 +113,62 @@ Explicit deletion follows these rules:
 
 ### Keys
 
-`Ctrl+Space` toggles the sidebar in command mode, with a visible `COMMAND`
-indicator pill in the status bar. While that sidebar is open, `h` selects the
-previous contextual session and `l` selects the next; either action closes the
-sidebar and returns the client to normal input. A second `Ctrl+Space`, `Esc`, or
-`Ctrl+C` closes the command sidebar without navigating. Other sidebar shortcuts
-keep their normal behavior. `Ctrl+Q` opens confirmation for quitting the current
-instance and removing its volatile sessions. No configuration, timer, or key
-replay is involved, and tflow does not bind `Ctrl+F`.
+`Ctrl+F` then `f` toggles the sidebar. `Ctrl+F` alone enters command mode: a
+brief wait state for the chord's second key, mirroring how tmux's own prefix
+key works, with a visible `COMMAND` indicator pill in the status bar for as
+long as it lasts. Either `f` or a held `Ctrl+F` (someone holding Ctrl down
+through both presses never releases it between them, so the second key can
+arrive as `Ctrl+F` instead of a plain `f`) finishes the chord and opens the
+sidebar; any other key, or no key at all, silently reverts to normal input
+with no timer or explicit cancellation needed. The indicator disappears the
+moment the sidebar opens -- command mode is specifically the `Ctrl+F` wait,
+not "the sidebar is open"; the sidebar itself (badge and bordered session
+list) is an unambiguous enough cue on its own once visible. While the
+sidebar is open, `h` selects the previous contextual session and `l` selects
+the next; either action closes the sidebar and returns the client to normal
+input. Repeating `Ctrl+F, f`, or pressing `Esc` or `Ctrl+C`, closes the
+command sidebar without navigating. Other sidebar shortcuts keep their
+normal behavior. `Ctrl+Q` opens confirmation for quitting the current
+instance and removing its volatile sessions. No configuration or key replay
+is involved.
 
 ### Command sidebar
 
 The command sidebar never covers the status line, so the top bar stays readable
-while command mode is active. It is centered horizontally under the top bar and
-shaped wide and short: the tflow badge sits on the left, with every contextual
-session rendered as an inline pill beside it on the same row, mirroring the top
-bar's own row-of-pills shape.
+while command mode is active. Inside the popup, the tflow badge sits as plain
+coloured text on its own line, with the session list stacked below it, offset
+to the right and framed in its own thin border. The whole component is
+centered both horizontally and vertically in the popup rather than pinned to a
+corner. The session list renders at a fixed width rather than stretching to
+fill the popup, with a "Sessions" header, a blank line, then every contextual
+session stacked one per row below it, each shown as its type icon (`>_` code,
+`⎇` git, `✦` agent) plus its label; a session's icon turns green instead of
+its type color when it is the live, attached one. Neither the badge, the
+chips, nor the selected row has a background color of its own -- every
+distinction is colour and weight alone, so the whole popup shares one single
+background. The selected row is marked by bold, bright white text, rather
+than a background block, a separate marker glyph, or a "live" text badge:
+
+```
+┌────────────────────────────────────┐
+│ TFLOW                              │
+│          ╭────────────────────╮    │
+│          │                    │    │
+│          │    Sessions        │    │
+│          │                    │    │
+│          │    >_  feature-x   │    │
+│          │    >_  fox         │    │
+│          │                    │    │
+│          ╰────────────────────╯    │
+│                                    │
+└────────────────────────────────────┘
+```
+
+(the outer box above is the tmux popup frame itself, not part of tflow's own
+rendering; the inner box is the session list's own thin border, separate from
+the unboxed badge above it; `feature-x` is bold, bright white in the real
+popup to mark it as the selected, live session, while `fox` is a plain,
+unselected row.)
 
 Navigation moves through the same order shown by the sidebar: stored order in
 the active project or tmux list order for the current instance's volatile

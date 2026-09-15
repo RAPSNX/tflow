@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"hash/fnv"
 	"strings"
 )
 
@@ -225,24 +224,6 @@ func removeStateSession(state *appState, id string) {
 
 func sanitizeProjectName(name string) string {
 	return normalizeProjectName(name)
-}
-
-func projectAccentColor(project string) string {
-	palette := []string{
-		"#89b4fa",
-		"#94e2d5",
-		"#f9e2af",
-		"#f38ba8",
-		"#cba6f7",
-		"#f5c2e7",
-		"#fab387",
-		"#74c7ec",
-		"#a6e3a1",
-	}
-	project = normalizeProjectName(project)
-	hasher := fnv.New32a()
-	_, _ = hasher.Write([]byte(project))
-	return palette[hasher.Sum32()%uint32(len(palette))]
 }
 
 func fallbackText(value, fallback string) string {

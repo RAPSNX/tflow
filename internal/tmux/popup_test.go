@@ -6,6 +6,29 @@ import (
 	"testing"
 )
 
+// splitBatchGroups splits a fake Run call's args on runBatch's literal ";"
+// separator into the individual command groups tmux itself would run in
+// order -- mirroring how a real tmux server processes a chained
+// "cmd1 \; cmd2 \; cmd3" invocation. A call that was never batched (every
+// non-openMenu caller in this package still shells out one command per
+// Run call) comes back as a single group, so callers can loop over the
+// result unconditionally regardless of whether this particular call was
+// batched.
+func splitBatchGroups(args []string) [][]string {
+	var groups [][]string
+	var current []string
+	for _, a := range args {
+		if a == ";" {
+			groups = append(groups, current)
+			current = nil
+			continue
+		}
+		current = append(current, a)
+	}
+	groups = append(groups, current)
+	return groups
+}
+
 func TestToggleMenuClosesExistingPopup(t *testing.T) {
 	var calls [][]string
 	manager := Manager{
@@ -59,28 +82,31 @@ func TestToggleMenuMarksPopupBeforeOpening(t *testing.T) {
 	var calls [][]string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			calls = append(calls, append([]string(nil), args...))
-			switch args[0] {
-			case "display-message":
-				switch args[2] {
-				case "#{session_name}":
-					return "otter-temp", nil
-				case "#{client_name}":
-					return "@2", nil
+			for _, group := range splitBatchGroups(args) {
+				calls = append(calls, append([]string(nil), group...))
+				switch group[0] {
+				case "display-message":
+					switch group[2] {
+					case "#{session_name}":
+						return "otter-temp", nil
+					case "#{client_name}":
+						return "@2", nil
+					default:
+						t.Fatalf("unexpected display-message format: %v", group)
+					}
+				case "show-options":
+					return "instance-1", nil
+				case "show-environment":
+					return "", nil
+				case "set-environment":
+					// A write within a batch -- keep looping to process the
+					// remaining groups, matching tmux running each command in
+					// a chained invocation in order.
+				case "display-popup":
+					popupArgs = append([]string(nil), group...)
 				default:
-					t.Fatalf("unexpected display-message format: %v", args)
+					t.Fatalf("unexpected command: %v", group)
 				}
-			case "show-options":
-				return "instance-1", nil
-			case "show-environment":
-				return "", nil
-			case "set-environment":
-				return "", nil
-			case "display-popup":
-				popupArgs = append([]string(nil), args...)
-				return "", nil
-			default:
-				t.Fatalf("unexpected command: %v", args)
 			}
 			return "", nil
 		},
@@ -129,30 +155,32 @@ func TestToggleMenuFromPersistentSessionResolvesEmptyInstanceWithoutServerEnvFal
 	var popupArgs []string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			switch args[0] {
-			case "display-message":
-				switch args[2] {
-				case "#{session_name}":
-					return "dev", nil
-				case "#{client_name}":
-					return "@2", nil
+			for _, group := range splitBatchGroups(args) {
+				switch group[0] {
+				case "display-message":
+					switch group[2] {
+					case "#{session_name}":
+						return "dev", nil
+					case "#{client_name}":
+						return "@2", nil
+					default:
+						return "", fmt.Errorf("unexpected display-message format: %v", group)
+					}
+				case "show-options":
+					return "", nil
+				case "show-environment":
+					// Even if the global environment still holds a stale entry from a
+					// prior client-scoped registry, it must never be consulted.
+					return "TFLOW_MENU_INSTANCE_2=instance-stale\n", nil
+				case "set-environment":
+					// batched write, keep processing remaining groups
+				case "display-popup":
+					popupArgs = append([]string(nil), group...)
 				default:
-					return "", fmt.Errorf("unexpected display-message format: %v", args)
+					return "", fmt.Errorf("unexpected command: %v", group)
 				}
-			case "show-options":
-				return "", nil
-			case "show-environment":
-				// Even if the global environment still holds a stale entry from a
-				// prior client-scoped registry, it must never be consulted.
-				return "TFLOW_MENU_INSTANCE_2=instance-stale\n", nil
-			case "set-environment":
-				return "", nil
-			case "display-popup":
-				popupArgs = append([]string(nil), args...)
-				return "", nil
-			default:
-				return "", fmt.Errorf("unexpected command: %v", args)
 			}
+			return "", nil
 		},
 	}
 
@@ -178,26 +206,28 @@ func TestToggleMenuPrefersActiveSessionInstanceOverAmbientEnv(t *testing.T) {
 	var popupArgs []string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			switch args[0] {
-			case "display-message":
-				switch args[2] {
-				case "#{session_name}":
-					return "otter-temp", nil
-				case "#{client_name}":
-					return "@2", nil
+			for _, group := range splitBatchGroups(args) {
+				switch group[0] {
+				case "display-message":
+					switch group[2] {
+					case "#{session_name}":
+						return "otter-temp", nil
+					case "#{client_name}":
+						return "@2", nil
+					default:
+						return "", fmt.Errorf("unexpected display-message format: %v", group)
+					}
+				case "show-options":
+					return "instance-live", nil
+				case "show-environment", "set-environment":
+					// batched read/write, keep processing remaining groups
+				case "display-popup":
+					popupArgs = append([]string(nil), group...)
 				default:
-					return "", fmt.Errorf("unexpected display-message format: %v", args)
+					return "", fmt.Errorf("unexpected command: %v", group)
 				}
-			case "show-options":
-				return "instance-live", nil
-			case "show-environment", "set-environment":
-				return "", nil
-			case "display-popup":
-				popupArgs = append([]string(nil), args...)
-				return "", nil
-			default:
-				return "", fmt.Errorf("unexpected command: %v", args)
 			}
+			return "", nil
 		},
 	}
 
@@ -231,41 +261,44 @@ func TestToggleMenuFromPersistentSessionRetainsClientOwnedInstance(t *testing.T)
 	var popupArgs []string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			switch args[0] {
-			case "display-message":
-				switch args[2] {
-				case "#{session_name}":
-					return currentSession, nil
-				case "#{client_name}":
-					return "@2", nil
+			for _, group := range splitBatchGroups(args) {
+				switch group[0] {
+				case "display-message":
+					switch group[2] {
+					case "#{session_name}":
+						return currentSession, nil
+					case "#{client_name}":
+						return "@2", nil
+					default:
+						return "", fmt.Errorf("unexpected display-message format: %v", group)
+					}
+				case "show-options":
+					if currentSession == "otter-temp" {
+						return "instance-1", nil
+					}
+					return "", nil
+				case "show-environment":
+					lines := make([]string, 0, len(globalEnv))
+					for key, value := range globalEnv {
+						lines = append(lines, key+"="+value)
+					}
+					return strings.Join(lines, "\n"), nil
+				case "set-environment":
+					switch group[1] {
+					case "-gh":
+						globalEnv[group[2]] = group[3]
+					case "-gu":
+						delete(globalEnv, group[2])
+					}
+				case "display-popup":
+					if !(len(group) > 1 && group[1] == "-C") {
+						popupArgs = append([]string(nil), group...)
+					}
 				default:
-					return "", fmt.Errorf("unexpected display-message format: %v", args)
+					return "", fmt.Errorf("unexpected command: %v", group)
 				}
-			case "show-options":
-				if currentSession == "otter-temp" {
-					return "instance-1", nil
-				}
-				return "", nil
-			case "show-environment":
-				lines := make([]string, 0, len(globalEnv))
-				for key, value := range globalEnv {
-					lines = append(lines, key+"="+value)
-				}
-				return strings.Join(lines, "\n"), nil
-			case "set-environment":
-				switch args[1] {
-				case "-gh":
-					globalEnv[args[2]] = args[3]
-				case "-gu":
-					delete(globalEnv, args[2])
-				}
-				return "", nil
-			case "display-popup":
-				popupArgs = append([]string(nil), args...)
-				return "", nil
-			default:
-				return "", fmt.Errorf("unexpected command: %v", args)
 			}
+			return "", nil
 		},
 	}
 
@@ -298,35 +331,35 @@ func TestToggleCommandMenuOpensAndClosesCommandSidebar(t *testing.T) {
 	var popupArgs []string
 	var keyTables []string
 	manager := Manager{Run: func(args ...string) (string, error) {
-		switch args[0] {
-		case "show-environment":
-			if popupVisible {
-				return popupEnvKey("@2") + "=1\n", nil
-			}
-			return "", nil
-		case "show-options":
-			return "instance-1", nil
-		case "set-environment":
-			if args[1] == "-gh" {
-				popupVisible = true
-			}
-			if args[1] == "-gu" {
-				popupVisible = false
-			}
-			return "", nil
-		case "switch-client":
-			keyTables = append(keyTables, args[len(args)-1])
-			return "", nil
-		case "display-popup":
-			if len(args) > 1 && args[1] == "-C" {
-				popupVisible = false
+		for _, group := range splitBatchGroups(args) {
+			switch group[0] {
+			case "show-environment":
+				if popupVisible {
+					return popupEnvKey("@2") + "=1\n", nil
+				}
 				return "", nil
+			case "show-options":
+				return "instance-1", nil
+			case "set-environment":
+				if group[1] == "-gh" {
+					popupVisible = true
+				}
+				if group[1] == "-gu" {
+					popupVisible = false
+				}
+			case "switch-client":
+				keyTables = append(keyTables, group[len(group)-1])
+			case "display-popup":
+				if len(group) > 1 && group[1] == "-C" {
+					popupVisible = false
+				} else {
+					popupArgs = append([]string(nil), group...)
+				}
+			default:
+				return "", fmt.Errorf("unexpected command: %v", group)
 			}
-			popupArgs = append([]string(nil), args...)
-			return "", nil
-		default:
-			return "", fmt.Errorf("unexpected command: %v", args)
 		}
+		return "", nil
 	}}
 
 	if err := manager.ToggleCommandMenu("/tmp/tflow"); err != nil {
@@ -355,21 +388,26 @@ func TestToggleCommandMenuResetsKeyTableAfterPopupOpenFailure(t *testing.T) {
 
 	var keyTables []string
 	manager := Manager{Run: func(args ...string) (string, error) {
-		switch args[0] {
-		case "show-environment":
-			return "", nil
-		case "show-options":
-			return "instance-1", nil
-		case "set-environment":
-			return "", nil
-		case "switch-client":
-			keyTables = append(keyTables, args[len(args)-1])
-			return "", nil
-		case "display-popup":
-			return "", fmt.Errorf("popup failed")
-		default:
-			return "", fmt.Errorf("unexpected command: %v", args)
+		for _, group := range splitBatchGroups(args) {
+			switch group[0] {
+			case "show-environment":
+				return "", nil
+			case "show-options":
+				return "instance-1", nil
+			case "set-environment":
+				// batched write, keep processing remaining groups
+			case "switch-client":
+				keyTables = append(keyTables, group[len(group)-1])
+			case "display-popup":
+				// tmux stops the batch here -- the earlier groups in this
+				// same invocation (mark + switch-client to commandTable)
+				// already applied, matching a real tmux server.
+				return "", fmt.Errorf("popup failed")
+			default:
+				return "", fmt.Errorf("unexpected command: %v", group)
+			}
 		}
+		return "", nil
 	}}
 
 	if err := manager.ToggleCommandMenu("/tmp/tflow"); err == nil {
@@ -377,5 +415,83 @@ func TestToggleCommandMenuResetsKeyTableAfterPopupOpenFailure(t *testing.T) {
 	}
 	if got := strings.Join(keyTables, ","); got != commandTable+",root" {
 		t.Fatalf("key tables after failed open = %q, want %q", got, commandTable+",root")
+	}
+}
+
+// TestRunBatchChainsGroupsWithTmuxSeparator guards runBatch's own argv
+// shape directly: each group joined by a literal ";" token (tmux's own
+// command separator, not a shell feature), in order, with no group merged
+// or reordered.
+func TestRunBatchChainsGroupsWithTmuxSeparator(t *testing.T) {
+	var got []string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		got = args
+		return "", nil
+	}}
+
+	if _, err := manager.runBatch(
+		[]string{"set-environment", "-gh", "KEY", "1"},
+		[]string{"switch-client", "-c", "@2", "-T", "tflow-command"},
+		[]string{"display-popup", "-c", "@2"},
+	); err != nil {
+		t.Fatalf("runBatch returned error: %v", err)
+	}
+
+	want := []string{
+		"set-environment", "-gh", "KEY", "1", ";",
+		"switch-client", "-c", "@2", "-T", "tflow-command", ";",
+		"display-popup", "-c", "@2",
+	}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("runBatch args = %#v, want %#v", got, want)
+	}
+}
+
+// TestToggleCommandMenuOpenCollapsesThreeWritesIntoOneSubprocessCall guards
+// the item-C latency fix directly: opening the command sidebar must shell
+// out exactly once for the mark-popup + key-table-switch + display-popup
+// sequence, instead of three separate subprocess round-trips -- the two
+// prior reads (menuPopupVisible's show-environment, resolveInstanceID's
+// show-options) and the remember-instance write stay their own calls, since
+// their results decide what runs next.
+func TestToggleCommandMenuOpenCollapsesThreeWritesIntoOneSubprocessCall(t *testing.T) {
+	t.Setenv(CurrentSessionEnv, "otter-temp")
+	t.Setenv(CurrentClientEnv, "@2")
+
+	rawCallCount := 0
+	manager := Manager{Run: func(args ...string) (string, error) {
+		rawCallCount++
+		groups := splitBatchGroups(args)
+		if len(groups) == 3 {
+			// This is the batched write: mark, key-table switch, then
+			// display-popup, in that order.
+			if groups[0][0] != "set-environment" || groups[1][0] != "switch-client" || groups[2][0] != "display-popup" {
+				t.Fatalf("unexpected batch group order: %#v", groups)
+			}
+			return "", nil
+		}
+		switch args[0] {
+		case "show-environment":
+			return "", nil
+		case "show-options":
+			return "instance-1", nil
+		case "set-environment":
+			return "", nil
+		default:
+			t.Fatalf("unexpected unbatched command: %v", args)
+			return "", nil
+		}
+	}}
+
+	if err := manager.ToggleCommandMenu("/tmp/tflow"); err != nil {
+		t.Fatalf("ToggleCommandMenu open: %v", err)
+	}
+
+	// menuPopupVisible (show-environment) + resolveInstanceID (show-options)
+	// + rememberClientInstance (set-environment) + the one batched write =
+	// 4 raw subprocess invocations, down from 6 before this three-write
+	// sequence was collapsed into a single runBatch call.
+	if rawCallCount != 4 {
+		t.Fatalf("raw subprocess call count = %d, want 4", rawCallCount)
 	}
 }

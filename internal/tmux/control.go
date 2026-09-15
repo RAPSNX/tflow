@@ -18,6 +18,16 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 	quitShell := strings.Join(append(parts, "exec "+ShellQuote(binaryPath)+" open-quit"), " ")
 	cleanupClientShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" cleanup-client"), " ")
 	sessionOnlyPart := fmt.Sprintf("%s=%s", CurrentSessionEnv, ShellQuote("#{session_name}"))
+	// navigate-prev/navigate-next/jump-git are already fully standalone --
+	// they resolve the current session from this same env var, lazily
+	// materialize their target if needed, and switch the client directly,
+	// with no popup involved -- so binding them straight at the
+	// prefixTable wait-state level (h/l/g fire immediately after Ctrl+F,
+	// before f would open the popup) is a small, low-risk addition to a
+	// path that already runs this exact shape for toggle-command-menu.
+	navigatePrevShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " navigate-prev"
+	navigateNextShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " navigate-next"
+	jumpGitShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " jump-git"
 	sessionActivityShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " session-activity"
 	sessionVisitedShell := sessionOnlyPart + " " +
 		fmt.Sprintf("%s=%s", LastVisitedSessionEnv, ShellQuote("#{client_last_session}")) +
@@ -83,9 +93,25 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 		{"set-window-option", "-g", "monitor-activity", "on"},
 		{"set-hook", "-g", "alert-activity", "run-shell " + ShellQuote(sessionActivityShell)},
 		{"set-hook", "-g", "client-session-changed", "run-shell " + ShellQuote(sessionVisitedShell)},
-		{"unbind-key", "-q", "-n", "C-f"},
-		{"bind-key", "-n", commandKey, "run-shell", toggleCommandShell},
+		{"bind-key", "-n", prefixKey, "switch-client", "-T", prefixTable},
+		// Both "f" and a held "C-f" finish the chord -- someone tapping the
+		// same key twice while physically holding Ctrl down never releases
+		// it between presses, so the second key arrives as C-f, not f.
+		{"bind-key", "-T", prefixTable, "f", "run-shell", toggleCommandShell},
+		{"bind-key", "-T", prefixTable, prefixKey, "run-shell", toggleCommandShell},
+		// h/l/g act immediately from the prefixTable wait-state, without
+		// ever opening the popup -- see navigatePrevShell/navigateNextShell/
+		// jumpGitShell's comment above.
+		{"bind-key", "-T", prefixTable, "h", "run-shell", navigatePrevShell},
+		{"bind-key", "-T", prefixTable, "l", "run-shell", navigateNextShell},
+		{"bind-key", "-T", prefixTable, "g", "run-shell", jumpGitShell},
+		{"bind-key", "-T", prefixTable, "Escape", "switch-client", "-T", "root"},
 		{"bind-key", "-T", commandTable, "Escape", "switch-client", "-T", "root"},
+		// commandTable (the popup-is-open table) has no fallback to root -n
+		// bindings, so C-f alone does nothing while the popup is open unless
+		// it's bound here too: repeating Ctrl+F, f to close the popup needs
+		// this table to also enter prefixTable for the chord's second key.
+		{"bind-key", "-T", commandTable, prefixKey, "switch-client", "-T", prefixTable},
 		{"bind-key", "-n", quitKey, "run-shell", quitShell},
 	}
 	for _, args := range commands {

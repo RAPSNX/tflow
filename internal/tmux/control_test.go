@@ -38,8 +38,8 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"set-option", "-g", "terminal-features", "xterm-256color:RGB,screen-256color:RGB,tmux-256color:RGB"},
 		{"set-option", "-g", "status-left-length", "200"},
 		{"set-option", "-g", "status-right-length", "30"},
-		{"set-option", "-g", "status-left", "#[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] project #[fg=#89b4fa]#{@tflow-project} #[bg=#181825,fg=#313244,nobold]  #[bg=#313244,fg=#a6adc8]#[bg=#313244,fg=#cdd6f4,bold] session #[fg=#94e2d5]#{?@tflow-session-label,#{@tflow-session-label},#S} #[bg=#181825,fg=#313244,nobold]"},
-		{"set-option", "-g", "status-right", "#{?#{==:#{client_key_table},tflow-command},#[fg=#f9e2af]#[bg=#181825]#[bg=#f9e2af]#[fg=#181825]#[bold] COMMAND #[nobold]#[fg=#f9e2af]#[bg=#181825]#[default],}#(TFLOW_CURRENT_SESSION='#{session_name}' exec '/tmp/tflow' attention-scan)"},
+		{"set-option", "-g", "status-left", "#[bg=#181825,fg=#313244]\ue0b6#[bg=#313244,fg=#89b4fa,bold] #{@tflow-project} #[bg=#181825,fg=#313244,nobold]\ue0b4  #[bg=#181825,fg=#313244]\ue0b6#[bg=#313244,fg=#94e2d5,bold] #{?@tflow-session-label,#{@tflow-session-label},#S} #[bg=#181825,fg=#313244,nobold]\ue0b4"},
+		{"set-option", "-g", "status-right", "#{?#{==:#{client_key_table},tflow-prefix},#[fg=#f9e2af]#[bg=#181825]#[bg=#f9e2af]#[fg=#181825]#[bold] COMMAND #[nobold]#[fg=#f9e2af]#[bg=#181825]#[default],}#(TFLOW_CURRENT_SESSION='#{session_name}' exec '/tmp/tflow' attention-scan)"},
 		{"set-option", "-g", "window-status-format", ""},
 		{"set-option", "-g", "window-status-current-format", ""},
 		{"set-window-option", "-g", "remain-on-exit", "on"},
@@ -76,9 +76,12 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"set-window-option", "-g", "monitor-activity", "on"},
 		{"set-hook", "-g", "alert-activity", "run-shell " + ShellQuote("TFLOW_CURRENT_SESSION='#{session_name}' exec '/tmp/tflow' session-activity")},
 		{"set-hook", "-g", "client-session-changed", "run-shell " + ShellQuote("TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_LAST_VISITED_SESSION='#{client_last_session}' exec '/tmp/tflow' session-visited")},
-		{"unbind-key", "-q", "-n", "C-f"},
-		{"bind-key", "-n", "C-Space", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-command-menu"},
+		{"bind-key", "-n", "C-f", "switch-client", "-T", "tflow-prefix"},
+		{"bind-key", "-T", "tflow-prefix", "f", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-command-menu"},
+		{"bind-key", "-T", "tflow-prefix", "C-f", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-command-menu"},
+		{"bind-key", "-T", "tflow-prefix", "Escape", "switch-client", "-T", "root"},
 		{"bind-key", "-T", "tflow-command", "Escape", "switch-client", "-T", "root"},
+		{"bind-key", "-T", "tflow-command", "C-f", "switch-client", "-T", "tflow-prefix"},
 		{"bind-key", "-n", "C-q", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' open-quit"},
 	}
 	for _, want := range wants {
@@ -191,7 +194,14 @@ func TestEnsureControlModeInstallsAttentionHooks(t *testing.T) {
 	}
 }
 
-func TestEnsureControlModeDoesNotBindCtrlF(t *testing.T) {
+// TestEnsureControlModeBindsCtrlFPrefixChord guards the C-f, f chord: C-f at
+// the root table only switches the client into a dedicated wait-state table
+// (tflow-prefix) -- mirroring how tmux's own prefix key works, auto-reverting
+// after one keypress -- rather than opening the popup directly. Within that
+// table, either "f" or a held "C-f" toggles it -- someone physically holding
+// Ctrl through both presses never releases it, so the second key can arrive
+// as C-f instead of f.
+func TestEnsureControlModeBindsCtrlFPrefixChord(t *testing.T) {
 	var calls [][]string
 	manager := Manager{Run: func(args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
@@ -202,9 +212,121 @@ func TestEnsureControlModeDoesNotBindCtrlF(t *testing.T) {
 		t.Fatalf("EnsureControlMode returned error: %v", err)
 	}
 
+	foundPrefixSwitch := false
 	for _, call := range calls {
 		if len(call) >= 4 && call[0] == "bind-key" && call[1] == "-n" && call[2] == "C-f" {
-			t.Fatalf("EnsureControlMode must not bind C-f: %#v", call)
+			foundPrefixSwitch = true
+			if len(call) < 6 || call[3] != "switch-client" || call[4] != "-T" || call[5] != "tflow-prefix" {
+				t.Fatalf("root C-f binding = %#v, want a switch-client into tflow-prefix, not a direct toggle", call)
+			}
+		}
+		// C-f must never be bound to open the popup directly at the root
+		// table -- only the chord's second key, "f" inside tflow-prefix,
+		// does that (checked separately below).
+		if len(call) >= 4 && call[0] == "bind-key" && call[1] == "-n" && call[2] == "C-f" && len(call) >= 5 && call[3] == "run-shell" {
+			t.Fatalf("C-f must not directly open the popup: %#v", call)
+		}
+	}
+	if !foundPrefixSwitch {
+		t.Fatal("EnsureControlMode did not bind C-f to enter tflow-prefix")
+	}
+
+	foundToggle := false
+	foundHeldToggle := false
+	for _, call := range calls {
+		if len(call) >= 4 && call[0] == "bind-key" && call[1] == "-T" && call[2] == "tflow-prefix" && call[3] == "f" {
+			foundToggle = true
+		}
+		if len(call) >= 4 && call[0] == "bind-key" && call[1] == "-T" && call[2] == "tflow-prefix" && call[3] == "C-f" {
+			foundHeldToggle = true
+		}
+	}
+	if !foundToggle {
+		t.Fatal("EnsureControlMode did not bind \"f\" inside tflow-prefix to toggle the popup")
+	}
+	if !foundHeldToggle {
+		t.Fatal("EnsureControlMode did not bind a held \"C-f\" inside tflow-prefix to toggle the popup")
+	}
+
+	// commandTable (the popup-is-open table) has no fallback to root -n
+	// bindings -- verified live, C-f does nothing there unless it's also
+	// bound in this table -- so repeating Ctrl+F, f to close the popup
+	// needs commandTable to also switch into tflow-prefix on C-f.
+	foundCommandTablePrefixSwitch := false
+	for _, call := range calls {
+		if len(call) >= 4 && call[0] == "bind-key" && call[1] == "-T" && call[2] == "tflow-command" && call[3] == "C-f" {
+			foundCommandTablePrefixSwitch = true
+			if len(call) < 6 || call[4] != "switch-client" || call[5] != "-T" {
+				t.Fatalf("commandTable C-f binding = %#v, want a switch-client into tflow-prefix", call)
+			}
+		}
+	}
+	if !foundCommandTablePrefixSwitch {
+		t.Fatal("EnsureControlMode did not bind C-f inside tflow-command to re-enter tflow-prefix")
+	}
+}
+
+// TestEnsureControlModeBindsQuickCommandModeActions guards item D: h/l/g
+// must fire immediately from the tflow-prefix wait-state itself (not from
+// commandTable, which is only entered once the popup is already open), each
+// via run-shell invoking the tflow binary's own navigate-prev/navigate-next/
+// jump-git subcommands -- the same standalone, no-popup shape
+// toggle-command-menu already uses for "f".
+func TestEnsureControlModeBindsQuickCommandModeActions(t *testing.T) {
+	var calls [][]string
+	manager := Manager{Run: func(args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "", nil
+	}}
+
+	if err := manager.EnsureControlMode("/tmp/tflow", Palette{}); err != nil {
+		t.Fatalf("EnsureControlMode returned error: %v", err)
+	}
+
+	wants := map[string]string{
+		"h": "navigate-prev",
+		"l": "navigate-next",
+		"g": "jump-git",
+	}
+	for key, subcommand := range wants {
+		found := false
+		for _, call := range calls {
+			if len(call) >= 6 && call[0] == "bind-key" && call[1] == "-T" && call[2] == prefixTable && call[3] == key {
+				found = true
+				if call[4] != "run-shell" {
+					t.Fatalf("tflow-prefix %q binding = %#v, want run-shell, not a direct tmux command (must not open the popup)", key, call)
+				}
+				if !strings.Contains(call[5], "'/tmp/tflow' "+subcommand) {
+					t.Fatalf("tflow-prefix %q run-shell script = %q, want it to invoke %q", key, call[5], subcommand)
+				}
+				if !strings.Contains(call[5], CurrentSessionEnv+"=") {
+					t.Fatalf("tflow-prefix %q run-shell script = %q, want the current session env forwarded", key, call[5])
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("EnsureControlMode did not bind %q inside tflow-prefix", key)
+		}
+	}
+
+	// These three must never be bound inside commandTable (the popup-is-open
+	// table) or at the root (-n) level -- only from the brief tflow-prefix
+	// wait-state, before the popup ever opens.
+	for _, call := range calls {
+		if len(call) < 4 || call[0] != "bind-key" {
+			continue
+		}
+		var key string
+		switch {
+		case call[1] == "-T" && call[2] == commandTable:
+			key = call[3]
+		case call[1] == "-n":
+			key = call[2]
+		default:
+			continue
+		}
+		if key == "h" || key == "l" || key == "g" {
+			t.Fatalf("quick command-mode action %q must only be bound inside tflow-prefix, found elsewhere: %#v", key, call)
 		}
 	}
 }
@@ -303,6 +425,7 @@ func topBarPalette() Palette {
 		Text:     "#cdd6f4",
 		Blue:     "#89b4fa",
 		Mantle:   "#181825",
+		Green:    "#a6da95",
 	}
 }
 
@@ -322,8 +445,8 @@ func TestFormatTopBar(t *testing.T) {
 	if strings.Count(single, "only") != 1 {
 		t.Fatalf("expected single label to appear exactly once, got: %q", single)
 	}
-	if strings.Count(single, "\ue0b6") != 2 || strings.Count(single, "\ue0b4") != 1 {
-		t.Fatalf("single FormatTopBar should have a project pill and one session pill: %q", single)
+	if !strings.Contains(single, "#[bg=#181825,fg=#313244]\ue0b6#[bg=#313244,fg=#a6adc8] #[fg=#a6da95]>_#[fg=#a6adc8] only #[bg=#181825,fg=#313244,nobold]\ue0b4") {
+		t.Fatalf("single FormatTopBar should render the lone (active) session as a filled, green-icon pill: %q", single)
 	}
 
 	// 2 sessions, first active: each section appears once
@@ -336,8 +459,8 @@ func TestFormatTopBar(t *testing.T) {
 	if !(firstIdx < secondIdx) {
 		t.Fatalf("expected first < second, got: %q", twoFirst)
 	}
-	if !strings.Contains(twoFirst, "#[bg=#313244,fg=#cdd6f4,bold] #[fg=#89b4fa]>_#[fg=#a6adc8] first #[bg=#181825,fg=#313244,nobold]") {
-		t.Fatalf("first should be formatted as active pill: %q", twoFirst)
+	if !strings.Contains(twoFirst, "#[bg=#181825,fg=#313244]\ue0b6#[bg=#313244,fg=#a6adc8] #[fg=#a6da95]>_#[fg=#a6adc8] first #[bg=#181825,fg=#313244,nobold]\ue0b4") {
+		t.Fatalf("first should be formatted as an active, filled, green-icon pill: %q", twoFirst)
 	}
 
 	// 2 sessions, second active: each section appears once
@@ -350,8 +473,8 @@ func TestFormatTopBar(t *testing.T) {
 	if !(firstIdx < secondIdx) {
 		t.Fatalf("expected first < second, got: %q", twoSecond)
 	}
-	if !strings.Contains(twoSecond, "#[bg=#313244,fg=#cdd6f4,bold] #[fg=#89b4fa]>_#[fg=#a6adc8] second #[bg=#181825,fg=#313244,nobold]") {
-		t.Fatalf("second should be formatted as active pill: %q", twoSecond)
+	if !strings.Contains(twoSecond, "#[bg=#181825,fg=#313244]\ue0b6#[bg=#313244,fg=#a6adc8] #[fg=#a6da95]>_#[fg=#a6adc8] second #[bg=#181825,fg=#313244,nobold]\ue0b4") {
+		t.Fatalf("second should be formatted as an active, filled, green-icon pill: %q", twoSecond)
 	}
 
 	// 3 sessions, middle active
@@ -365,8 +488,8 @@ func TestFormatTopBar(t *testing.T) {
 	if !(firstIdx < secondIdx && secondIdx < thirdIdx) {
 		t.Fatalf("expected order first < second < third, got: %q", three)
 	}
-	if !strings.Contains(three, "#[bg=#313244,fg=#cdd6f4,bold] #[fg=#89b4fa]>_#[fg=#a6adc8] second #[bg=#181825,fg=#313244,nobold]") {
-		t.Fatalf("second should be formatted as active pill: %q", three)
+	if !strings.Contains(three, "#[bg=#181825,fg=#313244]\ue0b6#[bg=#313244,fg=#a6adc8] #[fg=#a6da95]>_#[fg=#a6adc8] second #[bg=#181825,fg=#313244,nobold]\ue0b4") {
+		t.Fatalf("second should be formatted as an active, filled, green-icon pill: %q", three)
 	}
 
 	// 4 sessions, end active
@@ -376,8 +499,8 @@ func TestFormatTopBar(t *testing.T) {
 			t.Fatalf("session %q should appear exactly once in %q", s, four)
 		}
 	}
-	if !strings.Contains(four, "#[bg=#313244,fg=#cdd6f4,bold] #[fg=#89b4fa]>_#[fg=#a6adc8] s4 #[bg=#181825,fg=#313244,nobold]") {
-		t.Fatalf("s4 should be active pill: %q", four)
+	if !strings.Contains(four, "#[bg=#181825,fg=#313244]\ue0b6#[bg=#313244,fg=#a6adc8] #[fg=#a6da95]>_#[fg=#a6adc8] s4 #[bg=#181825,fg=#313244,nobold]\ue0b4") {
+		t.Fatalf("s4 should be an active, filled, green-icon pill: %q", four)
 	}
 }
 
@@ -385,7 +508,7 @@ func TestFormatTopBarRendersProjectSectionBeforeSessions(t *testing.T) {
 	p := topBarPalette()
 
 	got := p.FormatTopBar("demo", []string{"code", "git"}, nil, nil, 0)
-	want := "#[bg=#313244,fg=#89b4fa,bold] demo #[bg=#181825,fg=#313244,nobold]\ue0b0"
+	want := "#[bg=#181825,fg=#313244]\ue0b6#[bg=#313244,fg=#89b4fa,bold] demo #[bg=#181825,fg=#313244,nobold]\ue0b4  "
 	if !strings.Contains(got, want) {
 		t.Fatalf("FormatTopBar() = %q, want project section %q", got, want)
 	}
@@ -398,17 +521,22 @@ func TestFormatTopBarRendersEmptyProjectSectionWithoutProject(t *testing.T) {
 	p := topBarPalette()
 
 	got := p.FormatTopBar("", []string{"scratch"}, nil, nil, 0)
-	want := "#[bg=#313244,fg=#89b4fa,bold]  #[bg=#181825,fg=#313244,nobold]\ue0b0"
+	want := "#[bg=#181825,fg=#313244]\ue0b6#[bg=#313244,fg=#89b4fa,bold]  #[bg=#181825,fg=#313244,nobold]\ue0b4  "
 	if !strings.Contains(got, want) {
 		t.Fatalf("FormatTopBar() = %q, want empty project section %q", got, want)
 	}
 }
 
 func TestFormatTopBarRendersTypeIconsWithoutWordedChip(t *testing.T) {
-	p := Palette{Surface0: "#313244", Subtext: "#a6adc8", Text: "#cdd6f4", Blue: "#89b4fa", Teal: "#94e2d5", Yellow: "#f9e2af", Mantle: "#181825"}
+	p := Palette{Surface0: "#313244", Subtext: "#a6adc8", Text: "#cdd6f4", Blue: "#89b4fa", Teal: "#94e2d5", Yellow: "#f9e2af", Green: "#a6da95", Mantle: "#181825"}
 
-	got := p.FormatTopBar("demo", []string{"code", "git", "agent"}, []string{"", "git", "agent"}, nil, 0)
-	if !strings.Contains(got, "#[fg=#89b4fa]>_#[fg=#a6adc8]") {
+	// "code" sits at the active index, so it renders green regardless of
+	// type -- the other three are inactive and keep their by-type colour.
+	got := p.FormatTopBar("demo", []string{"code", "git", "agent", "code2"}, []string{"", "git", "agent", ""}, nil, 0)
+	if !strings.Contains(got, "#[fg=#a6da95]>_#[fg=#a6adc8] code") {
+		t.Fatalf("missing green active icon: %q", got)
+	}
+	if !strings.Contains(got, "#[fg=#89b4fa]>_#[fg=#a6adc8] code2") {
 		t.Fatalf("missing terminal icon: %q", got)
 	}
 	if !strings.Contains(got, "#[fg=#94e2d5]\u2387#[fg=#a6adc8]") {

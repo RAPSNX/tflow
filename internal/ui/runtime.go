@@ -133,7 +133,7 @@ func (m sessionManager) EnsureControlMode(binaryPath string) error {
 }
 
 func catppuccinTmuxPalette() runtmux.Palette {
-	palette := catppuccinPalette()
+	palette := catppuccinMacchiatoPalette()
 	return runtmux.Palette{
 		Surface0: palette.Surface0,
 		Subtext:  palette.Subtext,
@@ -142,6 +142,7 @@ func catppuccinTmuxPalette() runtmux.Palette {
 		Mantle:   palette.Mantle,
 		Teal:     palette.Teal,
 		Yellow:   palette.Yellow,
+		Green:    palette.Green,
 		Red:      palette.Red,
 	}
 }

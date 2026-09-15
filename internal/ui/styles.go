@@ -3,35 +3,37 @@ package ui
 import "charm.land/lipgloss/v2"
 
 type themePalette struct {
-	BaseBG       string
-	Surface0     string
-	Surface1     string
-	Text         string
-	Subtext      string
-	Blue         string
-	Teal         string
-	Yellow       string
-	Red          string
-	Mantle       string
-	Crust        string
-	BadgeText    string
-	SelectedText string
+	BaseBG    string
+	Surface0  string
+	Surface1  string
+	Text      string
+	Subtext   string
+	Blue      string
+	Teal      string
+	Yellow    string
+	Green     string
+	Red       string
+	Mantle    string
+	Crust     string
+	BadgeText string
+	Mauve     string
 }
 
 var (
-	baseBG            = lipgloss.Color("#1E1E2E")
-	surface0          = lipgloss.Color("#313244")
-	surface1          = lipgloss.Color("#45475A")
-	textColor         = lipgloss.Color("#CDD6F4")
-	subtextColor      = lipgloss.Color("#A6ADC8")
-	blueColor         = lipgloss.Color("#89B4FA")
-	tealColor         = lipgloss.Color("#94E2D5")
-	yellowColor       = lipgloss.Color("#F9E2AF")
-	redColor          = lipgloss.Color("#F38BA8")
-	mantleColor       = lipgloss.Color("#181825")
-	crustColor        = lipgloss.Color("#11111B")
-	badgeTextColor    = lipgloss.Color("#1E1E2E")
-	selectedTextColor = lipgloss.Color("#11111B")
+	baseBG         = lipgloss.Color("#24273A")
+	surface0       = lipgloss.Color("#363A4F")
+	surface1       = lipgloss.Color("#494D64")
+	textColor      = lipgloss.Color("#CAD3F5")
+	subtextColor   = lipgloss.Color("#A5ADCB")
+	blueColor      = lipgloss.Color("#8AADF4")
+	tealColor      = lipgloss.Color("#8BD5CA")
+	yellowColor    = lipgloss.Color("#EED49F")
+	greenColor     = lipgloss.Color("#A6DA95")
+	redColor       = lipgloss.Color("#ED8796")
+	mantleColor    = lipgloss.Color("#1E2030")
+	crustColor     = lipgloss.Color("#181926")
+	badgeTextColor = lipgloss.Color("#24273A")
+	mauveColor     = lipgloss.Color("#C6A0F6")
 
 	appStyle               lipgloss.Style
 	titleStyle             lipgloss.Style
@@ -40,44 +42,39 @@ var (
 	panelStyle             lipgloss.Style
 	sessionStyle           lipgloss.Style
 	selectedSessionStyle   lipgloss.Style
-	currentBadgeStyle      lipgloss.Style
-	countBadgeStyle        lipgloss.Style
+	sessionListHeaderStyle lipgloss.Style
 	footerStyle            lipgloss.Style
 	warningStatusStyle     lipgloss.Style
 	errorStatusStyle       lipgloss.Style
 	inputStyle             lipgloss.Style
-	overlayStyle           lipgloss.Style
-	dialogHeaderBadgeStyle lipgloss.Style
-	destructiveBadgeStyle  lipgloss.Style
-	dialogDividerStyle     lipgloss.Style
 	dialogInputStyle       lipgloss.Style
-	keycapStyle            lipgloss.Style
-	destructiveKeycapStyle lipgloss.Style
 	codeChipStyle          lipgloss.Style
 	gitChipStyle           lipgloss.Style
 	agentChipStyle         lipgloss.Style
+	liveChipStyle          lipgloss.Style
 	attentionBadgeStyle    lipgloss.Style
 )
 
 func init() {
-	applyTheme(catppuccinPalette())
+	applyTheme(catppuccinMacchiatoPalette())
 }
 
-func catppuccinPalette() themePalette {
+func catppuccinMacchiatoPalette() themePalette {
 	return themePalette{
-		BaseBG:       "#1e1e2e",
-		Surface0:     "#313244",
-		Surface1:     "#45475a",
-		Text:         "#cdd6f4",
-		Subtext:      "#a6adc8",
-		Blue:         "#89b4fa",
-		Teal:         "#94e2d5",
-		Yellow:       "#f9e2af",
-		Red:          "#f38ba8",
-		Mantle:       "#181825",
-		Crust:        "#11111b",
-		BadgeText:    "#1e1e2e",
-		SelectedText: "#11111b",
+		BaseBG:    "#24273a",
+		Surface0:  "#363a4f",
+		Surface1:  "#494d64",
+		Text:      "#cad3f5",
+		Subtext:   "#a5adcb",
+		Blue:      "#8aadf4",
+		Teal:      "#8bd5ca",
+		Yellow:    "#eed49f",
+		Green:     "#a6da95",
+		Red:       "#ed8796",
+		Mantle:    "#1e2030",
+		Crust:     "#181926",
+		BadgeText: "#24273a",
+		Mauve:     "#c6a0f6",
 	}
 }
 
@@ -90,21 +87,30 @@ func applyTheme(p themePalette) {
 	blueColor = lipgloss.Color(p.Blue)
 	tealColor = lipgloss.Color(p.Teal)
 	yellowColor = lipgloss.Color(p.Yellow)
+	greenColor = lipgloss.Color(p.Green)
 	redColor = lipgloss.Color(p.Red)
 	mantleColor = lipgloss.Color(p.Mantle)
 	crustColor = lipgloss.Color(p.Crust)
 	badgeTextColor = lipgloss.Color(p.BadgeText)
-	selectedTextColor = lipgloss.Color(p.SelectedText)
+	mauveColor = lipgloss.Color(p.Mauve)
 
 	appStyle = lipgloss.NewStyle().
 		Padding(1).
 		Foreground(textColor).
 		Background(baseBG)
 
+	// Background(baseBG) so titleStyle stays safely coloured when it's
+	// joined on the same line right after another pre-rendered segment
+	// that ends in its own reset.
 	titleStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(textColor)
+		Foreground(textColor).
+		Background(baseBG)
 
+	// The badge is a filled pill -- a Catppuccin accent background with
+	// dark text on top, matching the same treatment the type chips use
+	// elsewhere in the app -- so it actually reads as a badge, not just
+	// coloured text.
 	brandBadgeStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(badgeTextColor).
@@ -114,83 +120,102 @@ func applyTheme(p themePalette) {
 	mutedStyle = lipgloss.NewStyle().
 		Foreground(subtextColor)
 
-	// A single horizontal strip (badge + session pills), not a tall
-	// vertical section -- only horizontal padding, so the popup stays
-	// short.
+	// panelStyle frames the session list in one thin border of its own, on
+	// the popup's own background rather than a separate fill colour -- the
+	// badge sits outside it, unboxed, above. BorderBackground is a distinct
+	// property from Background in lipgloss -- it colours the border glyphs
+	// themselves, which Background alone leaves with no background at all
+	// (see (Style).styleBorder in charm.land/lipgloss/v2, which only emits
+	// a background code for the border when BorderBackground is set).
 	panelStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(surface1).
-		Background(mantleColor).
-		Padding(0, 2)
+		BorderBackground(baseBG).
+		Background(baseBG).
+		Padding(1, 3)
 
 	sessionStyle = lipgloss.NewStyle().
 		Foreground(textColor).
-		Padding(0, 1)
+		Padding(0, 2)
 
+	// The selected row is marked by colour alone -- bold mauve text --
+	// rather than a background block, so every row (selected or not) stays
+	// on the same single background colour throughout the list.
 	selectedSessionStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(selectedTextColor).
-		Background(blueColor).
-		Padding(0, 1)
+		Foreground(mauveColor).
+		Padding(0, 2)
 
-	currentBadgeStyle = lipgloss.NewStyle().
+	// No horizontal padding of its own -- both it and each row are placed
+	// by JoinVertical from their own block's start, so this stays aligned
+	// with every row's own left edge without needing to match padding.
+	sessionListHeaderStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(badgeTextColor).
-		Background(tealColor).
-		Padding(0, 1)
-
-	countBadgeStyle = lipgloss.NewStyle().
-		Foreground(textColor).
-		Background(surface0).
-		Padding(0, 1)
+		Foreground(subtextColor)
 
 	footerStyle = lipgloss.NewStyle().
 		Background(baseBG).
 		Padding(0, 1, 0, 1)
 
+	// Background(baseBG) so statusView's own Width() fill (the status line
+	// is rendered directly through this style, at the popup's full width,
+	// before ever reaching footerStyle) is safely, freshly coloured rather
+	// than left plain -- see fillLines' doc comment in view.go for why that
+	// distinction matters.
 	warningStatusStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(yellowColor)
+		Foreground(yellowColor).
+		Background(baseBG)
 
 	errorStatusStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(redColor)
+		Foreground(redColor).
+		Background(baseBG)
 
 	inputStyle = lipgloss.NewStyle().
 		Foreground(textColor)
 
-	overlayStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(surface1).
-		Background(crustColor).
-		Foreground(textColor).
-		Padding(1, 2)
-
-	dialogHeaderBadgeStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(blueColor).Padding(0, 1)
-	destructiveBadgeStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(redColor).Padding(0, 1)
-	dialogDividerStyle = lipgloss.NewStyle().Foreground(surface1)
-	dialogInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(tealColor).Padding(0, 1)
-	keycapStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(tealColor).Padding(0, 1)
-	destructiveKeycapStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(redColor).Padding(0, 1)
-	codeChipStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(blueColor).Padding(0, 1)
-	gitChipStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(tealColor).Padding(0, 1)
-	agentChipStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(yellowColor).Padding(0, 1)
-	attentionBadgeStyle = lipgloss.NewStyle().Bold(true).Foreground(badgeTextColor).Background(redColor).Padding(0, 1)
+	// Plain, unboxed input text on baseBG -- no nested border -- matching
+	// the sidebar popup's own no-nested-boxes design. renderPanelInputField
+	// adds a leading marker to distinguish it as an input line.
+	dialogInputStyle = lipgloss.NewStyle().Foreground(mauveColor).Background(baseBG).Padding(0, 1)
+	// Session type chips are colour alone, matching the top bar's own icon
+	// treatment (Palette.sessionTypeIcon in internal/tmux/types.go) -- no
+	// *filled* background of their own (no contrasting block behind the
+	// glyph), but Background(baseBG) still explicitly re-asserts the
+	// popup's single background after whatever came before, since a
+	// foreground-only style's own trailing reset would otherwise leave
+	// nothing to carry it forward to the next segment.
+	codeChipStyle = lipgloss.NewStyle().Bold(true).Foreground(blueColor).Background(baseBG)
+	gitChipStyle = lipgloss.NewStyle().Bold(true).Foreground(tealColor).Background(baseBG)
+	agentChipStyle = lipgloss.NewStyle().Bold(true).Foreground(yellowColor).Background(baseBG)
+	liveChipStyle = lipgloss.NewStyle().Bold(true).Foreground(greenColor).Background(baseBG)
+	attentionBadgeStyle = lipgloss.NewStyle().Bold(true).Foreground(redColor).Background(baseBG)
 }
 
-// sessionTypeChip renders the symbol-only type chip for a sidebar row: blue
-// ">_" for terminal sessions (including legacy untyped records), teal "⎇" for
-// git, or yellow "✦" for agent. The type name is never spelled out -- the
-// symbol and its colour are the only identity shown, matching the top bar.
-// Selection, live, and attention states never replace it -- callers append it
-// alongside those, not instead of it.
-func sessionTypeChip(sessionType string) string {
+// sessionTypeChip renders the symbol-only, colour-only type chip for a
+// session row: blue ">_" for terminal sessions (including legacy untyped
+// records), teal "⎇" for git, or yellow "✦" for agent -- no background of
+// its own, matching the top bar's own icon treatment. The type name is
+// never spelled out -- the symbol is the only identity shown. Its colour is
+// the one exception the live session makes: a live (currently attached)
+// session always renders its chip in green regardless of type, since that
+// colour is otherwise unused, so live status reads unambiguously from the
+// icon alone without a separate badge. Selection and attention states never
+// replace the chip -- callers append them alongside it, not instead of it.
+func sessionTypeChip(sessionType string, live bool) string {
+	symbol := ">_"
+	style := codeChipStyle
 	switch sessionType {
 	case sessionTypeGit:
-		return gitChipStyle.Render("⎇")
+		symbol = "⎇"
+		style = gitChipStyle
 	case sessionTypeAgent:
-		return agentChipStyle.Render("✦")
-	default:
-		return codeChipStyle.Render(">_")
+		symbol = "✦"
+		style = agentChipStyle
 	}
+	if live {
+		style = liveChipStyle
+	}
+	return style.Render(symbol)
 }

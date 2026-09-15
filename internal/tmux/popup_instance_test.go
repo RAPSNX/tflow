@@ -220,26 +220,29 @@ func TestToggleMenuUnmarksPopupIfOpenFails(t *testing.T) {
 	var calls [][]string
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			calls = append(calls, append([]string(nil), args...))
-			switch args[0] {
-			case "display-message":
-				switch args[2] {
-				case "#{session_name}":
-					return "otter-temp", nil
-				case "#{client_name}":
-					return "@2", nil
+			for _, group := range splitBatchGroups(args) {
+				calls = append(calls, append([]string(nil), group...))
+				switch group[0] {
+				case "display-message":
+					switch group[2] {
+					case "#{session_name}":
+						return "otter-temp", nil
+					case "#{client_name}":
+						return "@2", nil
+					default:
+						return "", fmt.Errorf("unexpected display-message format: %v", group)
+					}
+				case "show-options":
+					return "instance-1", nil
+				case "show-environment", "set-environment":
+					// batched read/write, keep processing remaining groups
+				case "display-popup":
+					return "", fmt.Errorf("popup failed")
 				default:
-					return "", fmt.Errorf("unexpected display-message format: %v", args)
+					return "", fmt.Errorf("unexpected command: %v", group)
 				}
-			case "show-options":
-				return "instance-1", nil
-			case "show-environment", "set-environment":
-				return "", nil
-			case "display-popup":
-				return "", fmt.Errorf("popup failed")
-			default:
-				return "", fmt.Errorf("unexpected command: %v", args)
 			}
+			return "", nil
 		},
 	}
 
@@ -268,30 +271,32 @@ func TestToggleMenuEmitsDiagnosticWhenPopupMarkerCleanupAlsoFailsAfterOpenFailur
 
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			switch args[0] {
-			case "display-message":
-				switch args[2] {
-				case "#{session_name}":
-					return "otter-temp", nil
-				case "#{client_name}":
-					return "@2", nil
+			for _, group := range splitBatchGroups(args) {
+				switch group[0] {
+				case "display-message":
+					switch group[2] {
+					case "#{session_name}":
+						return "otter-temp", nil
+					case "#{client_name}":
+						return "@2", nil
+					default:
+						return "", fmt.Errorf("unexpected display-message format: %v", group)
+					}
+				case "show-options":
+					return "instance-1", nil
+				case "show-environment":
+					// batched read, keep processing remaining groups
+				case "set-environment":
+					if len(group) > 1 && group[1] == "-gu" {
+						return "", fmt.Errorf("tmux: unmark failed")
+					}
+				case "display-popup":
+					return "", fmt.Errorf("popup failed")
 				default:
-					return "", fmt.Errorf("unexpected display-message format: %v", args)
+					return "", fmt.Errorf("unexpected command: %v", group)
 				}
-			case "show-options":
-				return "instance-1", nil
-			case "show-environment":
-				return "", nil
-			case "set-environment":
-				if len(args) > 1 && args[1] == "-gu" {
-					return "", fmt.Errorf("tmux: unmark failed")
-				}
-				return "", nil
-			case "display-popup":
-				return "", fmt.Errorf("popup failed")
-			default:
-				return "", fmt.Errorf("unexpected command: %v", args)
 			}
+			return "", nil
 		},
 	}
 
@@ -394,41 +399,41 @@ func TestToggleMenuOpensClosesThenOpensAgain(t *testing.T) {
 	popupOpenCount := 0
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
-			switch args[0] {
-			case "display-message":
-				switch args[2] {
-				case "#{session_name}":
-					return "otter-temp", nil
-				case "#{client_name}":
-					return "@2", nil
+			for _, group := range splitBatchGroups(args) {
+				switch group[0] {
+				case "display-message":
+					switch group[2] {
+					case "#{session_name}":
+						return "otter-temp", nil
+					case "#{client_name}":
+						return "@2", nil
+					default:
+						return "", fmt.Errorf("unexpected display-message format: %v", group)
+					}
+				case "show-options":
+					return "instance-1", nil
+				case "show-environment":
+					if popupVisible {
+						return popupEnvKey("@2") + "=1\n", nil
+					}
+				case "set-environment":
+					if len(group) >= 4 && group[1] == "-gh" && group[2] == popupEnvKey("@2") {
+						popupVisible = true
+					}
+					if len(group) >= 3 && group[1] == "-gu" && group[2] == popupEnvKey("@2") {
+						popupVisible = false
+					}
+				case "display-popup":
+					if len(group) >= 2 && group[1] == "-C" {
+						popupVisible = false
+					} else {
+						popupOpenCount++
+					}
 				default:
-					return "", fmt.Errorf("unexpected display-message format: %v", args)
+					return "", fmt.Errorf("unexpected command: %v", group)
 				}
-			case "show-options":
-				return "instance-1", nil
-			case "show-environment":
-				if popupVisible {
-					return popupEnvKey("@2") + "=1\n", nil
-				}
-				return "", nil
-			case "set-environment":
-				if len(args) >= 4 && args[1] == "-gh" && args[2] == popupEnvKey("@2") {
-					popupVisible = true
-				}
-				if len(args) >= 3 && args[1] == "-gu" && args[2] == popupEnvKey("@2") {
-					popupVisible = false
-				}
-				return "", nil
-			case "display-popup":
-				if len(args) >= 2 && args[1] == "-C" {
-					popupVisible = false
-					return "", nil
-				}
-				popupOpenCount++
-				return "", nil
-			default:
-				return "", fmt.Errorf("unexpected command: %v", args)
 			}
+			return "", nil
 		},
 	}
 
@@ -564,17 +569,19 @@ func TestOpenQuitOpensQuitConfirmationPopup(t *testing.T) {
 
 	var popupArgs []string
 	manager := Manager{Run: func(args ...string) (string, error) {
-		switch args[0] {
-		case "show-environment", "set-environment":
-			return "", nil
-		case "show-options":
-			return "instance-1", nil
-		case "display-popup":
-			popupArgs = append([]string(nil), args...)
-			return "", nil
-		default:
-			return "", fmt.Errorf("unexpected command: %v", args)
+		for _, group := range splitBatchGroups(args) {
+			switch group[0] {
+			case "show-environment", "set-environment":
+				// batched read/write, keep processing remaining groups
+			case "show-options":
+				return "instance-1", nil
+			case "display-popup":
+				popupArgs = append([]string(nil), group...)
+			default:
+				return "", fmt.Errorf("unexpected command: %v", group)
+			}
 		}
+		return "", nil
 	}}
 
 	if err := manager.OpenQuit("/tmp/tflow"); err != nil {

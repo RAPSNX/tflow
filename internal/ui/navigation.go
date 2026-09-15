@@ -19,24 +19,13 @@ func NavigateNext() error {
 	return navigateWithManager(newSessionManager(), 1)
 }
 
-func navigateWithManager(manager tmuxController, direction int) error {
-	path := appStatePath()
-	unlock, err := lockAppState(path)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if unlockErr := unlock(); unlockErr != nil {
-			diag.Warnf("release state lock %q after navigation: %v", path, unlockErr)
-		}
-	}()
-
-	currentSession := strings.TrimSpace(os.Getenv(menuCurrentEnv))
-	sessions, err := manager.ListSessions()
-	if err != nil {
-		return err
-	}
-
+// resolveNavigationContext resolves the current client's session, whether
+// it is a volatile (no-project) session, and its owning instance ID --
+// shared by every navigation entry point that starts from the current
+// session and needs to know which context (project or volatile instance) to
+// search within.
+func resolveNavigationContext(sessions []session) (currentSession string, isVolatile bool, instanceID string) {
+	currentSession = strings.TrimSpace(os.Getenv(menuCurrentEnv))
 	if currentSession == "" {
 		for _, s := range sessions {
 			if s.Attached {
@@ -49,10 +38,9 @@ func navigateWithManager(manager tmuxController, direction int) error {
 		currentSession = sessions[0].Name
 	}
 	if currentSession == "" {
-		return nil
+		return "", false, ""
 	}
 
-	// Resolve instance ID
 	var currentInfo *session
 	for i := range sessions {
 		if sessions[i].Name == currentSession {
@@ -61,16 +49,37 @@ func navigateWithManager(manager tmuxController, direction int) error {
 		}
 	}
 
-	// Determine if current session is volatile or belongs to a project
-	isVolatile := false
 	if currentInfo != nil && (currentInfo.Temporary || strings.HasPrefix(currentInfo.Name, "tflow-v-")) {
 		isVolatile = true
 	} else if strings.HasPrefix(currentSession, "tflow-v-") {
 		isVolatile = true
 	}
-	instanceID := ""
 	if isVolatile && currentInfo != nil {
 		instanceID = strings.TrimSpace(currentInfo.Instance)
+	}
+	return currentSession, isVolatile, instanceID
+}
+
+func navigateWithManager(manager tmuxController, direction int) error {
+	path := appStatePath()
+	unlock, err := lockAppState(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release state lock %q after navigation: %v", path, unlockErr)
+		}
+	}()
+
+	sessions, err := manager.ListSessions()
+	if err != nil {
+		return err
+	}
+
+	currentSession, isVolatile, instanceID := resolveNavigationContext(sessions)
+	if currentSession == "" {
+		return nil
 	}
 	if isVolatile && instanceID == "" {
 		return nil
@@ -150,8 +159,14 @@ func navigateWithManager(manager tmuxController, direction int) error {
 		return nil
 	}
 	target := contextSessions[targetIdx]
+	return switchToContextTarget(manager, state, project, target, sessions, instanceID)
+}
 
-	// Lazily materialize if target is a persistent session that is not running in tmux
+// switchToContextTarget lazily materializes target when it is a persistent
+// session not currently running in tmux, then switches the client to it and
+// refreshes the top bar -- the shared tail end of every navigation entry
+// point once a target session has been chosen.
+func switchToContextTarget(manager tmuxController, state appState, project string, target session, sessions []session, instanceID string) error {
 	if !containsSessionName(sessions, target.Name) {
 		var pWorkdir string
 		for _, p := range state.Projects {
@@ -194,6 +209,101 @@ func navigateWithManager(manager tmuxController, direction int) error {
 
 	refreshTargetTopBar(manager, target.Name, project, state, sessions, instanceID)
 	return nil
+}
+
+// NavigateToGitSession switches the current client to the first git-typed
+// session in its current project, or leaves a short status message when
+// none exists. Session type is tracked only in the persisted project state
+// (see lookupSessionTypeCommand), never mirrored as a tmux session option
+// the way project/label/instance/attention are -- so a volatile (no-project)
+// context, which has no persisted per-session state to consult, can never
+// have a git session to jump to.
+func NavigateToGitSession() error {
+	return navigateToTypeWithManager(newSessionManager(), sessionTypeGit)
+}
+
+func navigateToTypeWithManager(manager tmuxController, targetType string) error {
+	path := appStatePath()
+	unlock, err := lockAppState(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if unlockErr := unlock(); unlockErr != nil {
+			diag.Warnf("release state lock %q after navigation: %v", path, unlockErr)
+		}
+	}()
+
+	sessions, err := manager.ListSessions()
+	if err != nil {
+		return err
+	}
+
+	currentSession, isVolatile, instanceID := resolveNavigationContext(sessions)
+	if currentSession == "" {
+		return nil
+	}
+	if isVolatile {
+		return manager.DisplayMessage(noSessionOfTypeMessage(targetType))
+	}
+
+	state, err := loadAppState(path)
+	if err != nil {
+		return err
+	}
+
+	var project string
+	for _, p := range state.Projects {
+		for _, s := range p.Sessions {
+			if s.ID == currentSession {
+				project = p.Name
+				break
+			}
+		}
+		if project != "" {
+			break
+		}
+	}
+	if project == "" {
+		return manager.DisplayMessage(noSessionOfTypeMessage(targetType))
+	}
+
+	var target session
+	found := false
+	for _, p := range state.Projects {
+		if normalizeProjectName(p.Name) != normalizeProjectName(project) {
+			continue
+		}
+		for _, ps := range p.Sessions {
+			if strings.TrimSpace(ps.Type) != targetType {
+				continue
+			}
+			if sInfo, running := findSessionInList(sessions, ps.ID); running {
+				target = sInfo
+			} else {
+				target = session{Name: ps.ID, Label: ps.Label}
+			}
+			found = true
+			break
+		}
+		break
+	}
+	if !found {
+		return manager.DisplayMessage(noSessionOfTypeMessage(targetType))
+	}
+	if target.Name == currentSession {
+		refreshTargetTopBar(manager, currentSession, project, state, sessions, instanceID)
+		return nil
+	}
+
+	return switchToContextTarget(manager, state, project, target, sessions, instanceID)
+}
+
+func noSessionOfTypeMessage(sessionType string) string {
+	if sessionType == sessionTypeGit {
+		return "No git session in this project."
+	}
+	return "No " + sessionType + " session in this project."
 }
 
 func findSessionInList(sessions []session, name string) (session, bool) {
