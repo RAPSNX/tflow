@@ -261,6 +261,40 @@ func TestSwitchClientPreservesOriginalErrorWhenReplacementResolutionFails(t *tes
 	}
 }
 
+func TestSessionAttachedQueriesOneSessionDirectly(t *testing.T) {
+	var got []string
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			got = append([]string(nil), args...)
+			return "1\n", nil
+		},
+	}
+	attached, err := manager.SessionAttached("tflow-p-1")
+	if err != nil {
+		t.Fatalf("SessionAttached error: %v", err)
+	}
+	if !attached {
+		t.Fatal("expected attached = true")
+	}
+	want := []string{"display-message", "-p", "-t", "tflow-p-1", "#{session_attached}"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("call = %#v, want %#v", got, want)
+	}
+
+	manager.Run = func(args ...string) (string, error) { return "0\n", nil }
+	attached, err = manager.SessionAttached("tflow-p-1")
+	if err != nil {
+		t.Fatalf("SessionAttached error: %v", err)
+	}
+	if attached {
+		t.Fatal("expected attached = false")
+	}
+
+	if _, err := manager.SessionAttached(""); err == nil {
+		t.Fatal("expected error for empty session name")
+	}
+}
+
 func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {
@@ -286,6 +320,58 @@ func TestListSessionsIncludesTemporaryMarker(t *testing.T) {
 	}
 	if sessions[1].Temporary {
 		t.Fatal("expected second session to be persistent")
+	}
+}
+
+func TestListSessionsIncludesAttentionMarker(t *testing.T) {
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			return "flagged\t1\t0\t0\t\tcode\t1\nquiet\t1\t0\t0\t\tgit\t0\n", nil
+		},
+	}
+
+	sessions, err := manager.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions returned error: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("len(sessions) = %d", len(sessions))
+	}
+	if !sessions[0].Attention {
+		t.Fatal("expected first session to carry the attention marker")
+	}
+	if sessions[1].Attention {
+		t.Fatal("expected second session to have no attention marker")
+	}
+}
+
+func TestSessionActivityTimestampsAggregatesEveryWindow(t *testing.T) {
+	manager := Manager{
+		Run: func(args ...string) (string, error) {
+			if args[0] != "list-windows" {
+				t.Fatalf("unexpected command: %v", args)
+			}
+			// "busy" has its latest activity in its second (non-active)
+			// window; aggregation across windows must still catch it and
+			// take the max. "idle" has no activity in either window.
+			return strings.Join([]string{
+				"busy\t100",
+				"busy\t200",
+				"idle\t0",
+				"idle\t0",
+			}, "\n") + "\n", nil
+		},
+	}
+
+	activity, err := manager.SessionActivityTimestamps()
+	if err != nil {
+		t.Fatalf("SessionActivityTimestamps returned error: %v", err)
+	}
+	if activity["busy"] != 200 {
+		t.Fatalf("activity[busy] = %d, want the max across its windows (200)", activity["busy"])
+	}
+	if activity["idle"] != 0 {
+		t.Fatalf("activity[idle] = %d, want 0", activity["idle"])
 	}
 }
 

@@ -15,9 +15,9 @@ func encodeAppState(state AppState) ([]byte, error) {
 	state = NormalizeAppState(state)
 	stored := storedState{Projects: make([]storedProject, 0, len(state.Projects))}
 	for _, project := range state.Projects {
-		encodedProject := storedProject{Name: project.Name, Workdir: project.Workdir, Sessions: make([]storedPersistentSession, 0, len(project.Sessions))}
+		encodedProject := storedProject{Name: project.Name, Workdir: project.Workdir, AgentBinary: project.AgentBinary, Sessions: make([]storedPersistentSession, 0, len(project.Sessions))}
 		for _, session := range project.Sessions {
-			encodedProject.Sessions = append(encodedProject.Sessions, storedPersistentSession{ID: session.ID, Label: session.Label})
+			encodedProject.Sessions = append(encodedProject.Sessions, storedPersistentSession{ID: session.ID, Label: session.Label, Type: session.Type, Command: session.Command})
 		}
 		stored.Projects = append(stored.Projects, encodedProject)
 	}
@@ -38,9 +38,9 @@ func decodeAppState(data []byte) (AppState, error) {
 	}
 	state := emptyAppState()
 	for _, project := range stored.Projects {
-		loaded := Project{Name: project.Name, Workdir: project.Workdir, Sessions: make([]PersistentSession, 0, len(project.Sessions))}
+		loaded := Project{Name: project.Name, Workdir: project.Workdir, AgentBinary: project.AgentBinary, Sessions: make([]PersistentSession, 0, len(project.Sessions))}
 		for _, session := range project.Sessions {
-			loaded.Sessions = append(loaded.Sessions, PersistentSession{ID: session.ID, Label: session.Label})
+			loaded.Sessions = append(loaded.Sessions, PersistentSession{ID: session.ID, Label: session.Label, Type: session.Type, Command: session.Command})
 		}
 		state.Projects = append(state.Projects, loaded)
 	}

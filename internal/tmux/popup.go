@@ -63,42 +63,46 @@ func (m Manager) openMenu(binaryPath, mode string) error {
 	if err := m.rememberClientInstance(currentClient, instanceID); err != nil {
 		return err
 	}
-	if err := m.markMenuPopup(currentClient); err != nil {
-		return err
-	}
-	if mode == MenuModeCommand {
-		if err := m.setClientKeyTable(currentClient, commandTable); err != nil {
-			if unmarkErr := m.unmarkMenuPopup(currentClient); unmarkErr != nil {
-				diag.Warnf("cleanup popup marker after failed command-table setup: %v", unmarkErr)
-			}
-			return err
-		}
-	}
-
-	args := []string{
+	displayArgs := []string{
 		"display-popup",
 		"-c", currentClient,
 		"-E",
 		"-w", menuWidth,
 		"-h", menuHeight,
-		"-x", "0",
-		"-y", "C",
+		// "C" centers the popup horizontally under the top bar rather than
+		// pinning it to the left edge; "S" for -y keeps it anchored directly
+		// below the status line, which status-position top puts at the top.
+		"-x", "C",
+		"-y", "S",
 		"-e", fmt.Sprintf("%s=%s", CurrentSessionEnv, currentSession),
 		"-e", fmt.Sprintf("%s=%s", CurrentClientEnv, currentClient),
 	}
-	args = append(args, popupInstanceEnvArgs(instanceID)...)
+	displayArgs = append(displayArgs, popupInstanceEnvArgs(instanceID)...)
 	if mode != "" {
-		args = append(args, "-e", fmt.Sprintf("%s=%s", MenuModeEnv, mode))
+		displayArgs = append(displayArgs, "-e", fmt.Sprintf("%s=%s", MenuModeEnv, mode))
 	}
-	args = append(args, popupShellCommand(binaryPath, currentClient, mode))
-	_, err = m.runner()(args...)
-	if err != nil {
+	displayArgs = append(displayArgs, popupShellCommand(binaryPath, currentClient, mode))
+
+	// markMenuPopup, the command-mode key-table switch, and display-popup
+	// are three unconditional writes that always ran as three separate tmux
+	// subprocess round-trips -- batched into one exec.Command via runBatch
+	// instead. tmux runs a batch's groups in order and stops at the first
+	// one that fails, so any error here still leaves the same ambiguity a
+	// sequence of separate calls already had (an earlier group may have
+	// already applied) -- the cleanup below is unconditional for exactly
+	// that reason, matching the old per-step cleanup's net effect.
+	groups := [][]string{markMenuPopupArgs(currentClient)}
+	if mode == MenuModeCommand {
+		groups = append(groups, setClientKeyTableArgs(currentClient, commandTable))
+	}
+	groups = append(groups, displayArgs)
+	if _, err := m.runBatch(groups...); err != nil {
 		if unmarkErr := m.unmarkMenuPopup(currentClient); unmarkErr != nil {
-			diag.Warnf("cleanup popup marker after failed display-popup: %v", unmarkErr)
+			diag.Warnf("cleanup popup marker after failed popup open: %v", unmarkErr)
 		}
 		if mode == MenuModeCommand {
 			if resetErr := m.setClientKeyTable(currentClient, "root"); resetErr != nil {
-				diag.Warnf("reset command key table after failed display-popup: %v", resetErr)
+				diag.Warnf("reset command key table after failed popup open: %v", resetErr)
 			}
 		}
 		return err
@@ -119,11 +123,19 @@ func (m Manager) closeCommandMenuPopup(clientID string) error {
 }
 
 func (m Manager) setClientKeyTable(clientID, table string) error {
+	args := setClientKeyTableArgs(clientID, table)
+	if args == nil {
+		return nil
+	}
+	_, err := m.runner()(args...)
+	return err
+}
+
+func setClientKeyTableArgs(clientID, table string) []string {
 	if strings.TrimSpace(clientID) == "" {
 		return nil
 	}
-	_, err := m.runner()("switch-client", "-c", clientID, "-T", table)
-	return err
+	return []string{"switch-client", "-c", clientID, "-T", table}
 }
 
 func (m Manager) CloseMenu() error {
@@ -141,11 +153,19 @@ func (m Manager) CloseMenu() error {
 }
 
 func (m Manager) markMenuPopup(clientID string) error {
+	args := markMenuPopupArgs(clientID)
+	if args == nil {
+		return nil
+	}
+	_, err := m.runner()(args...)
+	return err
+}
+
+func markMenuPopupArgs(clientID string) []string {
 	if strings.TrimSpace(clientID) == "" {
 		return nil
 	}
-	_, err := m.runner()("set-environment", "-gh", popupEnvKey(clientID), "1")
-	return err
+	return []string{"set-environment", "-gh", popupEnvKey(clientID), "1"}
 }
 
 func (m Manager) unmarkMenuPopup(clientID string) error {

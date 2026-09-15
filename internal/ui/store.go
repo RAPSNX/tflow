@@ -2,6 +2,12 @@ package ui
 
 import "github.com/rapsnx/tflow/internal/store"
 
+const (
+	sessionTypeTerminal = store.SessionTypeTerminal
+	sessionTypeGit      = store.SessionTypeGit
+	sessionTypeAgent    = store.SessionTypeAgent
+)
+
 type appState = store.AppState
 type storedProject = store.Project
 type persistentSession = store.PersistentSession
@@ -35,6 +41,10 @@ var lockAppState = func(path string) (func() error, error) {
 
 func normalizeAppState(state appState) appState {
 	return store.NormalizeAppState(state)
+}
+
+func validateAppState(state appState) error {
+	return store.ValidateAppState(state)
 }
 
 func appStatePath() string {

@@ -94,5 +94,15 @@ func MoveSession(state AppState, sessionID, targetProject string) (AppState, err
 		}
 		next.Projects = append(next.Projects, project)
 	}
-	return NormalizeAppState(next), nil
+	next = NormalizeAppState(next)
+	// Reuse the single shared invariant (rather than re-checking the
+	// agent-per-project rule inline here too) so a future change to that
+	// rule in ValidateAppState applies here without needing a second edit.
+	// Everything else about next is already known valid at this point (the
+	// label and existence checks above, and state itself, already held), so
+	// a failure here can only be the agent-per-project rule.
+	if err := ValidateAppState(next); err != nil {
+		return AppState{}, fmt.Errorf("project %q already has an agent session: %w", targetProject, err)
+	}
+	return next, nil
 }

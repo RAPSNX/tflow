@@ -116,6 +116,58 @@ func TestRunCreateWorkerRejectsDuplicateProject(t *testing.T) {
 	}
 }
 
+func TestRunCreateWorkerGivesOrdinaryProjectCodeAndLazyGitPresets(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var createdNames []string
+	var createdCommands []string
+	var switched string
+	manager := fakeTmuxController{
+		listSessions: func() ([]session, error) { return nil, nil },
+		createSession: func(name, cwd, command string) (session, error) {
+			createdNames = append(createdNames, name)
+			createdCommands = append(createdCommands, command)
+			return session{Name: name}, nil
+		},
+		switchClient: func(name string) error { switched = name; return nil },
+	}
+	if err := runCreateWorker(manager, createRequest{Kind: "project", Project: "small", Workdir: "/tmp"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Only the code session is materialized; git stays a lazy record.
+	if len(createdNames) != 1 {
+		t.Fatalf("tmux sessions created = %v, want exactly one (code)", createdNames)
+	}
+	if createdCommands[0] != "" {
+		t.Fatalf("code session command = %q, want empty (ordinary shell)", createdCommands[0])
+	}
+	if switched != createdNames[0] {
+		t.Fatalf("switched to %q, want the materialized code session %q", switched, createdNames[0])
+	}
+
+	state, err := loadAppState(appStatePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := storedProjectByName(state, "small")
+	if !ok || len(project.Sessions) != 2 {
+		t.Fatalf("saved project = %#v, want exactly two sessions (code, git)", project)
+	}
+	code, git := project.Sessions[0], project.Sessions[1]
+	if code.Label != "code" || code.Type != "" {
+		t.Fatalf("first session = %#v, want label \"code\" and terminal (empty) type", code)
+	}
+	if code.ID != createdNames[0] {
+		t.Fatalf("code session id = %q, want the materialized session name %q", code.ID, createdNames[0])
+	}
+	if git.Label != "git" || git.Type != sessionTypeGit {
+		t.Fatalf("second session = %#v, want label \"git\" and type %q", git, sessionTypeGit)
+	}
+	if containsString(createdNames, git.ID) {
+		t.Fatalf("git session %q must not have a real tmux session yet", git.ID)
+	}
+}
+
 func TestRunCreateWorkerRejectsDuplicateVolatileLabel(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	var created session
@@ -203,13 +255,13 @@ func TestRunCreateWorkerPreservesLabelCasingAndRejectsExactProjectDuplicate(t *t
 			return s, nil
 		},
 	}
-	if err := runCreateWorker(manager, createRequest{Kind: "project", Project: "small", Label: "Main", Workdir: "/tmp"}); err != nil {
+	if err := runCreateWorker(manager, createRequest{Kind: "project", Project: "small", Workdir: "/tmp"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := runCreateWorker(manager, createRequest{Kind: "session", Project: "small", Label: "main", Workdir: "/tmp"}); err != nil {
+	if err := runCreateWorker(manager, createRequest{Kind: "session", Project: "small", Label: "Code", Workdir: "/tmp"}); err != nil {
 		t.Fatalf("case-distinct project label rejected: %v", err)
 	}
-	if err := runCreateWorker(manager, createRequest{Kind: "session", Project: "small", Label: "Main", Workdir: "/tmp"}); err == nil || !strings.Contains(err.Error(), "session name already exists in this project") {
+	if err := runCreateWorker(manager, createRequest{Kind: "session", Project: "small", Label: "code", Workdir: "/tmp"}); err == nil || !strings.Contains(err.Error(), "session name already exists in this project") {
 		t.Fatalf("exact duplicate project label error = %v, want session name already exists in this project", err)
 	}
 
@@ -218,15 +270,15 @@ func TestRunCreateWorkerPreservesLabelCasingAndRejectsExactProjectDuplicate(t *t
 		t.Fatal(err)
 	}
 	project, ok := storedProjectByName(state, "small")
-	if !ok || len(project.Sessions) != 2 {
-		t.Fatalf("saved project = %#v, want two sessions", project)
+	if !ok || len(project.Sessions) != 3 {
+		t.Fatalf("saved project = %#v, want three sessions (code, git preset, and Code)", project)
 	}
 	gotLabels := map[string]bool{}
 	for _, s := range project.Sessions {
 		gotLabels[s.Label] = true
 	}
-	if !gotLabels["Main"] || !gotLabels["main"] {
-		t.Fatalf("stored labels = %#v, want verbatim casing preserved for both %q and %q", project.Sessions, "Main", "main")
+	if !gotLabels["code"] || !gotLabels["Code"] {
+		t.Fatalf("stored labels = %#v, want verbatim casing preserved for both %q and %q", project.Sessions, "code", "Code")
 	}
 }
 
