@@ -965,6 +965,7 @@ func TestNavigateToGitSessionVolatileContextDisplaysMessage(t *testing.T) {
 // navigateWithManager already does for prev/next, running lazygit as its
 // command.
 func TestNavigateToGitSessionLazilyMaterializesTarget(t *testing.T) {
+	stubExecutableOnPath(t, "lazygit")
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	statePath := appStatePath()
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
