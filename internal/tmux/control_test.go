@@ -302,6 +302,13 @@ func TestEnsureControlModeBindsQuickCommandModeActions(t *testing.T) {
 				if !strings.Contains(call[5], CurrentSessionEnv+"=") {
 					t.Fatalf("tflow-prefix %q run-shell script = %q, want the current session env forwarded", key, call[5])
 				}
+				// Every action that ends up calling SwitchClient needs the
+				// originating client forwarded too, or Manager.SwitchClient
+				// falls back to a client-less switch-client that tmux may
+				// route to an arbitrary attached client instead.
+				if !strings.Contains(call[5], CurrentClientEnv+"=") {
+					t.Fatalf("tflow-prefix %q run-shell script = %q, want the current client env forwarded so SwitchClient stays client-scoped", key, call[5])
+				}
 			}
 		}
 		if !found {

@@ -25,9 +25,14 @@ func (m Manager) EnsureControlMode(binaryPath string, palette Palette) error {
 	// prefixTable wait-state level (h/l/g fire immediately after Ctrl+F,
 	// before f would open the popup) is a small, low-risk addition to a
 	// path that already runs this exact shape for toggle-command-menu.
-	navigatePrevShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " navigate-prev"
-	navigateNextShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " navigate-next"
-	jumpGitShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " jump-git"
+	// They also need CurrentClientEnv forwarded, like every other action
+	// here that ends up calling SwitchClient: without it, Manager.SwitchClient
+	// falls back to `switch-client -t` with no `-c`, and tmux may pick an
+	// arbitrary attached client rather than the one that actually pressed
+	// the key, when more than one client is attached.
+	navigatePrevShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" navigate-prev"), " ")
+	navigateNextShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" navigate-next"), " ")
+	jumpGitShell := strings.Join(append(append([]string(nil), parts...), "exec "+ShellQuote(binaryPath)+" jump-git"), " ")
 	sessionActivityShell := sessionOnlyPart + " exec " + ShellQuote(binaryPath) + " session-activity"
 	sessionVisitedShell := sessionOnlyPart + " " +
 		fmt.Sprintf("%s=%s", LastVisitedSessionEnv, ShellQuote("#{client_last_session}")) +
