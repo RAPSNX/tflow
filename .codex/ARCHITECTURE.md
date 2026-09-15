@@ -143,11 +143,13 @@ corner. The session list renders at a fixed width rather than stretching to
 fill the popup, with a "Sessions" header, a blank line, then every contextual
 session stacked one per row below it, each shown as its type icon (`>_` code,
 `⎇` git, `✦` agent) plus its label; a session's icon turns green instead of
-its type color when it is the live, attached one. Neither the badge, the
-chips, nor the selected row has a background color of its own -- every
+its type color when it is the live, attached one, independent of selection.
+Neither the badge nor the chips has a background color of its own -- every
 distinction is colour and weight alone, so the whole popup shares one single
-background. The selected row is marked by bold, bright white text, rather
-than a background block, a separate marker glyph, or a "live" text badge:
+background. The selected row is marked by a leading marker glyph (`▎`) plus
+bold, mauve text for both the marker and the label, rather than a background
+block or a "live" text badge -- selection and live status are shown
+independently of each other, never conflated into one indicator:
 
 ```
 ┌────────────────────────────────────┐
@@ -156,7 +158,7 @@ than a background block, a separate marker glyph, or a "live" text badge:
 │          │                    │    │
 │          │    Sessions        │    │
 │          │                    │    │
-│          │    >_  feature-x   │    │
+│          │  ▎ >_  feature-x   │    │
 │          │    >_  fox         │    │
 │          │                    │    │
 │          ╰────────────────────╯    │
@@ -166,9 +168,11 @@ than a background block, a separate marker glyph, or a "live" text badge:
 
 (the outer box above is the tmux popup frame itself, not part of tflow's own
 rendering; the inner box is the session list's own thin border, separate from
-the unboxed badge above it; `feature-x` is bold, bright white in the real
-popup to mark it as the selected, live session, while `fox` is a plain,
-unselected row.)
+the unboxed badge above it; `feature-x` carries the leading `▎` marker and
+renders in bold mauve in the real popup to mark it as the selected row --
+independent of whether it is also live, which would show as its own `>_`
+icon turning green regardless of selection; `fox` is a plain, unselected
+row with no marker.)
 
 Navigation moves through the same order shown by the sidebar: stored order in
 the active project or tmux list order for the current instance's volatile
@@ -185,11 +189,16 @@ background.
 ### Top bar
 
 The top bar is tflow's primary state view. It opens with a project section,
-then a solid arrow marking the section split, then all contextual sessions in
-their exact order, showing each session once and highlighting the active
-session as a pill. The project section is always present: it names the active
-project, and in a volatile context it renders as an empty pill rather than
-being omitted, so the bar keeps the same shape in every context.
+rendered as a filled, rounded-cap pill, then all contextual sessions in their
+exact order, showing each session once as plain text with its type icon
+(`>_` code, `⎇` git, `✦` agent) -- except the active session, which is
+rendered the same filled, rounded-cap pill as the project section, with its
+icon forced green regardless of type. There is no separate divider glyph
+between the project pill and the sessions; the project pill's own closing
+cap, followed by a gap, is the section split. The project section is always
+present: it names the active project, and in a volatile context it renders
+as an empty pill rather than being omitted, so the bar keeps the same shape
+in every context.
 
 A switch computes derived, session-scoped status metadata for its selected
 target from post-mutation state. A successful rename, non-active deletion, or
@@ -204,9 +213,9 @@ scan described below, the one bounded, tmux-native timer in the design.
 ### Session types and indicators
 
 Every session carries a type identity: blue code, teal git, or yellow agent.
-Both sidebar pills and top-bar entries render the icon and colour alone --
+Both sidebar rows and top-bar entries render the icon and colour alone --
 `>_`, `⎇`, or `✦` -- never the spelled-out type name, to keep the line short.
-Selection never replaces the type identity. Teal `live` and red attention
+Selection never replaces the type identity. Green `live` and red attention
 indicators remain independent of type and selection.
 
 ### Attention
