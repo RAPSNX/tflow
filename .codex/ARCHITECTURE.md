@@ -135,18 +135,20 @@ is involved.
 ### Command sidebar
 
 The command sidebar never covers the status line, so the top bar stays readable
-while command mode is active. Inside the popup, the tflow badge sits as plain
-coloured text on its own line, with the session list stacked below it, offset
-to the right and framed in its own thin border. The whole component is
+while command mode is active. Inside the popup, the tflow badge sits as a
+filled, coloured pill on its own line, with the session list stacked below
+it, offset to the right and framed in its own thin border. The whole component is
 centered both horizontally and vertically in the popup rather than pinned to a
 corner. The session list renders at a fixed width rather than stretching to
 fill the popup, with a "Sessions" header, a blank line, then every contextual
 session stacked one per row below it, each shown as its type icon (`>_` code,
 `⎇` git, `✦` agent) plus its label; a session's icon turns green instead of
 its type color when it is the live, attached one, independent of selection.
-Neither the badge nor the chips has a background color of its own -- every
-distinction is colour and weight alone, so the whole popup shares one single
-background. The selected row is marked by a leading marker glyph (`▎`) plus
+The badge is the one deliberate exception to the popup's single shared
+background: a filled, coloured pill, so it reads as a static logo mark
+rather than a list entry. Nothing else has a background of its own -- the
+chips distinguish themselves by colour and weight alone. The selected row
+is marked by a leading marker glyph (`▎`) plus
 bold, mauve text for both the marker and the label, rather than a background
 block or a "live" text badge -- selection and live status are shown
 independently of each other, never conflated into one indicator:
