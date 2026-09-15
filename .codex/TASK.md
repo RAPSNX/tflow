@@ -4,17 +4,6 @@ Unfinished work derived from `.codex/ARCHITECTURE.md`, as `- [ ]` items.
 Delete an item once implemented and verified. No finished items, notes, or
 history.
 
-- [ ] Fix `mergeStateProjectFields` (`internal/ui/helpers.go`) so that when
-      a project was removed from `latest` by a concurrent save, the
-      not-found fallback reinserts the whole `desired` project, including
-      its sessions -- not just scalar fields via `ensureStateProject`,
-      which hardcodes an empty `Sessions` slice. Today, saving only a
-      scalar field (e.g. `agent-binary`) on a project another instance
-      just deleted silently drops every unchanged session, because the
-      later per-session merge loop skips sessions that already match
-      `base`. Add a regression test in `internal/ui/helpers_test.go`
-      mirroring `TestMergeAppStatesPreservesConcurrentAgentBinaryDuringWorkdirChange`.
-
 - [ ] Guard `.github/workflows/release.yml` against `v2+` tags before the
       `release` job runs. `go.mod`'s module path
       (`github.com/rapsnx/tflow`) has no `/vN` suffix, so per Go's
