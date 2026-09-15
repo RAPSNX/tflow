@@ -27,8 +27,16 @@ const (
 	// menuHeight stays below 100% so the popup fits under the status line.
 	// tmux resolves a popup that would overflow by moving it back up rather
 	// than shrinking it, so a full-height popup lands on the status line and
-	// hides the top bar. Percentages are floored, so this always leaves a row.
-	menuHeight = "35%"
+	// hides the top bar. Percentages are floored, so this always leaves a
+	// row. The session list has no viewport/scrolling of its own, so this
+	// is sized for the common case, not an unbounded one: on a 24-row
+	// terminal, the vertical badge+bordered-list layout needs ~12 rows for
+	// as few as two sessions (badge, blank, panel border/padding, header,
+	// blank, then one row per session) before the footer status line, which
+	// 35% (inherited from the old wide-short horizontal-pill layout) can't
+	// fit -- 80% leaves room for several more sessions while still leaving
+	// the status line's row clear of tmux's overflow-reposition threshold.
+	menuHeight = "80%"
 	// prefixKey enters prefixTable, a brief wait state for the second key
 	// of the chord (mirroring how tmux's own prefix key, e.g. C-b, works:
 	// tmux auto-reverts the client to its previous table after exactly one
