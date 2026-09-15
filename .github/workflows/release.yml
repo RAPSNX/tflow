@@ -31,12 +31,24 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match vN.N.N; refusing to guess its major version" >&2
             exit 1
           fi
-          if [ "$major" -ge 2 ]; then
-            echo "tag $GITHUB_REF_NAME is major version $major, but module path" >&2
-            echo "github.com/rapsnx/tflow has no /v$major suffix -- go install would" >&2
-            echo "never resolve it. Migrate the module path before tagging v2+." >&2
-            exit 1
-          fi
+          # Compare as a string, not `[ "$major" -ge 2 ]`: a SemVer-valid
+          # but astronomically large major version overflows shell integer
+          # arithmetic ("integer expression expected"), and since that
+          # failure happens inside an `if` condition, `bash -e` does not
+          # treat it as fatal -- the tag would then incorrectly fall
+          # through to goreleaser instead of being rejected. Strip leading
+          # zeros first so "01" and "1" compare the same; case-matching a
+          # string never overflows regardless of how many digits it has.
+          stripped="$(echo "$major" | sed 's/^0*//')"
+          case "$stripped" in
+            ""|0|1) ;;
+            *)
+              echo "tag $GITHUB_REF_NAME is major version $major, but module path" >&2
+              echo "github.com/rapsnx/tflow has no /v$major suffix -- go install would" >&2
+              echo "never resolve it. Migrate the module path before tagging v2+." >&2
+              exit 1
+              ;;
+          esac
 
       - uses: actions/setup-go@v5
         with:
