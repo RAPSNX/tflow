@@ -53,10 +53,18 @@ cmd_setup() {
   local root
   root="$(mktemp -d "${TMPDIR:-/tmp}/tmux-verify.XXXXXX")"
   mkdir -p "$root/tmux" "$root/state"
-  printf 'ROOT=%s\n' "$root"
-  printf 'TMUX_TMPDIR=%s\n' "$root/tmux"
-  printf 'XDG_STATE_HOME=%s\n' "$root/state"
-  printf 'SOCK=tflow\n'
+  # `export NAME=%q` (not a plain NAME=value assignment): eval'ing this
+  # output must put these into the *exported* environment, or any tmux/
+  # tflow subprocess launched afterward without an explicit per-command
+  # prefix silently inherits whatever TMUX_TMPDIR/XDG_STATE_HOME the
+  # ambient shell already had -- the same class of implicit-env-state bug
+  # that caused the incident this script exists to prevent. %q shell-quotes
+  # the value so eval handles it safely even if TMPDIR ever contains
+  # unusual characters.
+  printf 'export ROOT=%q\n' "$root"
+  printf 'export TMUX_TMPDIR=%q\n' "$root/tmux"
+  printf 'export XDG_STATE_HOME=%q\n' "$root/state"
+  printf 'export SOCK=%q\n' "tflow"
 }
 
 cmd_cleanup() {
