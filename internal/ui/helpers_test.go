@@ -64,6 +64,45 @@ func TestMergeAppStatesPreservesConcurrentAgentBinaryDuringWorkdirChange(t *test
 	}
 }
 
+// TestMergeAppStatesReinsertsFullProjectAfterConcurrentDeletion guards
+// against a regression where saving a scalar-only field change (e.g.
+// agent-binary) on a project a concurrent instance just deleted resurrected
+// it with an empty Sessions slice: mergeStateProjectFields's not-found
+// fallback used to call ensureStateProject, which only carries scalar
+// fields, and the later per-session merge loop skips every session whose
+// desired value still matches base -- silently dropping them all.
+func TestMergeAppStatesReinsertsFullProjectAfterConcurrentDeletion(t *testing.T) {
+	base := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/old", AgentBinary: "codex", Sessions: []persistentSession{
+			{ID: "tflow-p-one", Label: "one"},
+			{ID: "tflow-p-two", Label: "two"},
+		},
+	}}}
+	// A concurrent instance deleted project "small" entirely.
+	latest := appState{}
+	// This instance's editor still has "small" open, unaware of the
+	// deletion, and saves only a changed agent-binary -- every session is
+	// otherwise identical to base.
+	desired := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/old", AgentBinary: "claude", Sessions: []persistentSession{
+			{ID: "tflow-p-one", Label: "one"},
+			{ID: "tflow-p-two", Label: "two"},
+		},
+	}}}
+
+	merged := mergeAppStates(latest, base, desired)
+	project, ok := storedProjectByName(merged, "small")
+	if !ok {
+		t.Fatalf("project %#v missing after reinsertion, merged = %#v", "small", merged)
+	}
+	if project.AgentBinary != "claude" {
+		t.Fatalf("project.AgentBinary = %q, want the desired agent-binary", project.AgentBinary)
+	}
+	if len(project.Sessions) != 2 {
+		t.Fatalf("project.Sessions = %#v, want both original sessions preserved, not dropped", project.Sessions)
+	}
+}
+
 func TestSaveStatePreservesConcurrentDisjointChanges(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	path := appStatePath()
