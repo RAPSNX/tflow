@@ -4,26 +4,6 @@ Unfinished work derived from `.codex/ARCHITECTURE.md`, as `- [ ]` items.
 Delete an item once implemented and verified. No finished items, notes, or
 history.
 
-- [ ] Fix `mergeStateProjectFields` (`internal/ui/helpers.go`) so that when
-      a project was removed from `latest` by a concurrent save, the
-      not-found fallback reinserts the whole `desired` project, including
-      its sessions -- not just scalar fields via `ensureStateProject`,
-      which hardcodes an empty `Sessions` slice. Today, saving only a
-      scalar field (e.g. `agent-binary`) on a project another instance
-      just deleted silently drops every unchanged session, because the
-      later per-session merge loop skips sessions that already match
-      `base`. Add a regression test in `internal/ui/helpers_test.go`
-      mirroring `TestMergeAppStatesPreservesConcurrentAgentBinaryDuringWorkdirChange`.
-
-- [ ] Guard `.github/workflows/release.yml` against `v2+` tags before the
-      `release` job runs. `go.mod`'s module path
-      (`github.com/rapsnx/tflow`) has no `/vN` suffix, so per Go's
-      major-version-suffix rule a `v2.x.x`+ tag can publish a release
-      whose own `verify-published-module` job is guaranteed to fail
-      (`go install .../tflow@v2.x.x` can never resolve). Either reject
-      unsupported major-version tags early with a clear failure, or
-      migrate the module path when v2 is actually intended.
-
 - [ ] Close the same-second activity race in `AttentionScan`
       (`internal/ui/attention.go`): `MarkSessionVisited` stamps
       `VisitedAt` from tmux's `window_activity` (1-second resolution), and
