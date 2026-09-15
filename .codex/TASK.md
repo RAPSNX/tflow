@@ -4,15 +4,6 @@ Unfinished work derived from `.codex/ARCHITECTURE.md`, as `- [ ]` items.
 Delete an item once implemented and verified. No finished items, notes, or
 history.
 
-- [ ] Guard `.github/workflows/release.yml` against `v2+` tags before the
-      `release` job runs. `go.mod`'s module path
-      (`github.com/rapsnx/tflow`) has no `/vN` suffix, so per Go's
-      major-version-suffix rule a `v2.x.x`+ tag can publish a release
-      whose own `verify-published-module` job is guaranteed to fail
-      (`go install .../tflow@v2.x.x` can never resolve). Either reject
-      unsupported major-version tags early with a clear failure, or
-      migrate the module path when v2 is actually intended.
-
 - [ ] Close the same-second activity race in `AttentionScan`
       (`internal/ui/attention.go`): `MarkSessionVisited` stamps
       `VisitedAt` from tmux's `window_activity` (1-second resolution), and
