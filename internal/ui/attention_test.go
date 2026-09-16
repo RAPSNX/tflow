@@ -244,6 +244,9 @@ func TestAttentionScanRefreshesCurrentSessionWatermarkEveryTick(t *testing.T) {
 		listSessions: func() ([]session, error) {
 			return []session{{Name: "viewed", Attached: true}}, nil
 		},
+		sessionAttached: func(name string) (bool, error) {
+			return name == "viewed", nil
+		},
 		markSessionVisited: func(name string) error {
 			visited = append(visited, name)
 			return nil
@@ -256,6 +259,39 @@ func TestAttentionScanRefreshesCurrentSessionWatermarkEveryTick(t *testing.T) {
 	}
 	if len(visited) != 1 || visited[0] != "viewed" {
 		t.Fatalf("visited = %#v, want the current session's watermark refreshed every scan", visited)
+	}
+}
+
+// TestAttentionScanDoesNotStampAStaleCurrentSession guards against a
+// regression where TFLOW_CURRENT_SESSION -- captured by the status #() job
+// at the moment tmux redrew the status line, not at scan time -- is stale
+// because the client already switched away before this scan actually ran.
+// Marking that no-longer-current session visited from stale env data would
+// clear its marker (or advance its watermark) as if it were still being
+// actively viewed, silently losing any output produced in the gap.
+func TestAttentionScanDoesNotStampAStaleCurrentSession(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var visited []string
+	fake := fakeTmuxController{
+		listSessions: func() ([]session, error) {
+			return []session{{Name: "left-behind", Attached: false}}, nil
+		},
+		sessionAttached: func(name string) (bool, error) {
+			// The client already switched away by the time this scan runs.
+			return false, nil
+		},
+		markSessionVisited: func(name string) error {
+			visited = append(visited, name)
+			return nil
+		},
+	}
+
+	t.Setenv(menuCurrentEnv, "left-behind")
+	if err := attentionScanWithManager(fake); err != nil {
+		t.Fatalf("attentionScanWithManager: %v", err)
+	}
+	if len(visited) != 0 {
+		t.Fatalf("visited = %#v, want no watermark stamp for a stale current session", visited)
 	}
 }
 
