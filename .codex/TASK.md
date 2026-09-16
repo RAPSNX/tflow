@@ -103,8 +103,13 @@ history.
       currently holds `git`, mirroring `provisionAgentSession`'s existing
       `agent`/`agent-2` suffixing, `internal/ui/project_settings.go:370-375`,
       reimplemented here as a pure function over `[]PersistentSession`
-      since this runs in `internal/store`, not `internal/ui`) -- and call
-      it explicitly, only from `decodeAppState` and `SaveAppState`, each
+      since this runs in `internal/store`, not `internal/ui`), *then*
+      coercing the surviving git session's own label to `git` -- this
+      last step runs unconditionally whenever that label isn't already
+      `git`, whether or not a collision existed to resolve first, since a
+      legacy store can just as easily have its sole git session labeled
+      something like `scm` with `git` free the whole time. Call the
+      migration explicitly, only from `decodeAppState` and `SaveAppState`, each
       time immediately before their own `ValidateAppState` call. Every
       other `NormalizeAppState` call site, `MoveSession` included, is
       deliberately left untouched: unlike a load, those operations act on
