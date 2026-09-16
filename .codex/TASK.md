@@ -179,20 +179,27 @@ history.
       persisting a fresh duplicate-label collision the very first time a
       user sets `git-binary`. Unlike the migration (which only ever runs
       against persisted state before it's loaded), the conflicting session
-      here can already be a live, materialized tmux session, so relabeling
-      it in the model and persisted state isn't enough on its own -- its
-      `@tflow-session-label` marker also needs updating, or runtime
-      metadata stays stale until the next reconciliation. Call
-      `m.syncSessionMarkers` (`internal/ui/helpers.go:362`) for the
-      relabeled session after persisting, the same idempotent helper the
-      rename and move paths already use for exactly this. Invoked
-      wherever a project's `git-binary` setting is saved. The `e` YAML editor's accepted-key
+      here can already be a live, materialized tmux session -- or it can
+      just as easily be an unmaterialized persistent record, a state the
+      architecture already treats as normal, so relabeling it in the
+      model and persisted state isn't enough on its own, but a raw
+      `m.syncSessionMarkers` (`internal/ui/helpers.go:362`) call isn't
+      right either: that helper calls `SetSessionProject`/`SetSessionLabel`
+      directly, with no missing-session tolerance of its own, so it would
+      surface tmux's no-such-session error and fail the whole
+      `git-binary` save for a session that simply hasn't been selected
+      yet. Wrap the call in `ignoreMissingSession`, the way
+      `internal/ui/session_move.go`'s own marker writes already do, so a
+      materialized session's marker gets synced and an unmaterialized
+      one is silently skipped either way. Invoked wherever a project's
+      `git-binary` setting is saved. The `e` YAML editor's accepted-key
       allowlist gains `git-binary` next to `workdir`/`agent-binary`. Add
       table-driven tests for the new dedup and label-lock validation
       (beyond the three legacy-migration load tests above), the
       `MoveSession` rejection, `provisionGitSession` (including
       provisioning into a project that already has an unrelated session
-      labeled `git`), the `git-binary`
+      labeled `git`, covering both a materialized and an unmaterialized
+      conflicting session), the `git-binary`
       rejection, a round-trip through the codec, and a concurrent-merge
       test that a saved custom `gitBinary` survives
       `mergeAppStates`/`mergeStateProjectFields` the way agent-binary

@@ -316,11 +316,9 @@ The intended schema is:
 
 `agentBinary`, `gitBinary`, and session `command` fields may be omitted where
 inapplicable. Missing `type` on an older record means `terminal` without
-migration or rewrite. Within one project, before the schema checks below
-ever run, an existing `git`-typed record's label converges to `git` and
-every `git`-typed record after the first (stored order) converges to
-`terminal` -- unlike the untyped-record fallback just above, this one
-does rewrite the store the next time it's saved. Present types must be
+migration or rewrite. Within one project, an existing `git`-typed
+record's label converges to `git`, and every `git`-typed record after
+the first (stored order) converges to `terminal`. Present types must be
 `terminal`, `git`, or `agent`; agent sessions
 require a command; a git session's launch command is its project's
 `gitBinary`, not a stored field, so terminal and git sessions both forbid
