@@ -76,57 +76,67 @@ history.
       label `git` (e.g. a terminal). `decodeAppState` calls
       `ValidateAppState` on every load; rejecting either shape outright
       would make an affected user's store unreadable after upgrade.
-      Migrate both during normalization instead, in
-      `NormalizeAppState` (`internal/store/state_normalize.go`), per
-      project: demote every `git`-typed session after the first (stored
-      order) to `terminal`, the same fallback a missing `type` already
-      gets; then, for the one surviving `git` session, if its label isn't
-      already `git`, reassign the *conflicting* session's label rather
-      than compromise the git label lock -- append a numeric suffix
-      (`git-2`, `git-3`, ...) to whichever other session in the project
-      currently holds `git`, mirroring `provisionAgentSession`'s existing
-      `agent`/`agent-2` suffixing (`internal/ui/project_settings.go:370-375`,
-      reimplemented here as a pure function over `[]PersistentSession`
-      since this runs in `internal/store`, not `internal/ui`), before
-      coercing the git session's own label to `git`.
 
-      This migration only works if it always runs before validation sees
-      the data, which the current call order doesn't guarantee:
-      `decodeAppState` calls `ValidateAppState` on the raw decoded state
-      and only normalizes the (already-validated) result afterward, so
-      the new checks would reject legacy data before the migration that's
-      supposed to fix it ever runs. The fix is not to normalize before
-      validating generally, though: `NormalizeAppState` is deliberately
-      lossy elsewhere -- it silently drops a duplicate or empty
-      project/session ID and synthesizes a missing label, exactly the
-      corruption `ValidateAppState` exists to reject rather than
-      silently repair. Running the full normalizer before validation
-      would hide that corruption from validation entirely, and a later
-      save would then persist the silent repair, permanently discarding
-      the records `ValidateAppState` was supposed to protect. Leave
-      `decodeAppState`'s existing validate-then-normalize order alone;
-      add a separate, narrow migration step (e.g.
-      `migrateLegacyGitSessions`) that performs *only* the two git
-      repairs above -- demoting extra `git`-typed sessions and relabeling
-      a conflicting session -- and run it before `ValidateAppState`,
-      touching nothing else the lossy normalizer would otherwise fix.
-      `SaveAppState` doesn't validate at all today -- it normalizes as
-      part of `encodeAppState` and writes whatever comes out, so a
-      collision `provisionGitSession` below fails to resolve could still
-      reach disk; have `SaveAppState` run the same narrow migration and
-      then `ValidateAppState` before encoding, not the full normalizer,
-      so the on-disk state is never both un-migrated and unvalidated. Add
-      a load test for a legacy store with two `git` sessions in one
-      project, one for a `git` session labeled something else while
-      another session in the same project already holds `git`
-      (confirming both open successfully with the invariant restored
-      rather than getting rejected), and one for a store with an
-      unrelated corruption (e.g. a duplicate project name) confirming it
-      is still rejected, not silently repaired.
+      This is a *load-time compatibility migration*, not a normalization
+      rule -- it belongs nowhere near `NormalizeAppState`
+      (`internal/store/state_normalize.go`), which several other call
+      sites (`internal/store/move.go:89-104`'s `MoveSession` included)
+      already call ahead of their own `ValidateAppState` check for
+      unrelated reasons. Putting the git repairs inside `NormalizeAppState`
+      itself would silently demote a session `MoveSession` is supposed to
+      *reject* -- moving a `git`-typed session into a project that
+      already has one -- into a harmless `terminal`, defeating the
+      "already has a git session" move rule the architecture requires,
+      and `NormalizeAppState` is already deliberately lossy for unrelated
+      reasons (it silently drops a duplicate or empty project/session ID
+      and synthesizes a missing label, exactly the corruption
+      `ValidateAppState` exists to reject rather than repair), so folding
+      one more lossy repair into it only compounds that risk everywhere
+      it's already called. Add a separate, narrow function instead (e.g.
+      `migrateLegacyGitSessions`) that performs *only* the two repairs --
+      demoting every `git`-typed session after the first (stored order)
+      to `terminal`, the same fallback a missing `type` already gets, and
+      then, for the one surviving `git` session, if its label isn't
+      already `git`, reassigning the *conflicting* session's label rather
+      than compromising the git label lock (append a numeric suffix
+      `git-2`, `git-3`, ... to whichever other session in the project
+      currently holds `git`, mirroring `provisionAgentSession`'s existing
+      `agent`/`agent-2` suffixing, `internal/ui/project_settings.go:370-375`,
+      reimplemented here as a pure function over `[]PersistentSession`
+      since this runs in `internal/store`, not `internal/ui`) -- and call
+      it explicitly, only from `decodeAppState` and `SaveAppState`, each
+      time immediately before their own `ValidateAppState` call. Every
+      other `NormalizeAppState` call site, `MoveSession` included, is
+      deliberately left untouched: unlike a load, those operations act on
+      state that's already passed validation once, so a *new* duplicate
+      or mislabeled git session they'd introduce is a live rejection to
+      surface, not a legacy record to repair.
+
+      `decodeAppState` currently calls `ValidateAppState` on the raw
+      decoded state and only normalizes the (already-validated) result
+      afterward -- add the new migration call right before that existing
+      `ValidateAppState` call, so legacy data is repaired first without
+      touching that function's other ordering. `SaveAppState` doesn't
+      validate at all today -- it normalizes as part of `encodeAppState`
+      and writes whatever comes out, so a collision `provisionGitSession`
+      below fails to resolve could still reach disk; have `SaveAppState`
+      run the migration and then `ValidateAppState` before encoding, not
+      the full normalizer, so the on-disk state is never both
+      un-migrated and unvalidated. Add a load test for a legacy store
+      with two `git` sessions in one project, one for a `git` session
+      labeled something else while another session in the same project
+      already holds `git` (confirming both open successfully with the
+      invariant restored rather than getting rejected), and one for a
+      store with an unrelated corruption (e.g. a duplicate project name)
+      confirming it is still rejected, not silently repaired.
 
       `internal/store/move.go` inherits the dedup rejection for free once
       that validation exists (it already relies on `ValidateAppState` for
-      the agent case). `internal/ui/actions.go`'s `beginRename` refuses to
+      the agent case) -- and, because the migration above deliberately
+      never touches `MoveSession`'s own `NormalizeAppState` call, moving a
+      `git`-typed session into a project that already has one is still
+      rejected outright, not silently demoted to `terminal`. Add a
+      `MoveSession` test for exactly that case. `internal/ui/actions.go`'s `beginRename` refuses to
       rename a `git`-type session, with a clear `m.status` message.
       `internal/ui/project_settings.go`'s `handleProjectEditorFinished`
       gains a `git-binary` counterpart to the existing
