@@ -95,20 +95,34 @@ history.
       `decodeAppState` calls `ValidateAppState` on the raw decoded state
       and only normalizes the (already-validated) result afterward, so
       the new checks would reject legacy data before the migration that's
-      supposed to fix it ever runs. `SaveAppState` doesn't validate at
-      all -- it normalizes as part of `encodeAppState` and writes
-      whatever comes out, so a collision the migration's suffixing
-      resolved incorrectly (or a validation the UI layer ran on its own
-      pre-normalization merged state) can still reach disk. Reorder
-      `decodeAppState` to normalize first and validate the normalized
-      result, and make `SaveAppState` validate that same normalized
-      result before encoding, so `ValidateAppState`'s invariants are
-      always checked against the canonical, already-migrated shape on
-      both the load and save paths. Add a load test for a legacy store
-      with two `git` sessions in one project, and one for a `git` session
-      labeled something else while another session in the same project
-      already holds `git`, confirming both open successfully with the
-      invariant restored rather than getting rejected.
+      supposed to fix it ever runs. The fix is not to normalize before
+      validating generally, though: `NormalizeAppState` is deliberately
+      lossy elsewhere -- it silently drops a duplicate or empty
+      project/session ID and synthesizes a missing label, exactly the
+      corruption `ValidateAppState` exists to reject rather than
+      silently repair. Running the full normalizer before validation
+      would hide that corruption from validation entirely, and a later
+      save would then persist the silent repair, permanently discarding
+      the records `ValidateAppState` was supposed to protect. Leave
+      `decodeAppState`'s existing validate-then-normalize order alone;
+      add a separate, narrow migration step (e.g.
+      `migrateLegacyGitSessions`) that performs *only* the two git
+      repairs above -- demoting extra `git`-typed sessions and relabeling
+      a conflicting session -- and run it before `ValidateAppState`,
+      touching nothing else the lossy normalizer would otherwise fix.
+      `SaveAppState` doesn't validate at all today -- it normalizes as
+      part of `encodeAppState` and writes whatever comes out, so a
+      collision `provisionGitSession` below fails to resolve could still
+      reach disk; have `SaveAppState` run the same narrow migration and
+      then `ValidateAppState` before encoding, not the full normalizer,
+      so the on-disk state is never both un-migrated and unvalidated. Add
+      a load test for a legacy store with two `git` sessions in one
+      project, one for a `git` session labeled something else while
+      another session in the same project already holds `git`
+      (confirming both open successfully with the invariant restored
+      rather than getting rejected), and one for a store with an
+      unrelated corruption (e.g. a duplicate project name) confirming it
+      is still rejected, not silently repaired.
 
       `internal/store/move.go` inherits the dedup rejection for free once
       that validation exists (it already relies on `ValidateAppState` for
@@ -123,13 +137,24 @@ history.
       into stored state and only fails later at materialization. That
       file also gains a `provisionGitSession` alongside
       `provisionAgentSession` (`project_settings.go:359-382`) -- same
-      shape, but always labeled `git` with no numbered fallback, since
-      exactly one is ever allowed -- invoked wherever a project's
-      `git-binary` setting is saved. The `e` YAML editor's accepted-key
+      shape, but always labeled `git` with no numbered fallback for the
+      git session itself, since exactly one is ever allowed. A project
+      can reach provisioning with no git session but an unrelated one
+      already labeled `git` (promotion presets none, or the original git
+      session was since deleted or moved away, both already-documented
+      ways a project ends up git-less) -- in that case `provisionGitSession`
+      must free the label the same way the migration above does,
+      relabeling the *conflicting* session to the first free `git-N`
+      before creating the new git session as plain `git`, rather than
+      persisting a fresh duplicate-label collision the very first time a
+      user sets `git-binary`. Invoked wherever a project's `git-binary`
+      setting is saved. The `e` YAML editor's accepted-key
       allowlist gains `git-binary` next to `workdir`/`agent-binary`. Add
       table-driven tests for the new dedup and label-lock validation
-      (beyond the two legacy-migration load tests above), the
-      `MoveSession` rejection, `provisionGitSession`, the `git-binary`
+      (beyond the three legacy-migration load tests above), the
+      `MoveSession` rejection, `provisionGitSession` (including
+      provisioning into a project that already has an unrelated session
+      labeled `git`), the `git-binary`
       rejection, a round-trip through the codec, and a concurrent-merge
       test that a saved custom `gitBinary` survives
       `mergeAppStates`/`mergeStateProjectFields` the way agent-binary
