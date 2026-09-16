@@ -41,3 +41,231 @@ history.
       materialized afterward keeps today's immediate-flag behavior;
       confirm the startup ordering against a real tmux server
       (`scripts/tmux-verify.sh`) before relying on it.
+
+- [ ] Add a configurable, locked `git` session type, mirroring the existing
+      `agent` pattern: `Project.GitBinary` in
+      `internal/store/state_schema.go` (+ `storedProject.GitBinary`,
+      `omitempty`), normalized alongside `AgentBinary` in
+      `internal/store/state_normalize.go` and
+      `internal/store/project_config.go`. `AgentBinary` is not confined to
+      those two files, though -- it is manually copied or compared at
+      every persistence projection, and `GitBinary` needs the same
+      counterpart at each: `internal/store/state_codec.go`'s encode and
+      decode (both construct their project literal field-by-field),
+      `internal/ui/model.go`'s `currentState`/project-config
+      reconstruction, and every `AgentBinary` reference inside
+      `internal/ui/helpers.go` (`mergeStateProjectFields`'s scalar-diff
+      check and its two-project-literal construction, plus the other
+      `storedProject{...}` literals in the reinsert/ensure helpers). Grep
+      the codebase for `AgentBinary` and add a `GitBinary` counterpart
+      everywhere it appears; a spot missed here means a custom
+      `git-binary` can be saved, compile, and then silently get dropped or
+      overwritten on the next write or restart. `materializeCommand`
+      (`internal/ui/session_type.go:16-19`) resolves the git binary from
+      the owning project, falling back to `lazygit` when unset, instead of
+      the current hardcoded literal.
+
+      `ValidateAppState` still gains both the dedup rule and the label
+      lock -- `MoveSession` needs them to keep rejecting a live conflict,
+      covered below -- but neither can be enforced by simply calling
+      `ValidateAppState` against whatever `decodeAppState` just decoded,
+      the way `seenAgent` is today: `beginRename` currently permits any
+      label on any session type, and `MoveSession` doesn't reject a
+      duplicate `git` type when the incoming session's label differs from
+      the target's -- so an existing release can already have two
+      `git`-typed sessions in one project, or a `git`-typed session
+      labeled something other than `git` while a *different*, unrelated
+      session already holds the label `git` (e.g. a terminal).
+      `decodeAppState` calls `ValidateAppState` on every load; rejecting
+      either shape outright would make an affected user's store
+      unreadable after upgrade.
+
+      This is a *load-time compatibility migration*, not a normalization
+      rule -- it belongs nowhere near `NormalizeAppState`
+      (`internal/store/state_normalize.go`), which several other call
+      sites (`internal/store/move.go:89-104`'s `MoveSession` included)
+      already call ahead of their own `ValidateAppState` check for
+      unrelated reasons. Putting the git repairs inside `NormalizeAppState`
+      itself would silently demote a session `MoveSession` is supposed to
+      *reject* -- moving a `git`-typed session into a project that
+      already has one -- into a harmless `terminal`, defeating the
+      "already has a git session" move rule the architecture requires,
+      and `NormalizeAppState` is already deliberately lossy for unrelated
+      reasons (it silently drops a duplicate or empty project/session ID
+      and synthesizes a missing label, exactly the corruption
+      `ValidateAppState` exists to reject rather than repair), so folding
+      one more lossy repair into it only compounds that risk everywhere
+      it's already called. Add a separate, narrow function instead (e.g.
+      `migrateLegacyGitSessions`) that performs *only* the two repairs --
+      demoting every `git`-typed session after the first (stored order)
+      to `terminal`, the same fallback a missing `type` already gets, and
+      then, for the one surviving `git` session, if its label isn't
+      already `git`, reassigning the *conflicting* session's label rather
+      than compromising the git label lock (append a numeric suffix
+      `git-2`, `git-3`, ... to whichever other session in the project
+      currently holds `git`, mirroring `provisionAgentSession`'s existing
+      `agent`/`agent-2` suffixing, `internal/ui/project_settings.go:370-375`,
+      reimplemented here as a pure function over `[]PersistentSession`
+      since this runs in `internal/store`, not `internal/ui`), *then*
+      coercing the surviving git session's own label to `git` -- this
+      last step runs unconditionally whenever that label isn't already
+      `git`, whether or not a collision existed to resolve first, since a
+      legacy store can just as easily have its sole git session labeled
+      something like `scm` with `git` free the whole time. Call the
+      migration explicitly, only from `decodeAppState` and `SaveAppState`, each
+      time immediately before their own `ValidateAppState` call. Every
+      other `NormalizeAppState` call site, `MoveSession` included, is
+      deliberately left untouched: unlike a load, those operations act on
+      state that's already passed validation once, so a *new* duplicate
+      or mislabeled git session they'd introduce is a live rejection to
+      surface, not a legacy record to repair.
+
+      `decodeAppState` currently calls `ValidateAppState` on the raw
+      decoded state and only normalizes the (already-validated) result
+      afterward -- add the new migration call right before that existing
+      `ValidateAppState` call, so legacy data is repaired first without
+      touching that function's other ordering. `SaveAppState` doesn't
+      validate at all today -- it normalizes as part of `encodeAppState`
+      and writes whatever comes out, so a collision `provisionGitSession`
+      below fails to resolve could still reach disk; have `SaveAppState`
+      run the migration and then `ValidateAppState` before encoding, not
+      the full normalizer, so the on-disk state is never both
+      un-migrated and unvalidated. Add a load test for a legacy store
+      with two `git` sessions in one project, one for a `git` session
+      labeled something else while another session in the same project
+      already holds `git` (confirming both open successfully with the
+      invariant restored rather than getting rejected), and one for a
+      store with an unrelated corruption (e.g. a duplicate project name)
+      confirming it is still rejected, not silently repaired.
+
+      `internal/store/move.go` inherits the dedup *check* for free once
+      that validation exists (it already relies on `ValidateAppState` for
+      the agent case) -- and, because the migration above deliberately
+      never touches `MoveSession`'s own `NormalizeAppState` call, moving a
+      `git`-typed session into a project that already has one is still
+      rejected outright, not silently demoted to `terminal`. The error
+      message isn't free, though: `MoveSession`'s existing
+      `ValidateAppState` failure handler (`internal/store/move.go:97-105`)
+      unconditionally wraps every failure as `"already has an agent
+      session"`, on the documented assumption that the agent-per-project
+      rule was the only thing `ValidateAppState` could still reject at
+      that point -- a git-session move conflict would go through the
+      same path and surface that same false, agent-specific message.
+      Branch on the moved session's own `Type` when wrapping the error,
+      so a git conflict reports `"already has a git session"` and an
+      agent conflict keeps today's message. Add a `MoveSession` test for
+      a git-into-git move asserting the corrected message, alongside the
+      dedup test noted above. `internal/ui/actions.go`'s `beginRename`
+      refuses to rename a `git`-type session, with a clear `m.status`
+      message.
+      `internal/ui/project_settings.go`'s `handleProjectEditorFinished`
+      gains a `git-binary` counterpart to the existing
+      `isBareExecutableToken(agentBinary)` check (around
+      `project_settings.go:287`), rejecting an invalid value (e.g.
+      `git --foo`) before it is ever persisted, the same way an invalid
+      `agent-binary` is today -- without it, an invalid value compiles
+      into stored state and only fails later at materialization. That
+      file also gains a `provisionGitSession` alongside
+      `provisionAgentSession` (`project_settings.go:359-382`) -- same
+      shape, but always labeled `git` with no numbered fallback for the
+      git session itself, since exactly one is ever allowed. A project
+      can reach provisioning with no git session but an unrelated one
+      already labeled `git` (promotion presets none, or the original git
+      session was since deleted or moved away, both already-documented
+      ways a project ends up git-less) -- in that case `provisionGitSession`
+      must free the label the same way the migration above does,
+      relabeling the *conflicting* session to the first free `git-N`
+      before creating the new git session as plain `git`, rather than
+      persisting a fresh duplicate-label collision the very first time a
+      user sets `git-binary`. Unlike the migration (which only ever runs
+      against persisted state before it's loaded), the conflicting session
+      here can already be a live, materialized tmux session -- or it can
+      just as easily be an unmaterialized persistent record, a state the
+      architecture already treats as normal, so relabeling it in the
+      model and persisted state isn't enough on its own, but a raw
+      `m.syncSessionMarkers` (`internal/ui/helpers.go:362`) call isn't
+      right either: that helper calls `SetSessionProject`/`SetSessionLabel`
+      directly, with no missing-session tolerance of its own, so it would
+      surface tmux's no-such-session error and fail the whole
+      `git-binary` save for a session that simply hasn't been selected
+      yet. Wrap the call in `ignoreMissingSession`, the way
+      `internal/ui/session_move.go`'s own marker writes already do, so a
+      materialized session's marker gets synced and an unmaterialized
+      one is silently skipped either way. Invoked wherever a project's
+      `git-binary` setting is saved. The `e` YAML editor's accepted-key
+      allowlist gains `git-binary` next to `workdir`/`agent-binary`. Add
+      table-driven tests for the new dedup and label-lock validation
+      (beyond the three legacy-migration load tests above), the
+      `MoveSession` rejection, `provisionGitSession` (including
+      provisioning into a project that already has an unrelated session
+      labeled `git`, covering both a materialized and an unmaterialized
+      conflicting session), the `git-binary`
+      rejection, a round-trip through the codec, and a concurrent-merge
+      test that a saved custom `gitBinary` survives
+      `mergeAppStates`/`mergeStateProjectFields` the way agent-binary
+      already does; hand-verify via `scripts/tmux-verify.sh` that a
+      project with a custom `git-binary` launches it on selecting the git
+      session, that the setting survives a restart, and that renaming
+      that session is rejected.
+
+- [ ] Make command mode (the `Ctrl+F` wait state, `prefixTable` in
+      `internal/tmux/control.go`) reach every dialog-driving sidebar
+      action directly, the same way `h`/`l`/`g` already reach
+      navigate-prev/navigate-next/jump-git without opening the popup at
+      all. Add a `MenuMode*` constant (`internal/tmux/types.go`) and a
+      `cmd/tflow/main.go` subcommand for each of: create session, create
+      project, switch project, rename session, delete session, move,
+      rename project, delete project, and edit project settings --
+      mirroring `open-quit`'s existing `TFLOW_MENU_MODE`/`openMenu`
+      wiring.
+
+      `openMenu` (`internal/ui/lifecycle.go`) cannot invoke a `begin*`
+      method directly for these new modes the way it sets `menu.commandMode`
+      for `MenuModeCommand`: `begin*` methods read `m.sessions`,
+      `m.selectedSession`, and `m.selectedProject`, none of which are
+      populated until `sessionsLoadedMsg` arrives and `syncSelection()`
+      runs inside `updateMessage` (`internal/ui/messages.go`) -- which
+      only happens once `runProgram`'s Bubble Tea loop starts, strictly
+      after `openMenu` would have already called `begin*` on an empty
+      model. Instead, stash the requested mode as a pending-action field on
+      `menu` before calling `runProgram`, then in `updateMessage`'s
+      `sessionsLoadedMsg` case, immediately after `syncSelection()`, check
+      that field and invoke the corresponding `begin*` method there,
+      applying both the resulting model mutations and its returned
+      `tea.Cmd` (`editProject`'s `ExecProcess` command included) through
+      the normal `Update` return rather than discarding it.
+
+      Route each new mode's pending action to the same `begin*` method the
+      popup's own keypress already calls (`m.beginRename()`,
+      `m.beginSessionMove()`, `m.startSessionCreate()`,
+      `m.beginProjectCreate()`, `m.beginProjectSwitch()`,
+      `m.beginDelete()`, `m.beginProjectRename()`,
+      `m.beginProjectDelete()`, `m.editProject()` -- see
+      `internal/ui/keys.go:41-60`), so both entry points share one code
+      path; project rename and delete are separate subcommands from their
+      session counterparts, matching the sidebar's own distinct `R`/`D`
+      bindings.
+
+      Bind each new subcommand's shell command at `prefixTable` in
+      `internal/tmux/control.go` using `parts` (both `TFLOW_CURRENT_SESSION`
+      and `TFLOW_CURRENT_CLIENT`), the way `jumpGitShell` actually does --
+      not `sessionOnlyPart`, which omits the client and, per the existing
+      comment on `navigatePrevShell`/`navigateNextShell`/`jumpGitShell`
+      just above it, would make `Manager.SwitchClient`/`openMenu` fall back
+      to an unscoped client lookup that can target the wrong client when
+      more than one is attached -- exactly the client-scoping bug these
+      destructive dialog actions can't afford.
+
+      Leave `j`/`k` selection and `Enter`-to-switch popup-only -- there is
+      nothing to move through or select before the sidebar's list is
+      visible. Add tests covering each new `MenuMode*` value in the
+      `openMenu` switch, including that its pending action fires only
+      after `sessionsLoadedMsg`/`syncSelection` and that its returned
+      command is not dropped; hand-verify via `scripts/tmux-verify.sh`
+      that, for at least create-session, rename session, delete session,
+      rename project, and delete project, pressing the bound key from
+      command mode opens the sidebar already inside that flow (not the
+      plain session list) with the correct session/project selected, that
+      finishing or cancelling it behaves the same as reaching it through
+      the popup's own keypress, and that it targets the pressing client
+      when a second client is attached.
