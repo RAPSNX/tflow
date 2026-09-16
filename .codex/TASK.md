@@ -65,17 +65,20 @@ history.
       the owning project, falling back to `lazygit` when unset, instead of
       the current hardcoded literal.
 
-      Neither the dedup rule nor the label lock can be a rejection in
-      `ValidateAppState`, and this needs more than swapping in a
-      normalization pass: `beginRename` currently permits any label on
-      any session type, and `MoveSession` doesn't reject a duplicate `git`
-      type when the incoming session's label differs from the target's --
-      so an existing release can already have two `git`-typed sessions in
-      one project, or a `git`-typed session labeled something other than
-      `git` while a *different*, unrelated session already holds the
-      label `git` (e.g. a terminal). `decodeAppState` calls
-      `ValidateAppState` on every load; rejecting either shape outright
-      would make an affected user's store unreadable after upgrade.
+      `ValidateAppState` still gains both the dedup rule and the label
+      lock -- `MoveSession` needs them to keep rejecting a live conflict,
+      covered below -- but neither can be enforced by simply calling
+      `ValidateAppState` against whatever `decodeAppState` just decoded,
+      the way `seenAgent` is today: `beginRename` currently permits any
+      label on any session type, and `MoveSession` doesn't reject a
+      duplicate `git` type when the incoming session's label differs from
+      the target's -- so an existing release can already have two
+      `git`-typed sessions in one project, or a `git`-typed session
+      labeled something other than `git` while a *different*, unrelated
+      session already holds the label `git` (e.g. a terminal).
+      `decodeAppState` calls `ValidateAppState` on every load; rejecting
+      either shape outright would make an affected user's store
+      unreadable after upgrade.
 
       This is a *load-time compatibility migration*, not a normalization
       rule -- it belongs nowhere near `NormalizeAppState`
