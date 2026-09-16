@@ -111,14 +111,7 @@ func mergeAppStates(latest, base, desired appState) appState {
 			if existed && baseSession == session {
 				continue
 			}
-			ensureStateProjectExists(&latest, project)
-			removeStateSession(&latest, id)
-			for index := range latest.Projects {
-				if latest.Projects[index].Name == session.project {
-					latest.Projects[index].Sessions = append(latest.Projects[index].Sessions, persistentSession{ID: id, Label: session.label, Type: session.sessionType, Command: session.command})
-					break
-				}
-			}
+			mergeStateSessionFields(&latest, id, project, session, baseSession, existed)
 		}
 	}
 	return normalizeAppState(latest)
@@ -188,6 +181,59 @@ func mergeStateProjectFields(state *appState, desired, base storedProject) {
 		AgentBinary: desired.AgentBinary,
 		Sessions:    sessions,
 	})
+}
+
+// mergeStateSessionFields applies only the session fields this editor
+// actually changed (desired vs. its own base snapshot) onto latest,
+// leaving every other field -- including which project the session
+// belongs to -- as latest already has it. A concurrent instance may have
+// renamed, moved, or retyped the same session; copying the whole desired
+// tuple over unconditionally (the old behaviour) would silently revert
+// that unrelated, already-saved edit whenever this editor changed even
+// one other field, e.g. an agent-binary update reverting a concurrent
+// rename or move.
+func mergeStateSessionFields(state *appState, id string, desiredProject storedProject, desired, base stateSession, existedInBase bool) {
+	merged := desired
+	if currentProject, current, found := findStateSession(*state, id); found {
+		merged = stateSession{project: currentProject, label: current.Label, sessionType: current.Type, command: current.Command}
+		if existedInBase {
+			if desired.project != base.project {
+				merged.project = desired.project
+			}
+			if desired.label != base.label {
+				merged.label = desired.label
+			}
+			if desired.sessionType != base.sessionType {
+				merged.sessionType = desired.sessionType
+			}
+			if desired.command != base.command {
+				merged.command = desired.command
+			}
+		} else {
+			merged = desired
+		}
+	}
+	removeStateSession(state, id)
+	ensureStateProjectExists(state, storedProject{Name: merged.project, Workdir: desiredProject.Workdir, AgentBinary: desiredProject.AgentBinary})
+	for index := range state.Projects {
+		if state.Projects[index].Name == merged.project {
+			state.Projects[index].Sessions = append(state.Projects[index].Sessions, persistentSession{ID: id, Label: merged.label, Type: merged.sessionType, Command: merged.command})
+			break
+		}
+	}
+}
+
+// findStateSession locates a session by ID anywhere in state, returning the
+// name of the project that currently holds it.
+func findStateSession(state appState, id string) (project string, session persistentSession, found bool) {
+	for _, p := range state.Projects {
+		for _, s := range p.Sessions {
+			if s.ID == id {
+				return p.Name, s, true
+			}
+		}
+	}
+	return "", persistentSession{}, false
 }
 
 func ensureStateProject(state *appState, project storedProject) {
