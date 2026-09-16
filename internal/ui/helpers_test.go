@@ -177,6 +177,47 @@ func TestMergeAppStatesPreservesConcurrentMoveDuringCommandChange(t *testing.T) 
 	}
 }
 
+// TestMergeAppStatesPreservesFinalSessionMoveAfterReinsertingSourceProject
+// guards against a regression where mergeStateProjectFields's not-found
+// fallback reinserted every one of the desired project's sessions
+// unconditionally: if the project is gone because a concurrent instance
+// moved away its final session (which deletes the project as a side
+// effect), that session already lives in its new project in latest, and
+// reinserting it back into the resurrected source project would duplicate
+// its ID across two projects -- which validateAppState then rejects,
+// failing this editor's otherwise-unrelated scalar-only save outright.
+func TestMergeAppStatesPreservesFinalSessionMoveAfterReinsertingSourceProject(t *testing.T) {
+	base := appState{Projects: []storedProject{
+		{Name: "small", Workdir: "/old", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}}},
+		{Name: "big", Workdir: "/big", Sessions: []persistentSession{}},
+	}}
+	// A concurrent instance moved "small"'s only session into "big",
+	// deleting "small" as a side effect of moving away its final session.
+	latest := appState{Projects: []storedProject{
+		{Name: "big", Workdir: "/big", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}}},
+	}}
+	// This instance's editor still has "small" open, unaware of the move,
+	// and saves only a changed workdir -- its session is otherwise
+	// identical to base.
+	desired := appState{Projects: []storedProject{
+		{Name: "small", Workdir: "/new", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}}},
+		{Name: "big", Workdir: "/big", Sessions: []persistentSession{}},
+	}}
+
+	merged := mergeAppStates(latest, base, desired)
+	if err := validateAppState(merged); err != nil {
+		t.Fatalf("validateAppState(merged) = %v, want the disjoint save accepted", err)
+	}
+	small, ok := storedProjectByName(merged, "small")
+	if !ok || small.Workdir != "/new" || len(small.Sessions) != 0 {
+		t.Fatalf("small project = %#v, want the desired workdir with no duplicated session", small)
+	}
+	big, ok := storedProjectByName(merged, "big")
+	if !ok || len(big.Sessions) != 1 || big.Sessions[0].ID != "tflow-p-one" {
+		t.Fatalf("big project = %#v, want the moved session to remain authoritative", big)
+	}
+}
+
 func TestSaveStatePreservesConcurrentDisjointChanges(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	path := appStatePath()

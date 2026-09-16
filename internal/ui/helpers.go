@@ -169,12 +169,25 @@ func mergeStateProjectFields(state *appState, desired, base storedProject) {
 		return
 	}
 	// The project is no longer in latest (e.g. removed by a concurrent
-	// save); reinsert the whole desired project, including its sessions --
+	// save); reinsert the desired project, including its sessions --
 	// ensureStateProject only carries scalar fields and would otherwise
 	// resurrect it with an empty Sessions slice, silently dropping every
 	// session the later per-session merge loop treats as "already there,
 	// unchanged" (it skips sessions whose desired value still matches base).
-	sessions := append([]persistentSession(nil), desired.Sessions...)
+	// A session already present elsewhere in latest is excluded rather than
+	// duplicated back here: the project can also be gone because a
+	// concurrent instance moved away its final session (moving a project's
+	// last session deletes it, per the architecture), and that move must
+	// stay authoritative -- reinserting the stale copy would leave the same
+	// session ID in two projects, which validateAppState then rejects,
+	// failing this editor's otherwise-unrelated save outright.
+	sessions := make([]persistentSession, 0, len(desired.Sessions))
+	for _, s := range desired.Sessions {
+		if _, _, found := findStateSession(*state, s.ID); found {
+			continue
+		}
+		sessions = append(sessions, s)
+	}
 	state.Projects = append(state.Projects, storedProject{
 		Name:        desired.Name,
 		Workdir:     desired.Workdir,
