@@ -23,3 +23,21 @@ history.
       monitor-activity reset idiom is unverified in this codebase --
       confirm it actually clears the flag against a real tmux server
       (`scripts/tmux-verify.sh`) before relying on it.
+
+- [ ] Initialize the attention watermark for sessions tflow did not itself
+      create (`internal/ui/attention.go`, `AttentionScan`): a session with
+      no `@tflow-visited-at` marker -- upgraded from before this feature,
+      or created outside tflow -- reads `VisitedAt` as zero, so its entire
+      pre-existing activity history compares as newer and gets flagged on
+      the first scan even though nothing happened since tflow started
+      watching it. Stamping every zero-watermark session unconditionally
+      at scan time is not the fix: `AttentionScan` cannot tell that case
+      apart from a session tflow *just* materialized and that legitimately
+      has real fresh, unvisited output (`TestAttentionScanMarksUnvisitedSessionsWithFreshActivity`
+      depends on exactly that immediate flagging). Fix direction: stamp a
+      baseline watermark for every session already present at startup, in
+      one pass before the recurring scan begins (not per-tick), so only
+      genuinely pre-existing sessions get the baseline and anything
+      materialized afterward keeps today's immediate-flag behavior;
+      confirm the startup ordering against a real tmux server
+      (`scripts/tmux-verify.sh`) before relying on it.
