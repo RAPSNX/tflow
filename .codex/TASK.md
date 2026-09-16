@@ -147,8 +147,16 @@ history.
       relabeling the *conflicting* session to the first free `git-N`
       before creating the new git session as plain `git`, rather than
       persisting a fresh duplicate-label collision the very first time a
-      user sets `git-binary`. Invoked wherever a project's `git-binary`
-      setting is saved. The `e` YAML editor's accepted-key
+      user sets `git-binary`. Unlike the migration (which only ever runs
+      against persisted state before it's loaded), the conflicting session
+      here can already be a live, materialized tmux session, so relabeling
+      it in the model and persisted state isn't enough on its own -- its
+      `@tflow-session-label` marker also needs updating, or runtime
+      metadata stays stale until the next reconciliation. Call
+      `m.syncSessionMarkers` (`internal/ui/helpers.go:362`) for the
+      relabeled session after persisting, the same idempotent helper the
+      rename and move paths already use for exactly this. Invoked
+      wherever a project's `git-binary` setting is saved. The `e` YAML editor's accepted-key
       allowlist gains `git-binary` next to `workdir`/`agent-binary`. Add
       table-driven tests for the new dedup and label-lock validation
       (beyond the three legacy-migration load tests above), the

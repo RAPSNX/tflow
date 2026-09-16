@@ -316,15 +316,16 @@ The intended schema is:
 
 `agentBinary`, `gitBinary`, and session `command` fields may be omitted where
 inapplicable. Missing `type` on an older record means `terminal` without
-migration or rewrite. A `git`-typed record's label is normalized to `git`
-without migration or rewrite. Present types must be `terminal`, `git`, or
-`agent`; agent sessions require a command; a git session's launch command
-is its project's `gitBinary`, not a stored field, so terminal and git
-sessions both forbid one. State is rejected, with a path-qualified error,
-for empty or duplicate normalized project names, empty or duplicate
-session IDs, empty or duplicate labels within a project, duplicate agent
-sessions, duplicate git sessions, or other schema violations. Unknown JSON
-fields may be ignored.
+migration or rewrite. Within one project, a `git`-typed record's label is
+normalized to `git`, and every `git`-typed record after the first (stored
+order) is normalized to `terminal` -- both without migration or rewrite.
+Present types must be `terminal`, `git`, or `agent`; agent sessions
+require a command; a git session's launch command is its project's
+`gitBinary`, not a stored field, so terminal and git sessions both forbid
+one. State is rejected, with a path-qualified error, for empty or
+duplicate normalized project names, empty or duplicate session IDs, empty
+or duplicate labels within a project, duplicate agent sessions, or other
+schema violations. Unknown JSON fields may be ignored.
 
 Every mutation holds one advisory lock, reloads current state, applies the
 change, encodes the complete state, writes a temporary file in the state
