@@ -316,8 +316,8 @@ func TestSwitchSelectedSessionMaterializesGitSessionWithLazygit(t *testing.T) {
 	if _, cmd := m.switchSelectedSession(); cmd == nil {
 		t.Fatal("expected switch command")
 	}
-	if createdCommand != "lazygit" {
-		t.Fatalf("materialized git session command = %q, want lazygit", createdCommand)
+	if createdCommand != "'lazygit'" {
+		t.Fatalf("materialized git session command = %q, want lazygit shell-quoted", createdCommand)
 	}
 }
 
@@ -351,8 +351,8 @@ func TestSwitchSelectedSessionMaterializesAgentSessionWithCapturedCommand(t *tes
 	if _, cmd := m.switchSelectedSession(); cmd == nil {
 		t.Fatal("expected switch command")
 	}
-	if createdCommand != "sh" {
-		t.Fatalf("materialized agent session command = %q, want the captured binary %q", createdCommand, "sh")
+	if createdCommand != "'sh'" {
+		t.Fatalf("materialized agent session command = %q, want the captured binary %q shell-quoted", createdCommand, "sh")
 	}
 }
 

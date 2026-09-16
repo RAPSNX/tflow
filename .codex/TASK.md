@@ -4,26 +4,6 @@ Unfinished work derived from `.codex/ARCHITECTURE.md`, as `- [ ]` items.
 Delete an item once implemented and verified. No finished items, notes, or
 history.
 
-- [ ] Fix `mergeStateProjectFields` (`internal/ui/helpers.go`) so that when
-      a project was removed from `latest` by a concurrent save, the
-      not-found fallback reinserts the whole `desired` project, including
-      its sessions -- not just scalar fields via `ensureStateProject`,
-      which hardcodes an empty `Sessions` slice. Today, saving only a
-      scalar field (e.g. `agent-binary`) on a project another instance
-      just deleted silently drops every unchanged session, because the
-      later per-session merge loop skips sessions that already match
-      `base`. Add a regression test in `internal/ui/helpers_test.go`
-      mirroring `TestMergeAppStatesPreservesConcurrentAgentBinaryDuringWorkdirChange`.
-
-- [ ] Guard `.github/workflows/release.yml` against `v2+` tags before the
-      `release` job runs. `go.mod`'s module path
-      (`github.com/rapsnx/tflow`) has no `/vN` suffix, so per Go's
-      major-version-suffix rule a `v2.x.x`+ tag can publish a release
-      whose own `verify-published-module` job is guaranteed to fail
-      (`go install .../tflow@v2.x.x` can never resolve). Either reject
-      unsupported major-version tags early with a clear failure, or
-      migrate the module path when v2 is actually intended.
-
 - [ ] Close the same-second activity race in `AttentionScan`
       (`internal/ui/attention.go`): `MarkSessionVisited` stamps
       `VisitedAt` from tmux's `window_activity` (1-second resolution), and
@@ -42,4 +22,22 @@ history.
       when `activityAt > VisitedAt` **or** its flag is set. The
       monitor-activity reset idiom is unverified in this codebase --
       confirm it actually clears the flag against a real tmux server
+      (`scripts/tmux-verify.sh`) before relying on it.
+
+- [ ] Initialize the attention watermark for sessions tflow did not itself
+      create (`internal/ui/attention.go`, `AttentionScan`): a session with
+      no `@tflow-visited-at` marker -- upgraded from before this feature,
+      or created outside tflow -- reads `VisitedAt` as zero, so its entire
+      pre-existing activity history compares as newer and gets flagged on
+      the first scan even though nothing happened since tflow started
+      watching it. Stamping every zero-watermark session unconditionally
+      at scan time is not the fix: `AttentionScan` cannot tell that case
+      apart from a session tflow *just* materialized and that legitimately
+      has real fresh, unvisited output (`TestAttentionScanMarksUnvisitedSessionsWithFreshActivity`
+      depends on exactly that immediate flagging). Fix direction: stamp a
+      baseline watermark for every session already present at startup, in
+      one pass before the recurring scan begins (not per-tick), so only
+      genuinely pre-existing sessions get the baseline and anything
+      materialized afterward keeps today's immediate-flag behavior;
+      confirm the startup ordering against a real tmux server
       (`scripts/tmux-verify.sh`) before relying on it.

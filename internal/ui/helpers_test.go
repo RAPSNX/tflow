@@ -64,6 +64,160 @@ func TestMergeAppStatesPreservesConcurrentAgentBinaryDuringWorkdirChange(t *test
 	}
 }
 
+// TestMergeAppStatesReinsertsFullProjectAfterConcurrentDeletion guards
+// against a regression where saving a scalar-only field change (e.g.
+// agent-binary) on a project a concurrent instance just deleted resurrected
+// it with an empty Sessions slice: mergeStateProjectFields's not-found
+// fallback used to call ensureStateProject, which only carries scalar
+// fields, and the later per-session merge loop skips every session whose
+// desired value still matches base -- silently dropping them all.
+func TestMergeAppStatesReinsertsFullProjectAfterConcurrentDeletion(t *testing.T) {
+	base := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/old", AgentBinary: "codex", Sessions: []persistentSession{
+			{ID: "tflow-p-one", Label: "one"},
+			{ID: "tflow-p-two", Label: "two"},
+		},
+	}}}
+	// A concurrent instance deleted project "small" entirely.
+	latest := appState{}
+	// This instance's editor still has "small" open, unaware of the
+	// deletion, and saves only a changed agent-binary -- every session is
+	// otherwise identical to base.
+	desired := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/old", AgentBinary: "claude", Sessions: []persistentSession{
+			{ID: "tflow-p-one", Label: "one"},
+			{ID: "tflow-p-two", Label: "two"},
+		},
+	}}}
+
+	merged := mergeAppStates(latest, base, desired)
+	project, ok := storedProjectByName(merged, "small")
+	if !ok {
+		t.Fatalf("project %#v missing after reinsertion, merged = %#v", "small", merged)
+	}
+	if project.AgentBinary != "claude" {
+		t.Fatalf("project.AgentBinary = %q, want the desired agent-binary", project.AgentBinary)
+	}
+	if len(project.Sessions) != 2 {
+		t.Fatalf("project.Sessions = %#v, want both original sessions preserved, not dropped", project.Sessions)
+	}
+}
+
+// TestMergeAppStatesPreservesConcurrentRenameDuringCommandChange guards
+// against a regression where mergeAppStates's per-session merge replaced a
+// session's entire stored tuple with desired's version whenever any field
+// (e.g. an agent's command) differed from base, discarding a concurrent
+// instance's already-saved rename of the same session.
+func TestMergeAppStatesPreservesConcurrentRenameDuringCommandChange(t *testing.T) {
+	base := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/small", Sessions: []persistentSession{
+			{ID: "tflow-p-agent", Label: "agent", Type: sessionTypeAgent, Command: "old-codex"},
+		},
+	}}}
+	// A concurrent instance renamed the session.
+	latest := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/small", Sessions: []persistentSession{
+			{ID: "tflow-p-agent", Label: "renamed", Type: sessionTypeAgent, Command: "old-codex"},
+		},
+	}}}
+	// This instance's editor only changed the agent's command.
+	desired := appState{Projects: []storedProject{{
+		Name: "small", Workdir: "/small", Sessions: []persistentSession{
+			{ID: "tflow-p-agent", Label: "agent", Type: sessionTypeAgent, Command: "new-codex"},
+		},
+	}}}
+
+	merged := mergeAppStates(latest, base, desired)
+	project, ok := storedProjectByName(merged, "small")
+	if !ok || len(project.Sessions) != 1 {
+		t.Fatalf("project = %#v, want the single session preserved", project)
+	}
+	session := project.Sessions[0]
+	if session.Label != "renamed" {
+		t.Fatalf("session.Label = %q, want the concurrent rename preserved", session.Label)
+	}
+	if session.Command != "new-codex" {
+		t.Fatalf("session.Command = %q, want the desired command applied", session.Command)
+	}
+}
+
+// TestMergeAppStatesPreservesConcurrentMoveDuringCommandChange guards the
+// same merge against a concurrent move to a different project.
+func TestMergeAppStatesPreservesConcurrentMoveDuringCommandChange(t *testing.T) {
+	base := appState{Projects: []storedProject{
+		{Name: "small", Workdir: "/small", Sessions: []persistentSession{
+			{ID: "tflow-p-agent", Label: "agent", Type: sessionTypeAgent, Command: "old-codex"},
+		}},
+		{Name: "garden", Workdir: "/garden", Sessions: []persistentSession{}},
+	}}
+	// A concurrent instance moved the session into "garden".
+	latest := appState{Projects: []storedProject{
+		{Name: "small", Workdir: "/small", Sessions: []persistentSession{}},
+		{Name: "garden", Workdir: "/garden", Sessions: []persistentSession{
+			{ID: "tflow-p-agent", Label: "agent", Type: sessionTypeAgent, Command: "old-codex"},
+		}},
+	}}
+	// This instance's editor, still showing the session under "small", only
+	// changed the agent's command.
+	desired := appState{Projects: []storedProject{
+		{Name: "small", Workdir: "/small", Sessions: []persistentSession{
+			{ID: "tflow-p-agent", Label: "agent", Type: sessionTypeAgent, Command: "new-codex"},
+		}},
+		{Name: "garden", Workdir: "/garden", Sessions: []persistentSession{}},
+	}}
+
+	merged := mergeAppStates(latest, base, desired)
+	garden, ok := storedProjectByName(merged, "garden")
+	if !ok || len(garden.Sessions) != 1 || garden.Sessions[0].Command != "new-codex" {
+		t.Fatalf("garden project = %#v, want the moved session with the desired command", garden)
+	}
+	small, ok := storedProjectByName(merged, "small")
+	if !ok || len(small.Sessions) != 0 {
+		t.Fatalf("small project = %#v, want the session gone (moved away)", small)
+	}
+}
+
+// TestMergeAppStatesPreservesFinalSessionMoveAfterReinsertingSourceProject
+// guards against a regression where mergeStateProjectFields's not-found
+// fallback reinserted every one of the desired project's sessions
+// unconditionally: if the project is gone because a concurrent instance
+// moved away its final session (which deletes the project as a side
+// effect), that session already lives in its new project in latest, and
+// reinserting it back into the resurrected source project would duplicate
+// its ID across two projects -- which validateAppState then rejects,
+// failing this editor's otherwise-unrelated scalar-only save outright.
+func TestMergeAppStatesPreservesFinalSessionMoveAfterReinsertingSourceProject(t *testing.T) {
+	base := appState{Projects: []storedProject{
+		{Name: "small", Workdir: "/old", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}}},
+		{Name: "big", Workdir: "/big", Sessions: []persistentSession{}},
+	}}
+	// A concurrent instance moved "small"'s only session into "big",
+	// deleting "small" as a side effect of moving away its final session.
+	latest := appState{Projects: []storedProject{
+		{Name: "big", Workdir: "/big", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}}},
+	}}
+	// This instance's editor still has "small" open, unaware of the move,
+	// and saves only a changed workdir -- its session is otherwise
+	// identical to base.
+	desired := appState{Projects: []storedProject{
+		{Name: "small", Workdir: "/new", Sessions: []persistentSession{{ID: "tflow-p-one", Label: "one"}}},
+		{Name: "big", Workdir: "/big", Sessions: []persistentSession{}},
+	}}
+
+	merged := mergeAppStates(latest, base, desired)
+	if err := validateAppState(merged); err != nil {
+		t.Fatalf("validateAppState(merged) = %v, want the disjoint save accepted", err)
+	}
+	small, ok := storedProjectByName(merged, "small")
+	if !ok || small.Workdir != "/new" || len(small.Sessions) != 0 {
+		t.Fatalf("small project = %#v, want the desired workdir with no duplicated session", small)
+	}
+	big, ok := storedProjectByName(merged, "big")
+	if !ok || len(big.Sessions) != 1 || big.Sessions[0].ID != "tflow-p-one" {
+		t.Fatalf("big project = %#v, want the moved session to remain authoritative", big)
+	}
+}
+
 func TestSaveStatePreservesConcurrentDisjointChanges(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	path := appStatePath()

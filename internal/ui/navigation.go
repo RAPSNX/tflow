@@ -181,7 +181,7 @@ func switchToContextTarget(manager tmuxController, state appState, project strin
 		if err := validateMaterializeExecutable(sessionType, resolvedCommand, workdir); err != nil {
 			return err
 		}
-		newS, err := manager.CreateSession(target.Name, workdir, resolvedCommand)
+		newS, err := manager.CreateSession(target.Name, workdir, shellQuoteLaunchCommand(resolvedCommand))
 		if err != nil {
 			return fmt.Errorf("materialize target session %q: %w", target.Name, err)
 		}

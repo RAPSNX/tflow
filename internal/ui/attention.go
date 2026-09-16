@@ -73,16 +73,34 @@ func AttentionScan() error {
 func attentionScanWithManager(manager tmuxController) error {
 	current := strings.TrimSpace(os.Getenv(menuCurrentEnv))
 	if current != "" {
-		// client-session-changed only stamps the session being entered,
-		// never the one being left, so output produced while this session
-		// is being actively viewed would otherwise still look unseen the
-		// instant the client switches away (its watermark would still be
-		// its entry-time stamp, while window_activity kept advancing
-		// throughout the whole visit). Refreshing it here every scan tick
-		// keeps the watermark within one tick of "now" for as long as the
-		// visit lasts.
-		if err := ignoreMissingSession(manager.MarkSessionVisited(current)); err != nil {
-			return err
+		// TFLOW_CURRENT_SESSION comes from the status #() job's environment
+		// at the moment tmux redrew the status line, not from this instant --
+		// if the client switched away from current in the gap before this
+		// scan actually ran, current is stale. Marking a session visited
+		// unconditionally from that stale value would clear its marker (or
+		// advance its watermark) as if it were still being actively viewed,
+		// silently losing any output produced in that gap. Recheck
+		// attachment immediately before stamping, the same defensive
+		// pattern used below for SetSessionAttention.
+		attached, err := manager.SessionAttached(current)
+		if err != nil {
+			if ignored := ignoreMissingSession(err); ignored != nil {
+				return ignored
+			}
+			attached = false
+		}
+		if attached {
+			// client-session-changed only stamps the session being
+			// entered, never the one being left, so output produced while
+			// this session is being actively viewed would otherwise still
+			// look unseen the instant the client switches away (its
+			// watermark would still be its entry-time stamp, while
+			// window_activity kept advancing throughout the whole visit).
+			// Refreshing it here every scan tick keeps the watermark
+			// within one tick of "now" for as long as the visit lasts.
+			if err := ignoreMissingSession(manager.MarkSessionVisited(current)); err != nil {
+				return err
+			}
 		}
 	}
 
