@@ -65,11 +65,20 @@ history.
       the owning project, falling back to `lazygit` when unset, instead of
       the current hardcoded literal. `ValidateAppState`
       (`internal/store/state_normalize.go`) gains a `git` counterpart to
-      the existing `seenAgent` dedup check (one `git` session per project)
-      and rejects a `git`-typed session whose label isn't exactly `git`;
-      `internal/store/move.go` inherits both rejections for free once that
-      validation exists (it already relies on `ValidateAppState` for the
-      agent case). `internal/ui/actions.go`'s `beginRename` refuses to
+      the existing `seenAgent` dedup check (one `git` session per
+      project). The label lock cannot be a rejection, though: `beginRename`
+      currently permits any label on any session type, so an existing
+      release may already have a persisted `git`-typed session renamed
+      away from `git`, and `decodeAppState` calls `ValidateAppState` on
+      every load -- rejecting the whole store for that one session would
+      make it unreadable after upgrade. Normalize instead: coerce a
+      `git`-typed session's label to `git` during normalization (matching
+      how a missing `type` is already silently treated as `terminal`,
+      documented in ARCHITECTURE.md's schema section), so the stored value
+      converges going forward without ever failing to load.
+      `internal/store/move.go` inherits the dedup rejection for free once
+      that validation exists (it already relies on `ValidateAppState` for
+      the agent case). `internal/ui/actions.go`'s `beginRename` refuses to
       rename a `git`-type session, with a clear `m.status` message.
       `internal/ui/project_settings.go`'s `handleProjectEditorFinished`
       gains a `git-binary` counterpart to the existing
@@ -84,7 +93,9 @@ history.
       exactly one is ever allowed -- invoked wherever a project's
       `git-binary` setting is saved. The `e` YAML editor's accepted-key
       allowlist gains `git-binary` next to `workdir`/`agent-binary`. Add
-      table-driven tests for the new dedup/label-lock validation, the
+      table-driven tests for the new dedup validation and label
+      normalization (including a pre-existing record with a non-`git`
+      label loading successfully with its label corrected), the
       `MoveSession` rejection, `provisionGitSession`, the `git-binary`
       rejection, a round-trip through the codec, and a concurrent-merge
       test that a saved custom `gitBinary` survives
