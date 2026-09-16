@@ -172,35 +172,6 @@ func TestCtrlCClosesMenuFromModalMode(t *testing.T) {
 	}
 }
 
-func TestCtrlFClosesMenuFromNormalMode(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "").(model)
-
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
-	if cmd == nil {
-		t.Fatal("expected close command")
-	}
-	msg := cmd().(menuActionMsg)
-	if msg.switchSession != "" {
-		t.Fatalf("close msg = %#v, want plain close", msg)
-	}
-}
-
-func TestCtrlFClosesMenuFromModalMode(t *testing.T) {
-	m := newModel(fakeTmuxController{}, "").(model)
-	m.mode = inputRename
-	m.input.Prompt = ""
-	m.input.SetValue("dev")
-
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
-	if cmd == nil {
-		t.Fatal("expected close command")
-	}
-	msg := cmd().(menuActionMsg)
-	if msg.switchSession != "" {
-		t.Fatalf("close msg = %#v, want plain close", msg)
-	}
-}
-
 func TestCtrlQStartsQuitConfirmation(t *testing.T) {
 	m := newModel(fakeTmuxController{}, "").(model)
 

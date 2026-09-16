@@ -63,8 +63,16 @@ func run(args []string, output io.Writer, start func() error) error {
 		return ui.NavigatePrev()
 	case "navigate-next":
 		return ui.NavigateNext()
+	case "jump-git":
+		return ui.NavigateToGitSession()
 	case "cleanup-client":
 		return runtmux.CleanupDetachedClient()
+	case "session-activity":
+		return ui.SessionActivity()
+	case "session-visited":
+		return ui.SessionVisited()
+	case "attention-scan":
+		return ui.AttentionScan()
 	default:
 		return fmt.Errorf("unknown command %q; run %q for usage", args[0], "tflow --help")
 	}

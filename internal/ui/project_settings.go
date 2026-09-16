@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 
@@ -17,7 +19,8 @@ import (
 )
 
 type projectSettingsDocument struct {
-	Workdir string `yaml:"workdir"`
+	Workdir     string `yaml:"workdir"`
+	AgentBinary string `yaml:"agent-binary"`
 }
 
 type projectEditorFinishedMsg struct {
@@ -153,7 +156,7 @@ var resolveEditorCommand = func(tempFile string) (*exec.Cmd, error) {
 func formatProjectSettingsYAML(cfg projectConfig) ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteString("# Project settings for " + cfg.Name + "\n")
-	data, err := yaml.Marshal(&projectSettingsDocument{Workdir: cfg.Workdir})
+	data, err := yaml.Marshal(&projectSettingsDocument{Workdir: cfg.Workdir, AgentBinary: cfg.AgentBinary})
 	if err != nil {
 		return nil, err
 	}
@@ -281,15 +284,59 @@ func (m model) handleProjectEditorFinished(msg projectEditorFinishedMsg) (tea.Mo
 		return m, nil
 	}
 
+	agentBinary := strings.TrimSpace(doc.AgentBinary)
+	if !isBareExecutableToken(agentBinary) {
+		m.err = fmt.Errorf("agent-binary must be an executable name or absolute path without arguments")
+		m.status = m.err.Error()
+		return m, nil
+	}
+
 	cfg := m.projectConfig(msg.project)
 	cfg.Name = msg.project
 	cfg.Workdir = strings.TrimSpace(doc.Workdir)
 	if cfg.Workdir != "" {
 		cfg.Workdir = store.NormalizeCWD(cfg.Workdir)
 	}
+	cfg.AgentBinary = agentBinary
+
+	// setProjectConfig and provisionAgentSession mutate these maps/slice in
+	// place, and map/slice fields are reference types, so a later failed
+	// save can't be undone by simply not returning the mutated m -- the
+	// shared underlying storage would already carry the change regardless
+	// of which model value is returned. Snapshot them first so a save
+	// failure can restore the untouched originals, per ARCHITECTURE.md:
+	// "persistence ... failures leave state unchanged."
+	prevProjectConfigs := maps.Clone(m.projectConfigs)
+	prevSessionProjects := maps.Clone(m.sessionProjects)
+	prevPersistentSessionOrder := maps.Clone(m.persistentSessionOrder)
+	prevSessionLabels := maps.Clone(m.sessionLabels)
+	prevSessionTypes := maps.Clone(m.sessionTypes)
+	prevSessionCommands := maps.Clone(m.sessionCommands)
+	prevProjects := slices.Clone(m.projects)
 
 	m.setProjectConfig(cfg)
+	if agentBinary != "" {
+		if err := m.provisionAgentSession(msg.project, agentBinary); err != nil {
+			m.projectConfigs = prevProjectConfigs
+			m.sessionProjects = prevSessionProjects
+			m.persistentSessionOrder = prevPersistentSessionOrder
+			m.sessionLabels = prevSessionLabels
+			m.sessionTypes = prevSessionTypes
+			m.sessionCommands = prevSessionCommands
+			m.projects = prevProjects
+			m.err = err
+			m.status = err.Error()
+			return m, nil
+		}
+	}
 	if err := m.saveState(); err != nil {
+		m.projectConfigs = prevProjectConfigs
+		m.sessionProjects = prevSessionProjects
+		m.persistentSessionOrder = prevPersistentSessionOrder
+		m.sessionLabels = prevSessionLabels
+		m.sessionTypes = prevSessionTypes
+		m.sessionCommands = prevSessionCommands
+		m.projects = prevProjects
 		m.err = err
 		m.status = err.Error()
 		return m, nil
@@ -302,4 +349,34 @@ func (m model) handleProjectEditorFinished(msg projectEditorFinishedMsg) (tea.Mo
 	m.err = nil
 	m.status = ""
 	return m, nil
+}
+
+// provisionAgentSession adds one lazy agent session to project when it has
+// none, using the label "agent" if free or the first unused "agent-2",
+// "agent-3", and so on. When the project already has an agent session, this
+// only updates its captured executable -- it never touches a currently
+// running process, and a project holds at most one agent session.
+func (m *model) provisionAgentSession(project, agentBinary string) error {
+	project = normalizeProjectName(project)
+	for _, s := range m.projectSessions(project) {
+		if m.sessionType(s.Name) == sessionTypeAgent {
+			m.setSessionCommand(s.Name, agentBinary)
+			return nil
+		}
+	}
+
+	id, err := newSessionID()
+	if err != nil {
+		return fmt.Errorf("generate lazy agent session id for project %q: %w", project, err)
+	}
+	name := persistentSessionName(id)
+	label := "agent"
+	for suffix := 2; m.hasSessionLabel(project, label, ""); suffix++ {
+		label = fmt.Sprintf("agent-%d", suffix)
+	}
+	m.assignSessionProject(name, project)
+	m.setSessionLabel(name, label)
+	m.setSessionType(name, sessionTypeAgent)
+	m.setSessionCommand(name, agentBinary)
+	return nil
 }

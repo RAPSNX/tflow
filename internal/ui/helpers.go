@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"hash/fnv"
 	"strings"
 )
 
@@ -17,7 +16,7 @@ func (m *model) saveState() error {
 			return appState{}, err
 		}
 		state := mergeAppStates(latest, base, desired)
-		if err := validateStateSessionLabels(state); err != nil {
+		if err := validateAppState(state); err != nil {
 			return appState{}, err
 		}
 		return state, nil
@@ -53,9 +52,14 @@ func (m *model) currentState() appState {
 			continue
 		}
 		cfg := normalizeProjectConfig(m.projectConfig(name))
-		project := storedProject{Name: name, Workdir: cfg.Workdir, Sessions: []persistentSession{}}
+		project := storedProject{Name: name, Workdir: cfg.Workdir, AgentBinary: cfg.AgentBinary, Sessions: []persistentSession{}}
 		for _, session := range m.projectSessions(name) {
-			project.Sessions = append(project.Sessions, persistentSession{ID: session.Name, Label: m.sessionLabel(session.Name)})
+			project.Sessions = append(project.Sessions, persistentSession{
+				ID:      session.Name,
+				Label:   m.sessionLabel(session.Name),
+				Type:    strings.TrimSpace(m.sessionTypes[session.Name]),
+				Command: m.sessionCommand(session.Name),
+			})
 		}
 		state.Projects = append(state.Projects, project)
 	}
@@ -63,8 +67,10 @@ func (m *model) currentState() appState {
 }
 
 type stateSession struct {
-	project string
-	label   string
+	project     string
+	label       string
+	sessionType string
+	command     string
 }
 
 func mergeAppStates(latest, base, desired appState) appState {
@@ -85,8 +91,8 @@ func mergeAppStates(latest, base, desired appState) appState {
 			ensureStateProject(&latest, project)
 			continue
 		}
-		if project.Workdir != baseProject.Workdir {
-			ensureStateProject(&latest, project)
+		if project.Workdir != baseProject.Workdir || project.AgentBinary != baseProject.AgentBinary {
+			mergeStateProjectFields(&latest, project, baseProject)
 		}
 	}
 
@@ -100,7 +106,7 @@ func mergeAppStates(latest, base, desired appState) appState {
 	for _, project := range desired.Projects {
 		for _, desiredSession := range project.Sessions {
 			id := desiredSession.ID
-			session := stateSession{project: project.Name, label: desiredSession.Label}
+			session := stateSession{project: project.Name, label: desiredSession.Label, sessionType: desiredSession.Type, command: desiredSession.Command}
 			baseSession, existed := baseSessions[id]
 			if existed && baseSession == session {
 				continue
@@ -109,26 +115,13 @@ func mergeAppStates(latest, base, desired appState) appState {
 			removeStateSession(&latest, id)
 			for index := range latest.Projects {
 				if latest.Projects[index].Name == session.project {
-					latest.Projects[index].Sessions = append(latest.Projects[index].Sessions, persistentSession{ID: id, Label: session.label})
+					latest.Projects[index].Sessions = append(latest.Projects[index].Sessions, persistentSession{ID: id, Label: session.label, Type: session.sessionType, Command: session.command})
 					break
 				}
 			}
 		}
 	}
 	return normalizeAppState(latest)
-}
-
-func validateStateSessionLabels(state appState) error {
-	for _, project := range state.Projects {
-		labels := map[string]struct{}{}
-		for _, session := range project.Sessions {
-			if _, exists := labels[session.Label]; exists {
-				return fmt.Errorf("session name already exists in this project")
-			}
-			labels[session.Label] = struct{}{}
-		}
-	}
-	return nil
 }
 
 func validateStateProjectNames(latest, base, desired appState) error {
@@ -157,20 +150,45 @@ func stateSessions(state appState) map[string]stateSession {
 	sessions := map[string]stateSession{}
 	for _, project := range state.Projects {
 		for _, session := range project.Sessions {
-			sessions[session.ID] = stateSession{project: project.Name, label: session.Label}
+			sessions[session.ID] = stateSession{project: project.Name, label: session.Label, sessionType: session.Type, command: session.Command}
 		}
 	}
 	return sessions
+}
+
+// mergeStateProjectFields applies only the project fields this editor
+// actually changed (desired vs. its own base snapshot) onto latest,
+// leaving every other field as latest already has it -- a concurrent
+// instance may have changed a different field on the same project, and
+// copying the whole desired project over would silently revert that
+// unrelated, already-saved edit.
+func mergeStateProjectFields(state *appState, desired, base storedProject) {
+	for index := range state.Projects {
+		if state.Projects[index].Name != desired.Name {
+			continue
+		}
+		if desired.Workdir != base.Workdir {
+			state.Projects[index].Workdir = desired.Workdir
+		}
+		if desired.AgentBinary != base.AgentBinary {
+			state.Projects[index].AgentBinary = desired.AgentBinary
+		}
+		return
+	}
+	// The project is no longer in latest (e.g. removed by a concurrent
+	// save); there is nothing to merge fields into, so reinsert it whole.
+	ensureStateProject(state, desired)
 }
 
 func ensureStateProject(state *appState, project storedProject) {
 	for index := range state.Projects {
 		if state.Projects[index].Name == project.Name {
 			state.Projects[index].Workdir = project.Workdir
+			state.Projects[index].AgentBinary = project.AgentBinary
 			return
 		}
 	}
-	state.Projects = append(state.Projects, storedProject{Name: project.Name, Workdir: project.Workdir, Sessions: []persistentSession{}})
+	state.Projects = append(state.Projects, storedProject{Name: project.Name, Workdir: project.Workdir, AgentBinary: project.AgentBinary, Sessions: []persistentSession{}})
 }
 
 func ensureStateProjectExists(state *appState, project storedProject) {
@@ -179,7 +197,7 @@ func ensureStateProjectExists(state *appState, project storedProject) {
 			return
 		}
 	}
-	state.Projects = append(state.Projects, storedProject{Name: project.Name, Workdir: project.Workdir, Sessions: []persistentSession{}})
+	state.Projects = append(state.Projects, storedProject{Name: project.Name, Workdir: project.Workdir, AgentBinary: project.AgentBinary, Sessions: []persistentSession{}})
 }
 
 func removeStateProject(projects []storedProject, name string) []storedProject {
@@ -206,24 +224,6 @@ func removeStateSession(state *appState, id string) {
 
 func sanitizeProjectName(name string) string {
 	return normalizeProjectName(name)
-}
-
-func projectAccentColor(project string) string {
-	palette := []string{
-		"#89b4fa",
-		"#94e2d5",
-		"#f9e2af",
-		"#f38ba8",
-		"#cba6f7",
-		"#f5c2e7",
-		"#fab387",
-		"#74c7ec",
-		"#a6e3a1",
-	}
-	project = normalizeProjectName(project)
-	hasher := fnv.New32a()
-	_, _ = hasher.Write([]byte(project))
-	return palette[hasher.Sum32()%uint32(len(palette))]
 }
 
 func fallbackText(value, fallback string) string {

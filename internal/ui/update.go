@@ -13,7 +13,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.commandMode && msg.Type == tea.KeyCtrlAt {
 			return m, m.closeMenuCmd()
 		}
-		if msg.Type == tea.KeyCtrlF || msg.Type == tea.KeyCtrlC {
+		if msg.Type == tea.KeyCtrlC {
 			return m, m.closeMenuCmd()
 		}
 		if msg.Type == tea.KeyCtrlQ {

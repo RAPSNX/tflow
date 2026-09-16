@@ -1,25 +1,45 @@
-# tflow open implementation checklist
+# Open tasks
 
-Only unfinished work derived from `.codex/ARCHITECTURE.md` belongs here.
-Remove each item after implementation and verification.
+Unfinished work derived from `.codex/ARCHITECTURE.md`, as `- [ ]` items.
+Delete an item once implemented and verified. No finished items, notes, or
+history.
 
-## P1: Typed persistent sessions
+- [ ] Fix `mergeStateProjectFields` (`internal/ui/helpers.go`) so that when
+      a project was removed from `latest` by a concurrent save, the
+      not-found fallback reinserts the whole `desired` project, including
+      its sessions -- not just scalar fields via `ensureStateProject`,
+      which hardcodes an empty `Sessions` slice. Today, saving only a
+      scalar field (e.g. `agent-binary`) on a project another instance
+      just deleted silently drops every unchanged session, because the
+      later per-session merge loop skips sessions that already match
+      `base`. Add a regression test in `internal/ui/helpers_test.go`
+      mirroring `TestMergeAppStatesPreservesConcurrentAgentBinaryDuringWorkdirChange`.
 
-* [ ] Add optional project `agentBinary`, session `type`, and agent `command`; treat legacy untyped records as terminal and validate types, commands, one agent per project, exact label uniqueness, and agent-move conflicts.
-* [ ] Give ordinary new projects lazy `code` terminal and `git` sessions in order; keep promotions and existing projects unchanged, keep `n` terminal-only, and materialize each type in the project workdir.
-* [ ] Add executable-only `agent-binary` to temporary project settings, including agent creation/update, collision suffixes, clearing semantics, and non-mutating executable failures.
-* [ ] Test legacy and unknown-field compatibility, schema validation, presets, promotion preservation, settings updates and clearing, label suffixes, move conflicts, materialization, and missing executables.
+- [ ] Guard `.github/workflows/release.yml` against `v2+` tags before the
+      `release` job runs. `go.mod`'s module path
+      (`github.com/rapsnx/tflow`) has no `/vN` suffix, so per Go's
+      major-version-suffix rule a `v2.x.x`+ tag can publish a release
+      whose own `verify-published-module` job is guaranteed to fail
+      (`go install .../tflow@v2.x.x` can never resolve). Either reject
+      unsupported major-version tags early with a clear failure, or
+      migrate the module path when v2 is actually intended.
 
-## P1: Typed visual identity
-
-* [ ] Render blue `>_ CODE`, teal `⎇ GIT`, and yellow `✦ AGENT` chips in sidebar and top bar without selection, live, or attention states replacing them.
-* [ ] Test chip content and styling across selected, active, live, attention, sidebar, and top-bar states.
-
-## P1: Session attention
-
-* [ ] Install tmux activity and client-visit hooks that set attention only for unvisited output and clear it on any visit; display the runtime-only marker in sidebar and top bar without JSON writes.
-* [ ] Test hook commands, inactive activity, visit clearing, rendering, and persistence isolation.
-
-## P1: Published-module verification
-
-* [ ] Install `github.com/rapsnx/tflow/cmd/tflow@latest` through the module proxy in a temporary location and verify `tflow version` matches the published release.
+- [ ] Close the same-second activity race in `AttentionScan`
+      (`internal/ui/attention.go`): `MarkSessionVisited` stamps
+      `VisitedAt` from tmux's `window_activity` (1-second resolution), and
+      the scan compares fresh `window_activity` against it with strict
+      `>`. Output produced in the same wall-clock second as the visit (and
+      never again later) reads as equal to `VisitedAt` forever, so it is
+      never flagged -- only the event-driven `alert-activity` hook
+      (`SessionActivity`) catches that case today, and only on tmux builds
+      where it fires. Fix direction: add
+      `SessionActivityFlags() (map[string]bool, error)` reading
+      `#{window_activity_flag}` (mirrors `SessionActivityTimestamps`),
+      reset per-window at visit time via `set-window-option
+      monitor-activity off` then `on` (batched into `MarkSessionVisited`'s
+      existing tmux call with the `runBatch` helper already used by
+      `internal/tmux/popup.go`'s `openMenu`), and treat a session as fresh
+      when `activityAt > VisitedAt` **or** its flag is set. The
+      monitor-activity reset idiom is unverified in this codebase --
+      confirm it actually clears the flag against a real tmux server
+      (`scripts/tmux-verify.sh`) before relying on it.

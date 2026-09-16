@@ -3,8 +3,9 @@ package store
 import "strings"
 
 type ProjectConfig struct {
-	Name    string
-	Workdir string
+	Name        string
+	Workdir     string
+	AgentBinary string
 }
 
 func NormalizeProjectConfig(cfg ProjectConfig) ProjectConfig {
@@ -13,5 +14,6 @@ func NormalizeProjectConfig(cfg ProjectConfig) ProjectConfig {
 	if cfg.Workdir != "" {
 		cfg.Workdir = NormalizeCWD(cfg.Workdir)
 	}
+	cfg.AgentBinary = strings.TrimSpace(cfg.AgentBinary)
 	return cfg
 }

@@ -35,10 +35,6 @@ func ContainsAnimalName(name string) bool {
 	return false
 }
 
-func RandomAnimalName() string {
-	return tempSessionAnimals[rand.IntN(len(tempSessionAnimals))]
-}
-
 func NormalizeCWD(cwd string) string {
 	return store.NormalizeCWD(cwd)
 }
@@ -140,6 +136,27 @@ func NextTempSessionNameForInstance(existing []Session, instanceID string) strin
 		labels = append(labels, Session{Name: label})
 	}
 	return NextTempSessionName(labels)
+}
+
+// runBatch shells out once for multiple tmux commands, chained with tmux's
+// own "\;" command separator -- a literal ";" argv token, not a shell
+// feature, so this works identically through exec.Command's argv-based
+// invocation. tmux runs each group in order and stops at the first one that
+// fails (verified against a live tmux server: an invalid option two groups
+// in leaves the first group's already-applied effect in place and never
+// reaches the third), so a caller's post-error cleanup must still assume
+// every group up to and including the failing one may have partially
+// applied -- exactly the same assumption a sequence of separate m.runner()
+// calls already required.
+func (m Manager) runBatch(groups ...[]string) (string, error) {
+	var args []string
+	for i, group := range groups {
+		if i > 0 {
+			args = append(args, ";")
+		}
+		args = append(args, group...)
+	}
+	return m.runner()(args...)
 }
 
 func Run(args ...string) (string, error) {

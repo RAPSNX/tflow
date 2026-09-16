@@ -88,7 +88,7 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 		m.err, m.status = err, err.Error()
 		return m, nil
 	}
-	label, workdir, found := "", "", false
+	label, workdir, sessionType, command, found := "", "", "", "", false
 	for _, storedProject := range state.Projects {
 		for _, storedSession := range storedProject.Sessions {
 			if storedSession.ID != name {
@@ -98,7 +98,7 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 				m.status = "Session is no longer in the selected project."
 				return m, nil
 			}
-			label, workdir, found = storedSession.Label, storedProject.Workdir, true
+			label, workdir, sessionType, command, found = storedSession.Label, storedProject.Workdir, storedSession.Type, storedSession.Command, true
 			break
 		}
 		if found {
@@ -109,7 +109,6 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 		m.status = "Session no longer exists."
 		return m, nil
 	}
-
 	running, err := m.tmux.ListSessions()
 	if err != nil {
 		m.err, m.status = err, err.Error()
@@ -123,11 +122,19 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 		existing.Temporary = false
 		existing.Instance = ""
 		m.setSessionLabel(name, label)
+		m.setSessionType(name, sessionType)
+		m.setSessionCommand(name, command)
 		m.sessions = append(m.sessions, existing)
 		return m.switchSelectedSessionAfterValidation(name)
 	}
 
-	created, err := m.tmux.CreateSession(name, workdir, "")
+	resolvedCommand := materializeCommand(sessionType, command)
+	if err := validateMaterializeExecutable(sessionType, resolvedCommand, workdir); err != nil {
+		m.err, m.status = err, err.Error()
+		return m, nil
+	}
+
+	created, err := m.tmux.CreateSession(name, workdir, resolvedCommand)
 	if err != nil {
 		m.err = fmt.Errorf("create saved session %q: %w", name, err)
 		m.status = m.err.Error()
@@ -155,6 +162,8 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 	created.Temporary = false
 	created.Instance = ""
 	m.setSessionLabel(name, label)
+	m.setSessionType(name, sessionType)
+	m.setSessionCommand(name, command)
 	m.sessions = append(m.sessions, created)
 	return m.switchSelectedSessionAfterValidation(name)
 }
@@ -199,7 +208,7 @@ func (m *model) commitProjectCreate() (tea.Model, tea.Cmd) {
 		m.err, m.status = err, err.Error()
 		return m, nil
 	}
-	if err := m.submitCreate(createRequest{Kind: "project", Project: name, Label: randomAnimalName(), Workdir: workdir, Current: m.currentSession, Instance: m.instanceID}); err != nil {
+	if err := m.submitCreate(createRequest{Kind: "project", Project: name, Workdir: workdir, Current: m.currentSession, Instance: m.instanceID}); err != nil {
 		m.err, m.status = err, err.Error()
 		return m, nil
 	}

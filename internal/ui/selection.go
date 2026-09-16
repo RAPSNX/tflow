@@ -266,11 +266,22 @@ func sessionIndex(sessions []session, selected string) int {
 	return -1
 }
 
-func (m model) rowStyle(selected bool, projectName string) lipgloss.Style {
+// rowStyle is popup-only: it layers Background(baseBG) onto
+// sessionStyle/selectedSessionStyle locally (lipgloss styles are copied on
+// each setter call, so this never mutates the shared package-level
+// styles), re-asserting the popup's single background after the row's
+// preceding chip segment ends in its own reset. sessionStyle and
+// selectedSessionStyle stay background-less at the package level because
+// the project picker panels (renderProjectPickerPanel) also render their
+// rows directly through them, applying Background(baseBG) the same way.
+// Unselected rows use sessionStyle's own default Foreground(textColor) --
+// the same normal colour as ordinary text everywhere else in the popup,
+// not a colour that varies by project.
+func (m model) rowStyle(selected bool) lipgloss.Style {
 	if selected {
-		return selectedSessionStyle
+		return selectedSessionStyle.Background(baseBG)
 	}
-	return sessionStyle.Foreground(lipgloss.Color(projectAccentColor(projectName)))
+	return sessionStyle.Background(baseBG)
 }
 
 func (m model) visibleSessionCount() int {

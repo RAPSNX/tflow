@@ -41,18 +41,31 @@ func computeTargetTopBar(targetSession, project string, state appState, sessions
 		}
 	}
 
+	runningAttention := make(map[string]bool, len(sessions))
+	for _, s := range sessions {
+		if s.Attention {
+			runningAttention[s.Name] = true
+		}
+	}
+
 	var labels []string
+	var types []string
+	var attentions []bool
 	activeIdx := -1
 
 	if project != "" {
 		for _, p := range state.Projects {
 			if normalizeProjectName(p.Name) == project {
 				labels = make([]string, len(p.Sessions))
+				types = make([]string, len(p.Sessions))
+				attentions = make([]bool, len(p.Sessions))
 				for i, s := range p.Sessions {
 					labels[i] = strings.TrimSpace(s.Label)
 					if labels[i] == "" {
 						labels[i] = s.ID
 					}
+					types[i] = strings.TrimSpace(s.Type)
+					attentions[i] = runningAttention[s.ID]
 					if s.ID == targetSession {
 						activeIdx = i
 					}
@@ -69,11 +82,14 @@ func computeTargetTopBar(targetSession, project string, state appState, sessions
 			}
 		}
 		labels = make([]string, len(volatile))
+		types = make([]string, len(volatile))
+		attentions = make([]bool, len(volatile))
 		for i, s := range volatile {
 			labels[i] = strings.TrimSpace(s.Label)
 			if labels[i] == "" {
 				labels[i] = s.Name
 			}
+			attentions[i] = s.Attention
 			if s.Name == targetSession {
 				activeIdx = i
 			}
@@ -85,7 +101,7 @@ func computeTargetTopBar(targetSession, project string, state appState, sessions
 	}
 
 	palette := catppuccinTmuxPalette()
-	return palette.FormatTopBar(labels, activeIdx)
+	return palette.FormatTopBar(project, labels, types, attentions, activeIdx)
 }
 
 func (m model) topBarState() appState {

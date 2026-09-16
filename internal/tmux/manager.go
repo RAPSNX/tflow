@@ -5,14 +5,29 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/rapsnx/tflow/internal/diag"
 	"github.com/rapsnx/tflow/internal/store"
 )
 
+// SessionAttached reports whether name currently has any client attached,
+// without the cost of listing and parsing every session on the server.
+func (m Manager) SessionAttached(name string) (bool, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false, fmt.Errorf("session name is empty")
+	}
+	out, err := m.runner()("display-message", "-p", "-t", name, "#{session_attached}")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "0", nil
+}
+
 func (m Manager) ListSessions() ([]Session, error) {
-	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}")
+	out, err := m.runner()("list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{"+tempMarker+"}\t#{"+instanceMarker+"}\t#{"+sessionLabelMarker+"}\t#{"+attentionMarker+"}\t#{"+visitedMarker+"}")
 	if err != nil {
 		if IsNoServer(err) {
 			return nil, nil
@@ -49,9 +64,107 @@ func (m Manager) ListSessions() ([]Session, error) {
 		if len(parts) > 5 {
 			session.Label = strings.TrimSpace(parts[5])
 		}
+		if len(parts) > 6 {
+			session.Attention = strings.TrimSpace(parts[6]) == "1"
+		}
+		if len(parts) > 7 {
+			fmt.Sscanf(parts[7], "%d", &session.VisitedAt)
+		}
 		sessions = append(sessions, session)
 	}
 	return sessions, nil
+}
+
+// SessionActivityTimestamps reports, per session, the latest
+// window_activity time (unix seconds) across every window in that
+// session -- unlike list-sessions' window_activity_flag substitution, which
+// only samples each session's active window and so misses output in a
+// background window of a multi-window session. Used by AttentionScan, which
+// compares this against each session's visited-at watermark to tell fresh
+// activity from a background window's flag that has been stuck since
+// before the last visit.
+func (m Manager) SessionActivityTimestamps() (map[string]int64, error) {
+	out, err := m.runner()("list-windows", "-a", "-F", "#{session_name}\t#{window_activity}")
+	if err != nil {
+		if IsNoServer(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	activity := map[string]int64{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		if name == "" {
+			continue
+		}
+		var at int64
+		fmt.Sscanf(parts[1], "%d", &at)
+		if at > activity[name] {
+			activity[name] = at
+		}
+	}
+	return activity, nil
+}
+
+// MarkSessionVisited clears the runtime-only attention marker and records
+// this session's current peak window_activity (across all its windows) as
+// its new watermark, rather than wall-clock time. Both this watermark and
+// the window_activity AttentionScan later compares it against come from the
+// same one-second-resolution tmux clock, so a plain "activity > watermark"
+// check is unambiguous even when a visit and some activity land in the same
+// wall-clock second: if nothing has advanced window_activity past what it
+// already was at visit time, nothing new has happened, full stop. Using
+// wall-clock time instead would make that same-second case ambiguous in
+// whichever direction the comparison operator broke a tie.
+func (m Manager) MarkSessionVisited(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("session name is empty")
+	}
+	if _, err := m.runner()("set-option", "-t", name, attentionMarker, "0"); err != nil {
+		return err
+	}
+	watermark, err := m.sessionPeakActivity(name)
+	if err != nil {
+		return err
+	}
+	_, err = m.runner()("set-option", "-t", name, visitedMarker, strconv.FormatInt(watermark, 10))
+	return err
+}
+
+// sessionPeakActivity returns the latest window_activity time (unix
+// seconds) across every window in the named session, or 0 if the session or
+// server is gone.
+func (m Manager) sessionPeakActivity(name string) (int64, error) {
+	out, err := m.runner()("list-windows", "-t", name, "-F", "#{window_activity}")
+	if err != nil {
+		if IsNoSession(err) || IsNoServer(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	var peak int64
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var at int64
+		fmt.Sscanf(line, "%d", &at)
+		if at > peak {
+			peak = at
+		}
+	}
+	return peak, nil
 }
 
 func (m Manager) CreateSession(name, cwd, command string) (Session, error) {
