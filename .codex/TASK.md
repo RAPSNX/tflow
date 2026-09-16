@@ -77,23 +77,28 @@ history.
       navigate-prev/navigate-next/jump-git without opening the popup at
       all. Add a `MenuMode*` constant (`internal/tmux/types.go`) and a
       `cmd/tflow/main.go` subcommand for each of: create session, create
-      project, switch project, rename, delete, move, and edit project
-      settings -- mirroring `open-quit`'s existing
-      `TFLOW_MENU_MODE`/`openMenu` wiring. In
-      `internal/ui/lifecycle.go`'s `openMenu` mode switch, route each new
-      mode to the same `begin*` method the popup's own keypress already
-      calls (`m.beginRename()`, `m.beginSessionMove()`,
+      project, switch project, rename session, delete session, move,
+      rename project, delete project, and edit project settings --
+      mirroring `open-quit`'s existing `TFLOW_MENU_MODE`/`openMenu`
+      wiring. In `internal/ui/lifecycle.go`'s `openMenu` mode switch,
+      route each new mode to the same `begin*` method the popup's own
+      keypress already calls (`m.beginRename()`, `m.beginSessionMove()`,
       `m.startSessionCreate()`, `m.beginProjectCreate()`,
-      `m.beginProjectSwitch()`, `m.beginDelete()`, `m.editProject()` --
-      see `internal/ui/keys.go:41-60`), so both entry points share one
-      code path. Bind each new subcommand's shell command at `prefixTable`
-      in `internal/tmux/control.go`, reusing `sessionOnlyPart` for
-      `TFLOW_CURRENT_SESSION` the way `jumpGitShell` does. Leave `j`/`k`
-      selection and `Enter`-to-switch popup-only -- there is nothing to
-      move through or select before the sidebar's list is visible. Add
-      tests covering each new `MenuMode*` value in the `openMenu` switch;
-      hand-verify via `scripts/tmux-verify.sh` that, for at least
-      create-session, rename, and delete, pressing the bound key from
-      command mode opens the sidebar already inside that flow (not the
-      plain session list), and that finishing or cancelling it behaves
-      the same as reaching it through the popup's own keypress.
+      `m.beginProjectSwitch()`, `m.beginDelete()`,
+      `m.beginProjectRename()`, `m.beginProjectDelete()`,
+      `m.editProject()` -- see `internal/ui/keys.go:41-60`), so both
+      entry points share one code path; project rename and delete are
+      separate subcommands from their session counterparts, matching the
+      sidebar's own distinct `R`/`D` bindings. Bind each new subcommand's
+      shell command at `prefixTable` in `internal/tmux/control.go`,
+      reusing `sessionOnlyPart` for `TFLOW_CURRENT_SESSION` the way
+      `jumpGitShell` does. Leave `j`/`k` selection and `Enter`-to-switch
+      popup-only -- there is nothing to move through or select before the
+      sidebar's list is visible. Add tests covering each new `MenuMode*`
+      value in the `openMenu` switch; hand-verify via
+      `scripts/tmux-verify.sh` that, for at least create-session, rename
+      session, delete session, rename project, and delete project,
+      pressing the bound key from command mode opens the sidebar already
+      inside that flow (not the plain session list), and that finishing
+      or cancelling it behaves the same as reaching it through the
+      popup's own keypress.

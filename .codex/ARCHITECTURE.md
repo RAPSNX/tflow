@@ -61,7 +61,7 @@ project or owning volatile instance.
 A project contains a unique name, default working directory, optional agent
 binary, optional git binary, and ordered persistent sessions. A persistent
 session contains its tmux ID, display label, type (`terminal`, `git`, or
-`agent`), and a captured executable for git and agent sessions.
+`agent`), and a captured executable for agent sessions.
 
 Persistent project and session records survive missing tmux sessions. The
 sidebar treats stored order as the complete project session list. Selecting a
@@ -97,14 +97,19 @@ executable while disabling future automatic provisioning. Missing agent
 binaries produce clear, non-mutating materialization errors.
 
 Project settings also accept a `git-binary` executable name or absolute path
-without arguments, defaulting to `lazygit` when unset. A project holds
-exactly one git session, always labeled `git`; unlike the agent session it is
-not optional -- the standard project presets already create one, and
-clearing `git-binary` only reverts future materializations to the `lazygit`
-default rather than removing the session. The git session's label can never
-change: a rename targeting it is rejected. Later saves update its captured
-executable but not a currently running process. Missing git binaries produce
-clear, non-mutating materialization errors.
+without arguments, defaulting to `lazygit` when unset. A project holds at
+most one git session, always labeled `git`. The standard project presets
+already create one, but a project can still end up without one -- promotion
+creates no presets at all, and, like the agent session, deleting or moving
+away a project's only git session leaves it without one; nothing
+re-provisions it automatically outside of saving a `git-binary` setting. The
+git session's label can never change: a rename targeting it is rejected.
+Unlike the agent session's captured command, a git session stores no command
+of its own -- its launch command is the owning project's current
+`git-binary` (or `lazygit` when unset), resolved fresh at materialization
+time, so a later `git-binary` change takes effect on that session's next
+materialization without a separate update step. Missing git binaries
+produce clear, non-mutating materialization errors.
 
 Moving a persistent session preserves its tmux session and ID, appends it to
 the target project, and switches the originating client to it. A move fails
@@ -146,10 +151,11 @@ From command mode itself, before the sidebar ever opens, `h` and `l` also
 switch directly to the previous or next contextual session, and `g` jumps
 directly to the current project's git session; each acts immediately and
 returns to normal input without displaying the sidebar at all. Creating a
-session or project, switching projects, renaming, moving, deleting, and
-editing project settings are reachable the same way: pressing that action's
-key from command mode opens the sidebar already inside that action's flow,
-skipping its plain session list. The sidebar's own `j`/`k` selection and
+session or project, switching projects, renaming or deleting a session,
+moving a session, renaming or deleting a project, and editing project
+settings are reachable the same way: pressing that action's key from
+command mode opens the sidebar already inside that action's flow, skipping
+its plain session list. The sidebar's own `j`/`k` selection and
 `Enter` stay reachable only once the sidebar is visible, since there is
 nothing to move through or select before its list exists. Other sidebar
 shortcuts keep their normal behavior. `Ctrl+Q` opens confirmation for
@@ -301,7 +307,7 @@ The intended schema is:
     "gitBinary": "lazygit",
     "sessions": [
       {"id": "tflow-p-8f42ac91", "label": "code", "type": "terminal"},
-      {"id": "tflow-p-a13d5e02", "label": "git", "type": "git", "command": "lazygit"},
+      {"id": "tflow-p-a13d5e02", "label": "git", "type": "git"},
       {"id": "tflow-p-96ad4c10", "label": "agent", "type": "agent", "command": "codex"}
     ]
   }]
@@ -311,12 +317,15 @@ The intended schema is:
 `agentBinary`, `gitBinary`, and session `command` fields may be omitted where
 inapplicable. Missing `type` on an older record means `terminal` without
 migration or rewrite. Present types must be `terminal`, `git`, or `agent`;
-git and agent sessions require a command, terminal sessions forbid one, and
-a `git`-typed session's label must always be `git`. State is rejected, with
-a path-qualified error, for empty or duplicate normalized project names,
-empty or duplicate session IDs, empty or duplicate labels within a project,
-duplicate agent sessions, duplicate git sessions, or other schema
-violations. Unknown JSON fields may be ignored.
+agent sessions require a command, terminal and git sessions forbid one (a
+git session's launch command comes from its project's `gitBinary`, not a
+stored field, so existing commandless `git`-typed records from before this
+setting existed remain valid as-is), and a `git`-typed session's label must
+always be `git`. State is rejected, with a path-qualified error, for empty
+or duplicate normalized project names, empty or duplicate session IDs,
+empty or duplicate labels within a project, duplicate agent sessions,
+duplicate git sessions, or other schema violations. Unknown JSON fields may
+be ignored.
 
 Every mutation holds one advisory lock, reloads current state, applies the
 change, encodes the complete state, writes a temporary file in the state
