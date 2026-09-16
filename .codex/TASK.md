@@ -135,14 +135,26 @@ history.
       store with an unrelated corruption (e.g. a duplicate project name)
       confirming it is still rejected, not silently repaired.
 
-      `internal/store/move.go` inherits the dedup rejection for free once
+      `internal/store/move.go` inherits the dedup *check* for free once
       that validation exists (it already relies on `ValidateAppState` for
       the agent case) -- and, because the migration above deliberately
       never touches `MoveSession`'s own `NormalizeAppState` call, moving a
       `git`-typed session into a project that already has one is still
-      rejected outright, not silently demoted to `terminal`. Add a
-      `MoveSession` test for exactly that case. `internal/ui/actions.go`'s `beginRename` refuses to
-      rename a `git`-type session, with a clear `m.status` message.
+      rejected outright, not silently demoted to `terminal`. The error
+      message isn't free, though: `MoveSession`'s existing
+      `ValidateAppState` failure handler (`internal/store/move.go:97-105`)
+      unconditionally wraps every failure as `"already has an agent
+      session"`, on the documented assumption that the agent-per-project
+      rule was the only thing `ValidateAppState` could still reject at
+      that point -- a git-session move conflict would go through the
+      same path and surface that same false, agent-specific message.
+      Branch on the moved session's own `Type` when wrapping the error,
+      so a git conflict reports `"already has a git session"` and an
+      agent conflict keeps today's message. Add a `MoveSession` test for
+      a git-into-git move asserting the corrected message, alongside the
+      dedup test noted above. `internal/ui/actions.go`'s `beginRename`
+      refuses to rename a `git`-type session, with a clear `m.status`
+      message.
       `internal/ui/project_settings.go`'s `handleProjectEditorFinished`
       gains a `git-binary` counterpart to the existing
       `isBareExecutableToken(agentBinary)` check (around
