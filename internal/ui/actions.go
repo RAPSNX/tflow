@@ -134,7 +134,7 @@ func (m model) materializePersistentSession(name string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	created, err := m.tmux.CreateSession(name, workdir, resolvedCommand)
+	created, err := m.tmux.CreateSession(name, workdir, shellQuoteLaunchCommand(resolvedCommand))
 	if err != nil {
 		m.err = fmt.Errorf("create saved session %q: %w", name, err)
 		m.status = m.err.Error()

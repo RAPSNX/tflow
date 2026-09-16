@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -65,18 +66,40 @@ func TestValidateMaterializeExecutableAllowsEmptyCommand(t *testing.T) {
 	}
 }
 
-func TestIsBareExecutableTokenRejectsShellMetacharacters(t *testing.T) {
-	// These carry no whitespace but must still be rejected: a materialized
-	// agent session runs this value through a real shell (sh -lc), so a
-	// metacharacter here is a shell-injection vector, not a valid path.
-	for _, value := range []string{"codex;id", "codex|id", "codex&&id", "$(id)", "`id`", "codex>out"} {
-		if isBareExecutableToken(value) {
-			t.Fatalf("isBareExecutableToken(%q) = true, want false", value)
-		}
-	}
-	for _, value := range []string{"codex", "/usr/local/bin/codex", "codex-2"} {
+// TestIsBareExecutableTokenAcceptsValidPathCharacters guards against
+// over-restricting valid executable names and absolute paths to a narrow
+// character whitelist: shellQuoteLaunchCommand always quotes the resolved
+// command as one literal word before it reaches a shell (see
+// materializeCommand and Manager.CreateSession), so no character here --
+// space, "+", or otherwise -- can be interpreted as shell syntax, and
+// validation only needs to judge token shape (bare name or absolute path).
+func TestIsBareExecutableTokenAcceptsValidPathCharacters(t *testing.T) {
+	for _, value := range []string{
+		"codex", "/usr/local/bin/codex", "codex-2",
+		"/opt/agent+debug", "/home/me/Agent Tools/codex",
+		"codex;id", "codex|id", "codex&&id", "$(id)", "`id`", "codex>out",
+	} {
 		if !isBareExecutableToken(value) {
 			t.Fatalf("isBareExecutableToken(%q) = false, want true", value)
+		}
+	}
+}
+
+// TestShellQuoteLaunchCommandNeutralizesShellSyntax guards the safety
+// property isBareExecutableToken now relies on: whatever an agent-binary
+// value contains, once shell-quoted it runs as one literal word through
+// sh -lc rather than being interpreted as shell syntax.
+func TestShellQuoteLaunchCommandNeutralizesShellSyntax(t *testing.T) {
+	if got := shellQuoteLaunchCommand(""); got != "" {
+		t.Fatalf("shellQuoteLaunchCommand(\"\") = %q, want empty so callers' no-command checks still see it", got)
+	}
+	for _, value := range []string{"codex;id", "codex|id", "$(id)", "`id`", "/home/me/Agent Tools/codex"} {
+		quoted := shellQuoteLaunchCommand(value)
+		if quoted == value {
+			t.Fatalf("shellQuoteLaunchCommand(%q) = %q, want it quoted", value, quoted)
+		}
+		if !strings.HasPrefix(quoted, "'") || !strings.HasSuffix(quoted, "'") {
+			t.Fatalf("shellQuoteLaunchCommand(%q) = %q, want single-quoted", value, quoted)
 		}
 	}
 }
@@ -91,6 +114,19 @@ func TestIsBareExecutableTokenRejectsShellMetacharacters(t *testing.T) {
 // never materialize even when that executable exists.
 func TestIsBareExecutableTokenRejectsRelativeAndTildePaths(t *testing.T) {
 	for _, value := range []string{"./bin/codex", "~/bin/codex", "../codex", "sub/codex"} {
+		if isBareExecutableToken(value) {
+			t.Fatalf("isBareExecutableToken(%q) = true, want false", value)
+		}
+	}
+}
+
+// TestIsBareExecutableTokenRejectsArgumentsOnABareName guards the "no
+// arguments" contract for a bare name specifically: unlike an absolute
+// path, a bare name has no unambiguous end, so whitespace here is the
+// arguments delimiter, not a literal character -- "codex --flag" must be
+// rejected rather than accepted as one name containing "--flag".
+func TestIsBareExecutableTokenRejectsArgumentsOnABareName(t *testing.T) {
+	for _, value := range []string{"codex --flag", "codex arg", "codex\ttab"} {
 		if isBareExecutableToken(value) {
 			t.Fatalf("isBareExecutableToken(%q) = true, want false", value)
 		}

@@ -1020,8 +1020,8 @@ func TestNavigateToGitSessionLazilyMaterializesTarget(t *testing.T) {
 	if createdDir != "/project/alpha" {
 		t.Fatalf("created dir = %q, want /project/alpha", createdDir)
 	}
-	if createdCommand != "lazygit" {
-		t.Fatalf("created command = %q, want lazygit", createdCommand)
+	if createdCommand != "'lazygit'" {
+		t.Fatalf("created command = %q, want lazygit shell-quoted", createdCommand)
 	}
 	if switchedTo != "s2" {
 		t.Fatalf("switched to %q, want s2", switchedTo)

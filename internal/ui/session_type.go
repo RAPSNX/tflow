@@ -6,7 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"unicode"
+
+	runtmux "github.com/rapsnx/tflow/internal/tmux"
 )
 
 // materializeCommand resolves the shell command a lazily materialized
@@ -76,32 +77,50 @@ func validateMaterializeExecutable(sessionType, resolvedCommand, workdir string)
 
 // isBareExecutableToken reports whether value is a single path-like token
 // (a bare executable name or an absolute path) with no shell arguments,
-// matching the accepted shape for a project's agent-binary setting. A
-// materialized agent session runs this value through a real shell (`sh -lc`,
-// see Manager.CreateSession), so this rejects shell metacharacters outright
-// rather than only whitespace: a value like "codex;id" contains no
-// whitespace but is not a bare executable token either.
+// matching the accepted shape for a project's agent-binary setting. This
+// judges token *shape*, not individual characters: an executable name or
+// path may legitimately contain almost anything (spaces, "+", etc.), and
+// shellQuoteLaunchCommand quotes the resolved command as one literal word
+// before it ever reaches a shell (see materializeCommand and
+// Manager.CreateSession), so no character here is a shell-injection vector.
 func isBareExecutableToken(value string) bool {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return true
 	}
-	for _, r := range value {
-		switch {
-		case unicode.IsLetter(r), unicode.IsDigit(r):
-		case strings.ContainsRune("-_./~", r):
-		default:
-			return false
-		}
+	if !strings.ContainsRune(value, filepath.Separator) {
+		// A bare name is looked up on PATH as one word, so whitespace here
+		// is the arguments delimiter, not a valid character in the
+		// executable's own name -- the setting accepts an executable name
+		// or absolute path without arguments, so "codex --flag" must be
+		// rejected rather than treated as one name that happens to contain
+		// "--flag". Nothing else about a bare name is ambiguous this way,
+		// so no other character is restricted.
+		return !strings.ContainsAny(value, " \t\n\r")
 	}
-	// Only a bare name (no separator at all) or an absolute path is
-	// accepted; a relative or tilde-relative path is rejected here rather
-	// than accepted and mishandled later -- validateMaterializeExecutable
-	// joins a non-absolute path to the project workdir, not the user's
-	// home, so "~" is never expanded and a value like "~/bin/codex" could
-	// never resolve even when that executable exists.
-	if strings.ContainsRune(value, filepath.Separator) && !filepath.IsAbs(value) {
-		return false
+	// A path containing a separator is only accepted when absolute; a
+	// relative or tilde-relative path is rejected here rather than
+	// accepted and mishandled later -- validateMaterializeExecutable joins
+	// a non-absolute path to the project workdir, not the user's home, so
+	// "~" is never expanded and a value like "~/bin/codex" could never
+	// resolve even when that executable exists. An absolute path may
+	// otherwise contain any character, including a space: its leading "/"
+	// already makes it unambiguous (the whole value is the path, not a
+	// command plus arguments), and shellQuoteLaunchCommand quotes the
+	// resolved command as one literal word before it reaches a shell, so a
+	// space here is a literal path character, never an arguments
+	// delimiter.
+	return filepath.IsAbs(value)
+}
+
+// shellQuoteLaunchCommand wraps a non-empty resolved command (from
+// materializeCommand) in single quotes so it always runs as one literal
+// word through sh -lc regardless of spaces or other characters in an
+// executable's path, instead of being word-split or interpreted as shell
+// syntax. Empty stays empty so callers' "no command" checks still see it.
+func shellQuoteLaunchCommand(resolvedCommand string) string {
+	if resolvedCommand == "" {
+		return ""
 	}
-	return true
+	return runtmux.ShellQuote(resolvedCommand)
 }
