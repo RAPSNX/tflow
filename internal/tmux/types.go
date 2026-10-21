@@ -17,7 +17,7 @@ const (
 	tempMarker            = "@tflow-temp"
 	instanceMarker        = "@tflow-instance"
 	attentionMarker       = "@tflow-attention"
-	visitedMarker         = "@tflow-visited-at"
+	contentMarker         = "@tflow-seen-content"
 	// The session list renders at a fixed width (see sessionLabelWidth in
 	// internal/ui/view.go), not derived from the popup's own size, so the
 	// popup itself needs a fixed width wide enough to fit the badge and
@@ -51,8 +51,7 @@ const (
 	CurrentInstanceEnv = "TFLOW_INSTANCE_ID"
 	// LastVisitedSessionEnv carries tmux's #{client_last_session} into the
 	// client-session-changed hook: the session being switched away from, so
-	// its watermark can be stamped at the exact moment of the switch rather
-	// than waiting for AttentionScan's next tick.
+	// its content baseline can be recorded during the switch.
 	LastVisitedSessionEnv = "TFLOW_LAST_VISITED_SESSION"
 	MenuModeEnv           = "TFLOW_MENU_MODE"
 	MenuModeCommand       = "command"
@@ -67,23 +66,14 @@ type Session struct {
 	Temporary bool
 	Instance  string
 	Attention bool
-	// VisitedAt is the unix time (seconds) MarkSessionVisited last recorded
-	// for this session, or 0 if it has never been visited. AttentionScan
-	// compares a window's own last-activity time against this watermark
-	// rather than trusting window_activity_flag alone: that flag is only
-	// cleared on a window when it is individually selected, so a background
-	// (non-active) window's flag can stay set long after the session itself
-	// was visited, which would otherwise re-flag stale, pre-visit activity
-	// as if it were new.
-	VisitedAt int64
+	// ContentBaseline contains a visit generation and a content fingerprint.
+	ContentBaseline string
 }
 
 type Controller interface {
 	ListSessions() ([]Session, error)
-	// SessionActivityTimestamps reports, per session, the latest
-	// window_activity time (unix seconds) across all of that session's
-	// windows -- not just its active one.
-	SessionActivityTimestamps() (map[string]int64, error)
+	RefreshSessionAttention(session Session) (bool, error)
+	InitializeSessionAttention(name string) error
 	SessionAttached(name string) (bool, error)
 	CreateSession(name, cwd, command string) (Session, error)
 	RenameSession(oldName, newName string) error
@@ -93,9 +83,7 @@ type Controller interface {
 	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
-	SetSessionAttention(name string, attention bool) error
-	// MarkSessionVisited clears the attention marker and records the visit
-	// time as this session's new activity watermark.
+	// MarkSessionVisited records the current content and clears attention.
 	MarkSessionVisited(name string) error
 	SetSessionTopBar(name, content string) error
 	AttachCommand(ctx context.Context, name string) (*exec.Cmd, error)

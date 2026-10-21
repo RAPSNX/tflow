@@ -345,36 +345,6 @@ func TestListSessionsIncludesAttentionMarker(t *testing.T) {
 	}
 }
 
-func TestSessionActivityTimestampsAggregatesEveryWindow(t *testing.T) {
-	manager := Manager{
-		Run: func(args ...string) (string, error) {
-			if args[0] != "list-windows" {
-				t.Fatalf("unexpected command: %v", args)
-			}
-			// "busy" has its latest activity in its second (non-active)
-			// window; aggregation across windows must still catch it and
-			// take the max. "idle" has no activity in either window.
-			return strings.Join([]string{
-				"busy\t100",
-				"busy\t200",
-				"idle\t0",
-				"idle\t0",
-			}, "\n") + "\n", nil
-		},
-	}
-
-	activity, err := manager.SessionActivityTimestamps()
-	if err != nil {
-		t.Fatalf("SessionActivityTimestamps returned error: %v", err)
-	}
-	if activity["busy"] != 200 {
-		t.Fatalf("activity[busy] = %d, want the max across its windows (200)", activity["busy"])
-	}
-	if activity["idle"] != 0 {
-		t.Fatalf("activity[idle] = %d, want 0", activity["idle"])
-	}
-}
-
 func TestListSessionsTreatsAnyAttachedClientCountAsAttached(t *testing.T) {
 	manager := Manager{
 		Run: func(args ...string) (string, error) {

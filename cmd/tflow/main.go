@@ -67,8 +67,6 @@ func run(args []string, output io.Writer, start func() error) error {
 		return ui.NavigateToGitSession()
 	case "cleanup-client":
 		return runtmux.CleanupDetachedClient()
-	case "session-activity":
-		return ui.SessionActivity()
 	case "session-visited":
 		return ui.SessionVisited()
 	case "attention-scan":

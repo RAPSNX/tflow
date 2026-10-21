@@ -272,6 +272,15 @@ func prepareStartup(manager tmuxController, binaryPath, cwd, instanceID string) 
 			state = reloaded
 		}
 	}
+	// Existing sessions without a content baseline start from their current
+	// text. A second instance must preserve established unread markers.
+	for _, s := range existing {
+		if s.ContentBaseline == "" {
+			if err := ignoreMissingSession(manager.InitializeSessionAttention(s.Name)); err != nil {
+				return "", fmt.Errorf("initialize session attention: %w", err)
+			}
+		}
+	}
 	repairPersistentSessionMarkers(manager, path, existing)
 	label := nextTempSessionNameForInstance(existing, instanceID)
 	var name string

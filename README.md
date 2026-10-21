@@ -58,7 +58,7 @@ tflow
 
 Start `tflow` in a terminal. It opens a volatile session that behaves like a normal terminal; closing that tflow instance closes its volatile sessions too. Projects you create contain persistent sessions that can be revisited later.
 
-The top bar shows the current project and every session in it, with the active one highlighted.
+The top bar shows the current project and every session in it, with the active one highlighted. A red `!` in the bar or sidebar means terminal text or scrollback changed while no client was viewing that session. Visiting clears it; unchanged redraws and cursor or colour controls do not trigger it. Attention is sampled every two seconds, so transient text between scans may be missed.
 
 Press `Ctrl+F` to enter command mode -- holding it down works the same as tapping it. From there, `f` opens the command sidebar (holding Ctrl down through both presses works too, you don't need to release it between them) below the top bar, so the bar stays visible while you choose. `h` and `l` jump straight to the previous or next session without opening the sidebar at all, and `g` jumps straight to the current project's git session -- all three act immediately from command mode. Once the sidebar is open, `h`/`l` still work there too, navigating and closing it. From the sidebar you can also create, rename, move, delete, and switch projects and sessions. Press `Ctrl+Q` to quit the current tflow instance.
 

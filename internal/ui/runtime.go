@@ -19,7 +19,8 @@ type session = runtmux.Session
 
 type tmuxController interface {
 	ListSessions() ([]session, error)
-	SessionActivityTimestamps() (map[string]int64, error)
+	RefreshSessionAttention(session session) (bool, error)
+	InitializeSessionAttention(name string) error
 	SessionAttached(name string) (bool, error)
 	CreateSession(name, cwd, command string) (session, error)
 	RenameSession(oldName, newName string) error
@@ -29,7 +30,6 @@ type tmuxController interface {
 	CurrentPaneDir() (string, error)
 	SetSessionTemporary(name string, temporary bool, instanceID string) error
 	SetSessionLabel(name, label string) error
-	SetSessionAttention(name string, attention bool) error
 	MarkSessionVisited(name string) error
 	SetSessionTopBar(name, content string) error
 	AttachCommand(ctx context.Context, name string) (*exec.Cmd, error)
@@ -71,8 +71,12 @@ func (m sessionManager) ListSessions() ([]session, error) {
 	return m.inner.ListSessions()
 }
 
-func (m sessionManager) SessionActivityTimestamps() (map[string]int64, error) {
-	return m.inner.SessionActivityTimestamps()
+func (m sessionManager) RefreshSessionAttention(s session) (bool, error) {
+	return m.inner.RefreshSessionAttention(s)
+}
+
+func (m sessionManager) InitializeSessionAttention(name string) error {
+	return m.inner.InitializeSessionAttention(name)
 }
 
 func (m sessionManager) SessionAttached(name string) (bool, error) {
@@ -98,10 +102,6 @@ func (m sessionManager) SetSessionTemporary(name string, temporary bool, instanc
 
 func (m sessionManager) SetSessionLabel(name, label string) error {
 	return m.inner.SetSessionLabel(name, label)
-}
-
-func (m sessionManager) SetSessionAttention(name string, attention bool) error {
-	return m.inner.SetSessionAttention(name, attention)
 }
 
 func (m sessionManager) MarkSessionVisited(name string) error {
