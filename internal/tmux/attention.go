@@ -26,7 +26,7 @@ func baselineCondition(baseline string) (string, error) {
 	if baseline != "" {
 		generation, fingerprint, ok := strings.Cut(baseline, ":")
 		decoded, err := hex.DecodeString(fingerprint)
-		if !ok || len(generation) != 26 || err != nil || len(decoded) != sha256.Size ||
+		if !ok || (len(generation) == 0 || len(generation) > 256) || err != nil || len(decoded) != sha256.Size ||
 			strings.IndexFunc(generation, func(r rune) bool {
 				return !(r >= 'A' && r <= 'Z' || r >= '2' && r <= '7')
 			}) >= 0 {
@@ -44,7 +44,7 @@ func (m Manager) sessionContentFingerprint(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h := sha256.New()
+	var contents []string
 	for _, pane := range panes {
 		out, err := m.runner()("capture-pane", "-p", "-J", "-S", "-", "-E", "-", "-t", pane)
 		if err != nil {
@@ -55,7 +55,7 @@ func (m Manager) sessionContentFingerprint(name string) (string, error) {
 		}
 		text := normalizePaneText(out)
 		if text != "" {
-			fmt.Fprintf(h, "%s:%d:%s", pane, len(text), text)
+			contents = append(contents, text)
 		}
 	}
 	// Never publish a partial snapshot when a pane was added or removed.
@@ -65,6 +65,13 @@ func (m Manager) sessionContentFingerprint(name string) (string, error) {
 	}
 	if !slices.Equal(panes, after) {
 		return "", errPaneSetChanged
+	}
+	// Pane IDs only identify what to capture. A recreated pane with the same
+	// text has the same fingerprint, even if its new ID sorts elsewhere.
+	slices.Sort(contents)
+	h := sha256.New()
+	for _, text := range contents {
+		fmt.Fprintf(h, "%d:%s", len(text), text)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

@@ -75,6 +75,43 @@ func TestContentFingerprintEmptyAndStableOrder(t *testing.T) {
 	}
 }
 
+func TestContentFingerprintIgnoresPaneIDReplacement(t *testing.T) {
+	panes := map[string]string{"%1": "one\n", "%9": "two\n"}
+	m := contentTestManager(panes)
+	before, err := m.sessionContentFingerprint("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(panes, "%1")
+	panes["%20"] = "one\n" // The replacement sorts on the other side of %9.
+	after, err := m.sessionContentFingerprint("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatalf("pane recreation changed fingerprint: %q != %q", before, after)
+	}
+	panes["%20"] = "new text\n"
+	changed, err := m.sessionContentFingerprint("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == before {
+		t.Fatal("changed pane text was ignored")
+	}
+}
+
+func TestBaselineConditionAcceptsLongerRandText(t *testing.T) {
+	baseline := strings.Repeat("A", 52) + ":" + emptyContentFingerprint()
+	if _, err := baselineCondition(baseline); err != nil {
+		t.Fatal(err)
+	}
+	tooLong := strings.Repeat("A", 257) + ":" + emptyContentFingerprint()
+	if _, err := baselineCondition(tooLong); err == nil {
+		t.Fatal("accepted oversized generation")
+	}
+}
+
 func TestContentCaptureRequestsEveryWindowAndHistoryWithoutAttributes(t *testing.T) {
 	var calls [][]string
 	m := Manager{Run: func(args ...string) (string, error) {
