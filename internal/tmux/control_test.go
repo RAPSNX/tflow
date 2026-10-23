@@ -73,8 +73,8 @@ func TestEnsureControlModeBindsToggleKey(t *testing.T) {
 		{"bind-key", "-T", "copy-mode", "WheelDownPane", "send-keys", "-X", "-N", "5", "scroll-down"},
 		{"bind-key", "-T", "copy-mode-vi", "WheelUpPane", "send-keys", "-X", "-N", "5", "scroll-up"},
 		{"bind-key", "-T", "copy-mode-vi", "WheelDownPane", "send-keys", "-X", "-N", "5", "scroll-down"},
-		{"set-window-option", "-g", "monitor-activity", "on"},
-		{"set-hook", "-g", "alert-activity", "run-shell " + ShellQuote("TFLOW_CURRENT_SESSION='#{session_name}' exec '/tmp/tflow' session-activity")},
+		{"set-window-option", "-g", "monitor-activity", "off"},
+		{"set-hook", "-gu", "alert-activity"},
 		{"set-hook", "-g", "client-session-changed", "run-shell " + ShellQuote("TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_LAST_VISITED_SESSION='#{client_last_session}' exec '/tmp/tflow' session-visited")},
 		{"bind-key", "-n", "C-f", "switch-client", "-T", "tflow-prefix"},
 		{"bind-key", "-T", "tflow-prefix", "f", "run-shell", "TFLOW_CURRENT_SESSION='#{session_name}' TFLOW_CURRENT_CLIENT='#{client_name}' exec '/tmp/tflow' toggle-command-menu"},
@@ -165,16 +165,6 @@ func TestEnsureControlModeInstallsAttentionHooks(t *testing.T) {
 		t.Fatalf("EnsureControlMode returned error: %v", err)
 	}
 
-	monitorOn := false
-	for _, call := range calls {
-		if len(call) == 4 && call[0] == "set-window-option" && call[1] == "-g" && call[2] == "monitor-activity" && call[3] == "on" {
-			monitorOn = true
-		}
-	}
-	if !monitorOn {
-		t.Fatalf("missing global monitor-activity on in %#v", calls)
-	}
-
 	hasHook := func(name, subcommand string) bool {
 		for _, call := range calls {
 			if len(call) != 4 || call[0] != "set-hook" || call[1] != "-g" || call[2] != name {
@@ -186,8 +176,10 @@ func TestEnsureControlModeInstallsAttentionHooks(t *testing.T) {
 		}
 		return false
 	}
-	if !hasHook("alert-activity", "session-activity") {
-		t.Fatalf("missing alert-activity hook for session-activity in %#v", calls)
+	for _, call := range calls {
+		if len(call) == 4 && call[0] == "set-hook" && call[2] == "alert-activity" {
+			t.Fatalf("activity hook must not set attention: %v", call)
+		}
 	}
 	if !hasHook("client-session-changed", "session-visited") {
 		t.Fatalf("missing client-session-changed hook for session-visited in %#v", calls)
@@ -354,73 +346,6 @@ func TestSetSessionTopBar(t *testing.T) {
 	}
 
 	if err := manager.SetSessionTopBar("", "content"); err == nil {
-		t.Fatal("expected error for empty session name")
-	}
-}
-
-func TestSetSessionAttention(t *testing.T) {
-	var got []string
-	manager := Manager{Run: func(args ...string) (string, error) {
-		got = append([]string(nil), args...)
-		return "", nil
-	}}
-
-	if err := manager.SetSessionAttention("tflow-p-1", true); err != nil {
-		t.Fatalf("SetSessionAttention error: %v", err)
-	}
-	want := []string{"set-option", "-t", "tflow-p-1", "@tflow-attention", "1"}
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("call = %#v, want %#v", got, want)
-	}
-
-	if err := manager.SetSessionAttention("tflow-p-1", false); err != nil {
-		t.Fatalf("SetSessionAttention error: %v", err)
-	}
-	want = []string{"set-option", "-t", "tflow-p-1", "@tflow-attention", "0"}
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("call = %#v, want %#v", got, want)
-	}
-
-	if err := manager.SetSessionAttention("", true); err == nil {
-		t.Fatal("expected error for empty session name")
-	}
-}
-
-func TestMarkSessionVisitedClearsAttentionAndStampsWatermark(t *testing.T) {
-	var calls [][]string
-	manager := Manager{Run: func(args ...string) (string, error) {
-		calls = append(calls, append([]string(nil), args...))
-		if args[0] == "list-windows" {
-			// Two windows; the watermark must be the max across them, not
-			// wall-clock time, so a plain "activity > watermark" comparison
-			// stays unambiguous even when a visit and some activity land in
-			// the same one-second tmux clock tick.
-			return "150\n300\n", nil
-		}
-		return "", nil
-	}}
-
-	if err := manager.MarkSessionVisited("tflow-p-1"); err != nil {
-		t.Fatalf("MarkSessionVisited error: %v", err)
-	}
-
-	if len(calls) != 3 {
-		t.Fatalf("calls = %#v, want exactly 3 tmux calls", calls)
-	}
-	wantClear := []string{"set-option", "-t", "tflow-p-1", "@tflow-attention", "0"}
-	if strings.Join(calls[0], " ") != strings.Join(wantClear, " ") {
-		t.Fatalf("first call = %#v, want %#v", calls[0], wantClear)
-	}
-	wantQuery := []string{"list-windows", "-t", "tflow-p-1", "-F", "#{window_activity}"}
-	if strings.Join(calls[1], " ") != strings.Join(wantQuery, " ") {
-		t.Fatalf("second call = %#v, want %#v", calls[1], wantQuery)
-	}
-	wantStamp := []string{"set-option", "-t", "tflow-p-1", "@tflow-visited-at", "300"}
-	if strings.Join(calls[2], " ") != strings.Join(wantStamp, " ") {
-		t.Fatalf("third call = %#v, want %#v", calls[2], wantStamp)
-	}
-
-	if err := manager.MarkSessionVisited(""); err == nil {
 		t.Fatal("expected error for empty session name")
 	}
 }
